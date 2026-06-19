@@ -415,10 +415,15 @@ async function delListing(id){
 
 /* ── COMPANIES LIST ── */
 async function loadAllCompanies(){
-  // Supabase default limit is 1000 — paginate to get all records
-  let all=[], from=0, pageSize=1000;
+  // Supabase requires Range header for pagination beyond 1000
+  let all=[], from=0, pageSize=500;
   while(true){
-    const page=await api(`companies?select=*&order=name.asc&limit=${pageSize}&offset=${from}`);
+    const to=from+pageSize-1;
+    const r=await fetch(SB_URL+'/rest/v1/companies?select=*&order=name.asc',{
+      headers:{...H,'Range-Unit':'items','Range':`${from}-${to}`,'Prefer':'count=none'}
+    });
+    if(!r.ok)break;
+    const page=await r.json();
     all=[...all,...page];
     if(page.length<pageSize)break;
     from+=pageSize;
