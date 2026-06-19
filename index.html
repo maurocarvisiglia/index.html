@@ -414,11 +414,23 @@ async function delListing(id){
 }
 
 /* ── COMPANIES LIST ── */
+async function loadAllCompanies(){
+  // Supabase default limit is 1000 — paginate to get all records
+  let all=[], from=0, pageSize=1000;
+  while(true){
+    const page=await api(`companies?select=*&order=name.asc&limit=${pageSize}&offset=${from}`);
+    all=[...all,...page];
+    if(page.length<pageSize)break;
+    from+=pageSize;
+  }
+  return all;
+}
+
 async function loadCompanies(){
   try{
     // Load companies + count listings per company in parallel
     const[companies, listings]=await Promise.all([
-      api('companies?select=*&order=name.asc'),
+      loadAllCompanies(),
       api('job_listings?select=company_name')
     ]);
 
