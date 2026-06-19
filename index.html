@@ -50,6 +50,13 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .badge-inactive{background:rgba(224,92,92,.15);color:var(--danger);}
 .ral-range{font-weight:600;color:var(--success);font-size:12px;}
 .ral-none{color:var(--text2);font-size:12px;font-style:italic;}
+.ral-edit{display:inline-flex;align-items:center;gap:4px;}
+.ral-edit input{width:70px;padding:4px 8px;font-size:12px;border-radius:6px;}
+.ral-edit button{padding:3px 8px;font-size:11px;border-radius:6px;border:none;cursor:pointer;font-weight:600;}
+.ral-edit .save-btn{background:var(--success);color:white;}
+.ral-edit .cancel-btn{background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
+.ral-clickable{cursor:pointer;border-bottom:1px dashed var(--text2);padding-bottom:1px;}
+.ral-clickable:hover{border-bottom-color:var(--accent);color:var(--accent);}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;}
@@ -527,6 +534,56 @@ async function importApifyCSV(event){
   loadDashboard();
 }
 
+function ralCell(l){
+  const val=l.ral_min||l.ral_max
+    ?`<span class="ral-range ral-clickable" onclick="editRal('${l.id}',${l.ral_min||0},${l.ral_max||0})">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'} ✎</span>`
+    :`<span class="ral-none ral-clickable" onclick="editRal('${l.id}',0,0)">n.d. ✎</span>`;
+  return val;
+}
+
+function editRal(id, currentMin, currentMax){
+  const cell=document.getElementById('ral-cell-'+id);
+  if(!cell)return;
+  cell.innerHTML=`<div class="ral-edit">
+    <input type="number" id="ral-min-${id}" placeholder="Min €" value="${currentMin||''}" style="width:80px;">
+    <span style="color:var(--text2);font-size:11px;">–</span>
+    <input type="number" id="ral-max-${id}" placeholder="Max €" value="${currentMax||''}" style="width:80px;">
+    <button class="save-btn" onclick="saveRal('${id}')">✓</button>
+    <button class="cancel-btn" onclick="cancelRal('${id}',${currentMin},${currentMax})">✕</button>
+  </div>`;
+  document.getElementById('ral-min-'+id).focus();
+  // Save on Enter
+  [document.getElementById('ral-min-'+id), document.getElementById('ral-max-'+id)]
+    .forEach(el=>el.addEventListener('keydown', e=>{
+      if(e.key==='Enter')saveRal(id);
+      if(e.key==='Escape')cancelRal(id,currentMin,currentMax);
+    }));
+}
+
+async function saveRal(id){
+  const minEl=document.getElementById('ral-min-'+id);
+  const maxEl=document.getElementById('ral-max-'+id);
+  const ral_min=minEl&&minEl.value?parseInt(minEl.value):null;
+  const ral_max=maxEl&&maxEl.value?parseInt(maxEl.value):null;
+  try{
+    await api('job_listings?id=eq.'+id,'PATCH',{ral_min,ral_max});
+    // Update cell with new values
+    const cell=document.getElementById('ral-cell-'+id);
+    if(cell){
+      const fakeL={id,ral_min,ral_max};
+      cell.innerHTML=ralCell(fakeL);
+    }
+    toast('RAL aggiornata');
+    // Refresh dashboard stats
+    loadDashboard();
+  }catch(e){toast('Errore salvataggio RAL','error');}
+}
+
+function cancelRal(id, min, max){
+  const cell=document.getElementById('ral-cell-'+id);
+  if(cell) cell.innerHTML=ralCell({id,ral_min:min||null,ral_max:max||null});
+}
+
 async function loadListings(){
   const entity=document.getElementById('f-entity').value;
   const area=document.getElementById('f-area').value;
@@ -544,7 +601,7 @@ async function loadListings(){
     document.getElementById('listings-count').textContent=data.length+' annunci';
     const body=document.getElementById('listings-body');
     if(!data.length){body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div><div class="empty-sub">Aggiungi il primo annuncio o modifica i filtri</div></div>';return;}
-    body.innerHTML=`<table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Tipo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Fonte</th><th>Data</th><th></th></tr></thead><tbody>${data.map(l=>`<tr><td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td><td>${l.company_name}</td><td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td><td>${l.functional_area||'—'}</td><td>${l.seniority||'—'}</td><td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td><td>${l.contract_type||'—'}</td><td>${l.location||'—'}</td><td>${l.source||'—'}</td><td>${l.published_date||'—'}</td><td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td></tr>`).join('')}</tbody></table>`;
+    body.innerHTML=`<table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Tipo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Fonte</th><th>Data</th><th></th></tr></thead><tbody>${data.map(l=>`<tr><td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td><td>${l.company_name}</td><td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td><td>${l.functional_area||'—'}</td><td>${l.seniority||'—'}</td><td id="ral-cell-${l.id}">${ralCell(l)}</td><td>${l.contract_type||'—'}</td><td>${l.location||'—'}</td><td>${l.source||'—'}</td><td>${l.published_date||'—'}</td><td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td></tr>`).join('')}</tbody></table>`;
   }catch(e){document.getElementById('listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;}
 }
 
@@ -713,7 +770,7 @@ async function loadCompanyDetail(company){
         <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
         <td>${l.functional_area||'—'}</td>
         <td>${l.seniority||'—'}</td>
-        <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+        <td id="ral-cell-${l.id}">${ralCell(l)}</td>
         <td>${l.contract_type||'—'}</td>
         <td>${l.location||'—'}</td>
         <td>${l.source||'—'}</td>
