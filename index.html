@@ -183,6 +183,7 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;gap:8px;">
         <input type="file" id="excel-import" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importExcel(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('excel-import').click()">⬆ Importa Excel</button>
+        <button class="btn btn-secondary" onclick="generateApifyURLs()">🔗 Genera URL Apify</button>
         <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
         <button class="btn btn-primary" onclick="openModal('modal-company')">+ Aggiungi azienda</button>
       </div>
@@ -274,6 +275,67 @@ a.job-link:hover{text-decoration:underline;}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-listing')">Annulla</button>
       <button class="btn btn-primary" onclick="saveListing()">Salva annuncio</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GENERA URL APIFY -->
+<div class="modal-overlay" id="modal-apify-urls">
+  <div class="modal" style="width:800px;max-width:95vw;">
+    <div class="modal-title">🔗 URL per Apify LinkedIn Scraper</div>
+    <div style="margin-bottom:16px;">
+      <div class="filter-group" style="flex-direction:row;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="filter-group">
+          <div class="filter-label">Tipo aziende</div>
+          <select id="apify-filter-type" onchange="refreshApifyURLs()">
+            <option value="">Tutte</option>
+            <option value="life_sciences">Life Sciences</option>
+            <option value="headhunter">Head Hunter</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <div class="filter-label">Max aziende per batch</div>
+          <select id="apify-batch-size" onchange="refreshApifyURLs()">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <div class="filter-label">Batch numero</div>
+          <select id="apify-batch-num" onchange="refreshApifyURLs()">
+            <option value="1">1</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <div class="filter-label">Giorni pubblicazione</div>
+          <select id="apify-days" onchange="refreshApifyURLs()">
+            <option value="604800">7 giorni</option>
+            <option value="1296000">15 giorni</option>
+            <option value="2592000" selected>30 giorni</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;">Istruzioni</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;">
+        1. Copia tutti gli URL qui sotto<br>
+        2. Vai su Apify → LinkedIn Jobs Scraper<br>
+        3. Clicca <strong style="color:var(--text)">Bulk edit</strong> nel campo "Linkedin jobs search URLs"<br>
+        4. Incolla gli URL (uno per riga)<br>
+        5. Imposta "Number of jobs needed" → <strong style="color:var(--text)">5</strong> per azienda<br>
+        6. Clicca Start
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div id="apify-url-count" style="font-size:12px;color:var(--text2);"></div>
+      <button class="btn btn-primary" onclick="copyApifyURLs()" style="padding:6px 16px;font-size:12px;">📋 Copia tutti gli URL</button>
+    </div>
+    <textarea id="apify-urls-output" readonly style="width:100%;height:300px;font-size:11px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);resize:vertical;"></textarea>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-apify-urls')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -690,6 +752,54 @@ async function saveCompany(){
     toast('Azienda salvata!');closeModal('modal-company');loadCompanies();
     ['c-name','c-website','c-linkedin','c-indeed','c-glassdoor'].forEach(id=>document.getElementById(id).value='');
   }catch(e){toast('Errore salvataggio','error');}
+}
+
+let _apifyAllCompanies = [];
+
+function refreshApifyURLs(){
+  const typeFilter = document.getElementById('apify-filter-type').value;
+  const batchSize = parseInt(document.getElementById('apify-batch-size').value);
+  const days = document.getElementById('apify-days').value;
+
+  // Filter companies
+  let filtered = _apifyAllCompanies.filter(c => c.is_active);
+  if(typeFilter) filtered = filtered.filter(c => c.entity_type === typeFilter);
+
+  // Update batch num options
+  const totalBatches = Math.ceil(filtered.length / batchSize);
+  const batchNumEl = document.getElementById('apify-batch-num');
+  const currentBatch = parseInt(batchNumEl.value) || 1;
+  batchNumEl.innerHTML = Array.from({length: totalBatches}, (_,i) => 
+    `<option value="${i+1}" ${i+1===currentBatch?'selected':''}>${i+1} (az. ${i*batchSize+1}-${Math.min((i+1)*batchSize, filtered.length)})</option>`
+  ).join('');
+
+  const batchNum = parseInt(batchNumEl.value) || 1;
+  const start = (batchNum - 1) * batchSize;
+  const batch = filtered.slice(start, start + batchSize);
+
+  // Generate URLs
+  const urls = batch.map(c => {
+    const name = encodeURIComponent(c.name);
+    return `https://www.linkedin.com/jobs/search/?keywords=${name}&location=Italia&geoId=103350119&f_TPR=r${days}`;
+  });
+
+  document.getElementById('apify-url-count').textContent = 
+    `${urls.length} URL — batch ${batchNum}/${totalBatches} — ${filtered.length} aziende totali`;
+  document.getElementById('apify-urls-output').value = urls.join('\n');
+}
+
+function copyApifyURLs(){
+  const ta = document.getElementById('apify-urls-output');
+  ta.select();
+  document.execCommand('copy');
+  toast('URL copiati negli appunti!');
+}
+
+async function generateApifyURLs(){
+  openModal('modal-apify-urls');
+  document.getElementById('apify-urls-output').value = 'Caricamento aziende...';
+  _apifyAllCompanies = await loadAllCompanies();
+  refreshApifyURLs();
 }
 
 async function deleteAllCompanies(){
