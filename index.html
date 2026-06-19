@@ -152,6 +152,8 @@ a.job-link:hover{text-decoration:underline;}
     <div class="section-header">
       <div class="section-title">Annunci di lavoro</div>
       <div style="display:flex;gap:8px;">
+        <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
+        <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -355,6 +357,114 @@ function renderRal(id,listings){
 }
 
 /* ── LISTINGS ── */
+async function importApifyCSV(event){
+  const file=event.target.files[0];if(!file)return;
+  event.target.value='';
+
+  // Load PapaParse for CSV parsing
+  if(!window.Papa){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
+      s.onload=res;s.onerror=rej;document.head.appendChild(s);
+    });
+  }
+
+  const text=await file.text();
+  const result=Papa.parse(text,{header:true,skipEmptyLines:true});
+  const rows=result.data;
+
+  if(!rows.length){toast('Nessun dato nel CSV','error');return;}
+  toast(`Importazione ${rows.length} annunci in corso...`,'success');
+
+  // Mapping functions
+  const mapSeniority=v=>{
+    if(!v)return'Mid';
+    const l=v.toLowerCase();
+    if(l.includes('entry'))return'Junior';
+    if(l.includes('associate'))return'Junior';
+    if(l.includes('mid-senior')||l.includes('senior'))return'Senior';
+    if(l.includes('director'))return'Director';
+    if(l.includes('executive'))return'C-level';
+    return'Mid';
+  };
+
+  const mapArea=v=>{
+    if(!v)return'altro';
+    const l=v.toLowerCase();
+    if(l.includes('research')||l.includes('science')||l.includes('engineering'))return'R&D';
+    if(l.includes('health care')||l.includes('medical'))return'Medical';
+    if(l.includes('quality'))return'Quality';
+    if(l.includes('manufactur')||l.includes('production')||l.includes('supply'))return'Operations';
+    if(l.includes('marketing'))return'Marketing';
+    if(l.includes('finance')||l.includes('account'))return'Finance';
+    if(l.includes('regulatory'))return'Regulatory';
+    if(l.includes('sales'))return'Sales';
+    return'altro';
+  };
+
+  const mapContract=v=>{
+    if(!v)return null;
+    const l=v.toLowerCase();
+    if(l.includes('full'))return'TI';
+    if(l.includes('contract')||l.includes('temporary'))return'TD';
+    if(l.includes('intern'))return'Stage';
+    return'altro';
+  };
+
+  const parseSalary=v=>{
+    if(!v)return[null,null];
+    const nums=v.replace(/,/g,'').match(/[\d]+\.?\d*/g);
+    if(!nums)return[null,null];
+    const isHourly=v.toLowerCase().includes('/hr');
+    const vals=nums.map(n=>parseFloat(n));
+    if(isHourly){
+      return vals.length>=2?[Math.round(vals[0]*1720),Math.round(vals[1]*1720)]:[Math.round(vals[0]*1720),null];
+    }
+    return vals.length>=2?[Math.round(vals[0]),Math.round(vals[1])]:[Math.round(vals[0]),null];
+  };
+
+  let ok=0,skip=0,errors=0;
+  for(const row of rows){
+    const url=(row['link']||row['applyUrl']||'').trim();
+    const title=(row['title']||'').trim();
+    const company=(row['companyName']||'').trim();
+    if(!url||!title||!company){errors++;continue;}
+
+    const[ral_min,ral_max]=parseSalary(row['salary']||'');
+
+    const record={
+      job_title:title,
+      company_name:company,
+      entity_type:'life_sciences',
+      functional_area:mapArea(row['jobFunction']||''),
+      seniority:mapSeniority(row['seniorityLevel']||''),
+      ral_min,ral_max,
+      contract_type:mapContract(row['employmentType']||''),
+      location:(row['location']||'').trim()||null,
+      source:'LinkedIn',
+      url:url,
+      published_date:(row['postedAt']||'').trim()||null,
+    };
+
+    try{
+      await api('job_listings','POST',record);
+      ok++;
+    }catch(e){
+      const m=e.message||'';
+      if(m.includes('duplicate')||m.includes('23505'))skip++;
+      else errors++;
+    }
+  }
+
+  let msg=`Importati ${ok} annunci`;
+  if(skip)msg+=`, ${skip} già presenti`;
+  if(errors)msg+=`, ${errors} errori`;
+  toast(msg,errors>0&&ok===0?'error':'success');
+  loadListings();
+  loadDashboard();
+}
+
 async function loadListings(){
   const entity=document.getElementById('f-entity').value;
   const area=document.getElementById('f-area').value;
@@ -415,18 +525,17 @@ async function delListing(id){
 
 /* ── COMPANIES LIST ── */
 async function loadAllCompanies(){
-  // Supabase requires Range header for pagination beyond 1000
-  let all=[], from=0, pageSize=500;
+  // Paginate through all companies using offset
+  let all=[], offset=0, pageSize=1000;
   while(true){
-    const to=from+pageSize-1;
-    const r=await fetch(SB_URL+'/rest/v1/companies?select=*&order=name.asc',{
-      headers:{...H,'Range-Unit':'items','Range':`${from}-${to}`,'Prefer':'count=none'}
+    const r=await fetch(`${SB_URL}/rest/v1/companies?select=*&order=name.asc&limit=${pageSize}&offset=${offset}`,{
+      headers:{...H,'Prefer':'count=none'}
     });
     if(!r.ok)break;
     const page=await r.json();
     all=[...all,...page];
     if(page.length<pageSize)break;
-    from+=pageSize;
+    offset+=pageSize;
   }
   return all;
 }
