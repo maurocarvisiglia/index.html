@@ -1183,28 +1183,31 @@ async function processRows(rows){
   loadCompanies();
 }
 
-// Lightweight init — load only counts, no heavy queries
+// Lightweight init — load only counts
 async function initApp(){
   try{
-    const[r1,r2,r3,r4]=await Promise.all([
-      fetch(`${SB_URL}/rest/v1/job_listings?select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
-      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
-      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
-      fetch(`${SB_URL}/rest/v1/job_listings?or=(ral_min.not.is.null,ral_max.not.is.null)&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}})
-    ]);
-    const parse=r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0);
-    const[tot,ls,hh,ral]=[parse(r1),parse(r2),parse(r3),parse(r4)];
-    document.getElementById('stat-total').textContent=tot;
-    document.getElementById('stat-ls').textContent=ls;
-    document.getElementById('stat-hh').textContent=hh;
+    const listings=await api('job_listings?select=id,ral_min,ral_max');
+    const ral=listings.filter(l=>l.ral_min||l.ral_max).length;
+    document.getElementById('stat-total').textContent=listings.length;
     document.getElementById('stat-ral').textContent=ral;
-    const pct=tot?Math.round(ral/tot*100):0;
+    const pct=listings.length?Math.round(ral/listings.length*100):0;
     document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
+
+    // Count companies via Supabase count header
+    const r1=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
+    const r2=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
+    const getCount=r=>{const cr=r.headers.get('Content-Range');return cr?cr.split('/')[1]:'?';};
+    document.getElementById('stat-ls').textContent=getCount(r1);
+    document.getElementById('stat-hh').textContent=getCount(r2);
+
     ['chart-area','chart-seniority','chart-sector','chart-source','chart-companies','chart-ral'].forEach(id=>{
       const el=document.getElementById(id);
-      if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare</div>';
+      if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare i grafici</div>';
     });
-  }catch(e){console.error('Init:',e);}
+  }catch(e){
+    console.error('Init error:',e);
+    ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>document.getElementById(id).textContent='err');
+  }
 }
 initApp();
 </script>
