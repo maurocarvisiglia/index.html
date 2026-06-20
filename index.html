@@ -206,6 +206,7 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
         <button class="btn btn-secondary" onclick="scrapeLS()" id="btn-scrape">🔍 Scrapa siti LS</button>
+        <button class="btn btn-secondary" onclick="debugScrape()" id="btn-debug">🐛 Debug HTML</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
         <button class="btn btn-secondary" onclick="loadDashboard()" style="font-size:12px;">📈 Carica grafici</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
@@ -923,6 +924,49 @@ const LS_SITES = [
     }
   }
 ];
+
+async function debugScrape(){
+  const btn=document.getElementById('btn-debug');
+  btn.textContent='⏳ Caricando...';
+  btn.disabled=true;
+  try{
+    const url='https://informatori.it/annunci-di-lavoro/';
+    const resp=await fetch(PROXY+encodeURIComponent(url));
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    const html=await resp.text();
+    
+    // Parse e mostra le classi dei div principali
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(html,'text/html');
+    
+    // Trova tutti i tag con classi che potrebbero contenere annunci
+    const candidates=[];
+    doc.querySelectorAll('div[class],article[class],section[class],li[class]').forEach(el=>{
+      const cls=el.className;
+      const text=el.textContent.trim().substring(0,80);
+      if(text.length>20) candidates.push(`<${el.tagName.toLowerCase()} class="${cls}">\n  ${text}...`);
+    });
+    
+    // Mostra i primi 30
+    const output=candidates.slice(0,30).join('\n\n');
+    
+    // Apri modale con output
+    const modal=document.createElement('div');
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:80vw;max-height:80vh;overflow:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <strong style="color:var(--accent)">Struttura HTML — informatori.it</strong>
+        <button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:20px;">✕</button>
+      </div>
+      <pre style="font-size:11px;color:var(--text2);white-space:pre-wrap;font-family:monospace;">${output||'Nessun elemento trovato — il proxy potrebbe essere bloccato'}</pre>
+    </div>`;
+    document.body.appendChild(modal);
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+  }
+  btn.textContent='🐛 Debug HTML';
+  btn.disabled=false;
+}
 
 async function scrapeLS(){
   const btn = document.getElementById('btn-scrape');
