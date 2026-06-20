@@ -340,7 +340,7 @@ a.job-link:hover{text-decoration:underline;}
   <div class="modal" style="width:800px;max-width:95vw;">
     <div class="modal-title">🔗 URL per Apify LinkedIn Scraper</div>
     <div style="margin-bottom:16px;">
-      <div class="filter-group" style="flex-direction:row;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
         <div class="filter-group">
           <div class="filter-label">Tipo aziende</div>
           <select id="apify-filter-type" onchange="refreshApifyURLs()">
@@ -350,7 +350,7 @@ a.job-link:hover{text-decoration:underline;}
           </select>
         </div>
         <div class="filter-group">
-          <div class="filter-label">Max aziende per batch</div>
+          <div class="filter-label">Aziende per batch</div>
           <select id="apify-batch-size" onchange="refreshApifyURLs()">
             <option value="50">50</option>
             <option value="100" selected>100</option>
@@ -359,7 +359,7 @@ a.job-link:hover{text-decoration:underline;}
           </select>
         </div>
         <div class="filter-group">
-          <div class="filter-label">Batch numero</div>
+          <div class="filter-label">Batch</div>
           <select id="apify-batch-num" onchange="refreshApifyURLs()">
             <option value="1">1</option>
           </select>
@@ -372,24 +372,36 @@ a.job-link:hover{text-decoration:underline;}
             <option value="2592000" selected>30 giorni</option>
           </select>
         </div>
+        <div class="filter-group">
+          <div class="filter-label">Salta già processate da</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="checkbox" id="apify-skip-scraped" onchange="refreshApifyURLs()" style="width:auto;padding:0;">
+            <select id="apify-skip-days" onchange="refreshApifyURLs()" style="width:90px;">
+              <option value="7">7 gg</option>
+              <option value="14">14 gg</option>
+              <option value="30" selected>30 gg</option>
+              <option value="60">60 gg</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
       <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;">Istruzioni</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.6;">
-        1. Copia tutti gli URL qui sotto<br>
-        2. Vai su Apify → LinkedIn Jobs Scraper<br>
-        3. Clicca <strong style="color:var(--text)">Bulk edit</strong> nel campo "Linkedin jobs search URLs"<br>
-        4. Incolla gli URL (uno per riga)<br>
-        5. Imposta "Number of jobs needed" → <strong style="color:var(--text)">5</strong> per azienda<br>
-        6. Clicca Start
+      <div style="font-size:12px;color:var(--text2);line-height:1.8;">
+        1. Copia gli URL → vai su Apify → LinkedIn Jobs Scraper → <strong style="color:var(--text)">Bulk edit</strong><br>
+        2. Incolla gli URL, imposta "Number of jobs" → <strong style="color:var(--text)">500</strong> → Start<br>
+        3. Quando Apify finisce → clicca <strong style="color:var(--accent)">✓ Segna come processate</strong> qui sotto
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <div id="apify-url-count" style="font-size:12px;color:var(--text2);"></div>
-      <button class="btn btn-primary" onclick="copyApifyURLs()" style="padding:6px 16px;font-size:12px;">📋 Copia tutti gli URL</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="markBatchAsScraped()" style="padding:6px 16px;font-size:12px;border-color:var(--success);color:var(--success);">✓ Segna come processate</button>
+        <button class="btn btn-primary" onclick="copyApifyURLs()" style="padding:6px 16px;font-size:12px;">📋 Copia URL</button>
+      </div>
     </div>
-    <textarea id="apify-urls-output" readonly style="width:100%;height:300px;font-size:11px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);resize:vertical;"></textarea>
+    <textarea id="apify-urls-output" readonly style="width:100%;height:280px;font-size:11px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);resize:vertical;"></textarea>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-apify-urls')">Chiudi</button>
     </div>
@@ -1073,21 +1085,43 @@ async function saveCompany(){
 }
 
 let _apifyAllCompanies = [];
+let _currentBatchIds = []; // IDs of companies in current batch
 
 function refreshApifyURLs(){
   const typeFilter = document.getElementById('apify-filter-type').value;
   const batchSize = parseInt(document.getElementById('apify-batch-size').value);
   const days = document.getElementById('apify-days').value;
+  const skipScraped = document.getElementById('apify-skip-scraped').checked;
+  const skipDays = parseInt(document.getElementById('apify-skip-days').value)||30;
 
   // Filter companies
   let filtered = _apifyAllCompanies.filter(c => c.is_active);
   if(typeFilter) filtered = filtered.filter(c => c.entity_type === typeFilter);
 
+  // Sort: never scraped first, then oldest scraped first
+  filtered.sort((a,b)=>{
+    if(!a.last_scraped_at && !b.last_scraped_at) return a.name.localeCompare(b.name);
+    if(!a.last_scraped_at) return -1;
+    if(!b.last_scraped_at) return 1;
+    return new Date(a.last_scraped_at) - new Date(b.last_scraped_at);
+  });
+
+  // Optionally skip recently scraped
+  if(skipScraped){
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - skipDays);
+    filtered = filtered.filter(c => !c.last_scraped_at || new Date(c.last_scraped_at) < cutoff);
+  }
+
+  // Stats
+  const neverScraped = filtered.filter(c=>!c.last_scraped_at).length;
+  const oldScraped = filtered.filter(c=>c.last_scraped_at).length;
+
   // Update batch num options
   const totalBatches = Math.ceil(filtered.length / batchSize);
   const batchNumEl = document.getElementById('apify-batch-num');
   const currentBatch = parseInt(batchNumEl.value) || 1;
-  batchNumEl.innerHTML = Array.from({length: totalBatches}, (_,i) => 
+  batchNumEl.innerHTML = Array.from({length:Math.max(totalBatches,1)}, (_,i) => 
     `<option value="${i+1}" ${i+1===currentBatch?'selected':''}>${i+1} (az. ${i*batchSize+1}-${Math.min((i+1)*batchSize, filtered.length)})</option>`
   ).join('');
 
@@ -1095,15 +1129,33 @@ function refreshApifyURLs(){
   const start = (batchNum - 1) * batchSize;
   const batch = filtered.slice(start, start + batchSize);
 
+  // Store IDs for "mark as scraped"
+  _currentBatchIds = batch.map(c=>c.id);
+
   // Generate URLs
   const urls = batch.map(c => {
     const name = encodeURIComponent(c.name);
+    const scraped = c.last_scraped_at ? ` • ultimo: ${new Date(c.last_scraped_at).toLocaleDateString('it-IT')}` : ' • mai processata';
     return `https://www.linkedin.com/jobs/search/?keywords=${name}&location=Italia&geoId=103350119&f_TPR=r${days}`;
   });
 
   document.getElementById('apify-url-count').textContent = 
-    `${urls.length} URL — batch ${batchNum}/${totalBatches} — ${filtered.length} aziende totali`;
+    `${urls.length} URL — batch ${batchNum}/${totalBatches} — ${neverScraped} mai processate, ${oldScraped} da aggiornare`;
   document.getElementById('apify-urls-output').value = urls.join('\n');
+}
+
+async function markBatchAsScraped(){
+  if(!_currentBatchIds.length){toast('Nessun batch generato','error');return;}
+  if(!confirm(`Segno ${_currentBatchIds.length} aziende come processate oggi?`))return;
+  const now=new Date().toISOString();
+  let ok=0;
+  for(const id of _currentBatchIds){
+    try{await api(`companies?id=eq.${id}`,'PATCH',{last_scraped_at:now});ok++;}catch(e){}
+  }
+  toast(`${ok} aziende segnate come processate`);
+  // Reload companies and refresh URLs
+  _apifyAllCompanies = await loadAllCompanies();
+  refreshApifyURLs();
 }
 
 function copyApifyURLs(){
