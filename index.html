@@ -206,6 +206,7 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
+        <button class="btn btn-secondary" onclick="loadDashboard()" style="font-size:12px;">📈 Carica grafici</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -1182,7 +1183,30 @@ async function processRows(rows){
   loadCompanies();
 }
 
-loadDashboard();
+// Lightweight init — load only counts, no heavy queries
+async function initApp(){
+  try{
+    const[r1,r2,r3,r4]=await Promise.all([
+      fetch(`${SB_URL}/rest/v1/job_listings?select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
+      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
+      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
+      fetch(`${SB_URL}/rest/v1/job_listings?or=(ral_min.not.is.null,ral_max.not.is.null)&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}})
+    ]);
+    const parse=r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0);
+    const[tot,ls,hh,ral]=[parse(r1),parse(r2),parse(r3),parse(r4)];
+    document.getElementById('stat-total').textContent=tot;
+    document.getElementById('stat-ls').textContent=ls;
+    document.getElementById('stat-hh').textContent=hh;
+    document.getElementById('stat-ral').textContent=ral;
+    const pct=tot?Math.round(ral/tot*100):0;
+    document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
+    ['chart-area','chart-seniority','chart-sector','chart-source','chart-companies','chart-ral'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare</div>';
+    });
+  }catch(e){console.error('Init:',e);}
+}
+initApp();
 </script>
 </body>
 </html>
