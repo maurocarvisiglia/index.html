@@ -205,6 +205,7 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;gap:8px;">
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
+        <button class="btn btn-secondary" onclick="scrapeLS()" id="btn-scrape">🔍 Scrapa siti LS</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
         <button class="btn btn-secondary" onclick="loadDashboard()" style="font-size:12px;">📈 Carica grafici</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
@@ -829,6 +830,183 @@ Rispondi SOLO con il JSON, nessun altro testo.`;
   toast(`Analizzati ${analyzed} annunci${failed?`, ${failed} errori`:''}`);
   loadListings();
   loadDashboard();
+}
+
+/* ── SCRAPE LS SITES ── */
+const PROXY = 'https://corsproxy.io/?';
+
+const LS_SITES = [
+  {
+    name: 'informatori.it',
+    url: 'https://informatori.it/annunci-di-lavoro/',
+    sector: 'Farmaceutico',
+    parse: ($) => {
+      const jobs = [];
+      // Try multiple selectors
+      const selectors = ['.job', '.annuncio', 'article', '.listing', '.item-job', '[class*="job"]', '[class*="annuncio"]'];
+      let found = false;
+      for(const sel of selectors){
+        const els = $(sel);
+        if(els.length > 2){ 
+          els.each((i, el) => {
+            const title = $(el).find('h2,h3,h4,b,strong,[class*="titolo"],[class*="title"]').first().text().trim();
+            const company = $(el).find('[class*="azienda"],[class*="company"],img[alt]').first().text().trim() || $(el).find('img').first().attr('alt') || '';
+            const location = $(el).find('[class*="sede"],[class*="location"],[class*="citta"],[class*="zona"]').first().text().trim();
+            const link = $(el).find('a[href]').first().attr('href') || '';
+            const fullUrl = link.startsWith('http') ? link : 'https://informatori.it' + link;
+            if(title.length > 8) jobs.push({title, company, location, url: fullUrl});
+          });
+          if(jobs.length > 0){ found = true; break; }
+        }
+      }
+      // Fallback: grab all links with job-like text
+      if(!found){
+        $('a[href]').each((i, el) => {
+          const text = $(el).text().trim();
+          const href = $(el).attr('href') || '';
+          if(text.length > 15 && text.length < 150 && (href.includes('lavoro') || href.includes('job') || href.includes('annunci'))){
+            const fullUrl = href.startsWith('http') ? href : 'https://informatori.it' + href;
+            jobs.push({title: text, company: '', location: '', url: fullUrl});
+          }
+        });
+      }
+      return jobs;
+    }
+  },
+  {
+    name: 'informatori-scientifici.it',
+    url: 'https://www.informatori-scientifici.it/annunci-lavoro/',
+    sector: 'Farmaceutico',
+    parse: ($) => {
+      const jobs = [];
+      const selectors = ['.box_annuncio', '.annuncio', '[class*="annuncio"]', '[class*="job"]', 'article', '.item'];
+      for(const sel of selectors){
+        const els = $(sel);
+        if(els.length > 2){
+          els.each((i, el) => {
+            const title = $(el).find('h2,h3,h4,b,strong,[class*="titolo"],[class*="title"]').first().text().trim();
+            const company = $(el).find('[class*="azienda"],[class*="company"],[class*="ragione"]').first().text().trim() || $(el).find('img').first().attr('alt') || '';
+            const location = $(el).find('[class*="sede"],[class*="zona"],[class*="region"],[class*="provincia"]').first().text().trim();
+            const date = $(el).find('[class*="data"],[class*="date"]').first().text().trim();
+            const link = $(el).find('a[href]').first().attr('href') || '';
+            const fullUrl = link.startsWith('http') ? link : 'https://www.informatori-scientifici.it' + link;
+            if(title.length > 8) jobs.push({title, company, location, date, url: fullUrl});
+          });
+          if(jobs.length > 0) break;
+        }
+      }
+      return jobs;
+    }
+  },
+  {
+    name: 'AboutPharma',
+    url: 'https://www.aboutpharma.com/aboutjob/',
+    sector: 'Farmaceutico',
+    parse: ($) => {
+      const jobs = [];
+      const selectors = ['[class*="job"]', '[class*="offer"]', '[class*="position"]', 'article', '.listing-item', '.card'];
+      for(const sel of selectors){
+        const els = $(sel);
+        if(els.length > 2){
+          els.each((i, el) => {
+            const title = $(el).find('h2,h3,h4,[class*="title"],[class*="titolo"]').first().text().trim();
+            const location = $(el).find('[class*="location"],[class*="sede"],[class*="city"],[class*="region"]').first().text().trim();
+            const contract = $(el).find('[class*="contract"],[class*="contratto"],[class*="tipo"]').first().text().trim();
+            const link = $(el).find('a[href]').first().attr('href') || '';
+            const fullUrl = link.startsWith('http') ? link : 'https://www.aboutpharma.com' + link;
+            if(title.length > 8) jobs.push({title, location, contract, url: fullUrl});
+          });
+          if(jobs.length > 0) break;
+        }
+      }
+      return jobs;
+    }
+  }
+];
+
+async function scrapeLS(){
+  const btn = document.getElementById('btn-scrape');
+  btn.textContent = '⏳ Scraping...';
+  btn.disabled = true;
+
+  // Load cheerio-like parser via DOMParser (native browser)
+  let totalOk = 0, totalSkip = 0, totalErr = 0;
+
+  for(const site of LS_SITES){
+    try{
+      btn.textContent = `⏳ Scraping ${site.name}...`;
+      
+      const resp = await fetch(PROXY + encodeURIComponent(site.url));
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const html = await resp.text();
+
+      // Parse HTML with DOMParser
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      // Simple jQuery-like helper
+      const $ = (sel, ctx) => {
+        const root = ctx || doc;
+        const nodeList = typeof root.querySelectorAll === 'function' 
+          ? root.querySelectorAll(sel) 
+          : [];
+        const arr = Array.from(nodeList);
+        arr.first = () => arr[0] ? wrapEl(arr[0]) : {text:()=>'', attr:()=>''};
+        arr.each = (fn) => arr.forEach((el,i) => fn(i, wrapEl(el)));
+        arr.length = nodeList.length;
+        return arr;
+      };
+
+      const wrapEl = (el) => ({
+        find: (sel) => $(sel, el),
+        text: () => el.textContent?.trim() || '',
+        attr: (a) => el.getAttribute(a) || '',
+        first: () => wrapEl(el)
+      });
+
+      // Use site-specific parser
+      const jobs = site.parse($);
+      
+      // Save to Supabase
+      for(const job of jobs.slice(0, 100)){
+        if(!job.url || !job.title) continue;
+        const record = {
+          job_title: job.title,
+          company_name: job.company || site.name,
+          entity_type: 'life_sciences',
+          sector: site.sector,
+          location: job.location || null,
+          source: site.name,
+          url: job.url,
+          published_date: job.date || null,
+        };
+        try{
+          await api('job_listings', 'POST', record);
+          totalOk++;
+        }catch(e){
+          const m = e.message || '';
+          if(m.includes('duplicate') || m.includes('23505')) totalSkip++;
+          else totalErr++;
+        }
+      }
+
+      toast(`${site.name}: ${jobs.length} annunci trovati`, 'success');
+      await new Promise(r => setTimeout(r, 1000));
+
+    }catch(e){
+      toast(`Errore ${site.name}: ${e.message}`, 'error');
+    }
+  }
+
+  btn.textContent = '🔍 Scrapa siti LS';
+  btn.disabled = false;
+  
+  let msg = `Scraping completato: ${totalOk} nuovi annunci`;
+  if(totalSkip) msg += `, ${totalSkip} già presenti`;
+  if(totalErr) msg += `, ${totalErr} errori`;
+  toast(msg, 'success');
+  loadListings();
+  initApp();
 }
 
 async function loadListings(){
