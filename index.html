@@ -442,26 +442,31 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 async function loadDashboard(){
   try{
     const sector=document.getElementById('dash-sector')?.value||'';
-    const[allListings,companies]=await Promise.all([api('job_listings?select=*'),api('companies?select=*')]);
     
-    // Filter by sector if selected
+    // Load listings + company counts separately (avoid loading 1754 companies in full)
+    const[allListings, lsCount, hhCount]=await Promise.all([
+      api('job_listings?select=*'),
+      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>r.headers.get('Content-Range')?.split('/')[1]||0),
+      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>r.headers.get('Content-Range')?.split('/')[1]||0)
+    ]);
+    
     const listings=sector?allListings.filter(l=>l.sector===sector):allListings;
 
     document.getElementById('stat-total').textContent=listings.length;
-    document.getElementById('stat-ls').textContent=companies.filter(c=>c.entity_type==='life_sciences').length;
-    document.getElementById('stat-hh').textContent=companies.filter(c=>c.entity_type==='headhunter').length;
+    document.getElementById('stat-ls').textContent=lsCount;
+    document.getElementById('stat-hh').textContent=hhCount;
     const withRal=listings.filter(l=>l.ral_min||l.ral_max).length;
     document.getElementById('stat-ral').textContent=withRal;
     const pct=listings.length?Math.round(withRal/listings.length*100):0;
     document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
 
-    renderClickableBar('chart-area', countBy(listings,'functional_area'), '', 'area', listings);
+    renderClickableBar('chart-area', countBy(listings,'functional_area'), '', 'functional_area', listings);
     renderClickableBar('chart-seniority', countBy(listings,'seniority'), 'blue', 'seniority', listings);
     renderClickableBar('chart-sector', countBy(listings,'sector'), 'accent', 'sector', listings);
     renderBar('chart-source', countBy(listings,'source'), '');
     renderBar('chart-companies', countBy(listings,'company_name').slice(0,8), 'blue');
     renderRal('chart-ral', listings);
-  }catch(e){console.error(e);}
+  }catch(e){console.error('Dashboard error:',e);}
 }
 
 // Global store for dashboard listings data (avoids huge inline JSON in onclick)
@@ -892,31 +897,35 @@ async function loadAllCompanies(){
   return all;
 }
 
-async function loadCompanies(){
+async function loadCompanies(offset=0){
+  const pageSize=200;
   try{
-    // Load companies + count listings per company in parallel
     const[companies, listings]=await Promise.all([
-      loadAllCompanies(),
+      api(`companies?select=*&order=name.asc&limit=${pageSize}&offset=${offset}`),
       api('job_listings?select=company_name')
     ]);
 
-    // Build count map by company name (case-insensitive)
     const countMap={};
     listings.forEach(l=>{
       const k=(l.company_name||'').toLowerCase();
       countMap[k]=(countMap[k]||0)+1;
     });
 
-    document.getElementById('companies-count').textContent=companies.length+' aziende';
+    // Get total count
+    const countResp=await fetch(`${SB_URL}/rest/v1/companies?select=id`,{
+      headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
+    });
+    const total=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||0);
+
+    document.getElementById('companies-count').textContent=`${total} aziende`;
     const body=document.getElementById('companies-body');
-    if(!companies.length){
+    
+    if(!companies.length&&offset===0){
       body.innerHTML='<div class="empty"><div class="empty-icon">🏢</div><div class="empty-title">Nessuna azienda nel database</div><div class="empty-sub">Aggiungi la prima azienda da monitorare</div></div>';
       return;
     }
 
-    body.innerHTML=`<table><thead><tr>
-      <th>Nome azienda</th><th>Tipo</th><th>Annunci</th><th>Sito web</th><th>LinkedIn</th><th>Stato</th><th></th>
-    </tr></thead><tbody>${companies.map(c=>{
+    const rows=companies.map(c=>{
       const cnt=countMap[c.name.toLowerCase()]||0;
       return `<tr>
         <td><span class="company-link" onclick="openCompanyDetail(${JSON.stringify(c).replace(/"/g,'&quot;')})">${c.name}</span></td>
@@ -930,7 +939,26 @@ async function loadCompanies(){
           <button onclick="delCo('${c.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:8px;">✕</button>
         </td>
       </tr>`;
-    }).join('')}</tbody></table>`;
+    }).join('');
+
+    const hasMore=offset+pageSize<total;
+    const tableHTML=`<table><thead><tr>
+      <th>Nome azienda</th><th>Tipo</th><th>Annunci</th><th>Sito web</th><th>LinkedIn</th><th>Stato</th><th></th>
+    </tr></thead><tbody id="companies-rows-body">${offset===0?rows:document.getElementById('companies-rows-body')?.innerHTML+rows||rows}</tbody></table>
+    ${hasMore?`<div style="text-align:center;padding:16px;border-top:1px solid var(--border);"><button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre ${Math.min(pageSize,total-offset-pageSize)} aziende (${offset+pageSize}/${total})</button></div>`:''}`;
+
+    if(offset===0){
+      body.innerHTML=tableHTML;
+    }else{
+      // Append rows
+      document.getElementById('companies-rows-body').innerHTML+=rows;
+      // Update load more button
+      const loadMoreDiv=body.querySelector('div[style*="text-align:center"]');
+      if(loadMoreDiv){
+        if(hasMore)loadMoreDiv.innerHTML=`<button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre aziende (${offset+pageSize}/${total})</button>`;
+        else loadMoreDiv.remove();
+      }
+    }
   }catch(e){document.getElementById('companies-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;}
 }
 
