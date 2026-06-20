@@ -205,6 +205,7 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;gap:8px;">
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
+        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -463,50 +464,68 @@ async function loadDashboard(){
   }catch(e){console.error(e);}
 }
 
+// Global store for dashboard listings data (avoids huge inline JSON in onclick)
+let _dashListings = [];
+
 function renderClickableBar(id, data, cls, field, allListings){
+  _dashListings = allListings; // store globally
   const el=document.getElementById(id);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
   const max=Math.max(...data.map(d=>d[1]));
   el.innerHTML=data.map(([l,n])=>`
-    <div class="bar-row" style="cursor:pointer;" onclick="showDetail('${field}','${l.replace(/'/g,"\\'")}',${JSON.stringify(allListings).replace(/</g,'\\u003c')})" title="Clicca per dettaglio">
+    <div class="bar-row" style="cursor:pointer;" onclick="showDetail('${field}','${l.replace(/'/g,"\\'").replace(/"/g,'\\"')}')" title="Clicca per dettaglio">
       <div class="bar-label" style="color:var(--text)">${l}</div>
-      <div class="bar-track"><div class="bar-fill ${cls==='blue'?'blue':cls==='accent'?'':'blue'}" style="width:${(n/max*100).toFixed(1)}%;${cls==='accent'?'background:var(--accent)':''}"></div></div>
+      <div class="bar-track"><div class="bar-fill ${cls==='blue'?'blue':''}" style="width:${(n/max*100).toFixed(1)}%;${cls==='accent'?'background:var(--accent)':''}"></div></div>
       <div class="bar-count">${n} <span style="color:var(--accent);font-size:10px;">→</span></div>
     </div>`).join('');
 }
 
-function showDetail(field, value, listings){
+function showDetail(field, value){
+  const listings=_dashListings;
   const filtered=listings.filter(l=>(l[field]||'N/D')===value);
   const panel=document.getElementById('detail-panel');
   const title=document.getElementById('detail-title');
   const body=document.getElementById('detail-body');
   
-  title.textContent=`${field==='functional_area'?'Area':field==='seniority'?'Seniority':'Settore'}: ${value} — ${filtered.length} annunci`;
+  const fieldLabel=field==='functional_area'?'Area':field==='seniority'?'Seniority':'Settore';
+  title.textContent=`${fieldLabel}: ${value} — ${filtered.length} annunci`;
   panel.style.display='block';
   panel.scrollIntoView({behavior:'smooth'});
 
   if(!filtered.length){body.innerHTML='<div class="empty"><div class="empty-sub">Nessun annuncio</div></div>';return;}
 
-  // Summary stats
   const withRal=filtered.filter(l=>l.ral_min||l.ral_max);
   const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b,0)/withRal.length):null;
 
+  // Breakdown per seniority
+  const bySeniority={};
+  filtered.forEach(l=>{const k=l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
+  const seniorityBreakdown=Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;margin-right:6px;">${k}: <strong>${v}</strong></span>`).join('');
+
   body.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px 24px;border-bottom:1px solid var(--border);">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 24px;border-bottom:1px solid var(--border);">
       <div class="kpi-card"><div class="kpi-label">Annunci</div><div class="kpi-value" style="font-size:20px">${filtered.length}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" style="font-size:20px">${withRal.length}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" style="font-size:20px">${withRal.length}</div><div class="kpi-sub">${filtered.length?Math.round(withRal.length/filtered.length*100):0}%</div></div>
       <div class="kpi-card"><div class="kpi-label">RAL media</div><div class="kpi-value" style="font-size:20px">${avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Aziende uniche</div><div class="kpi-value" style="font-size:20px">${new Set(filtered.map(l=>l.company_name)).size}</div></div>
     </div>
-    <table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Sede</th><th>Data</th></tr></thead>
+    <div style="padding:12px 24px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);">
+      Distribuzione seniority: ${seniorityBreakdown||'—'}
+    </div>
+    <div style="overflow-x:auto;">
+    <table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th></tr></thead>
     <tbody>${filtered.map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
-      <td>${l.company_name}</td>
-      <td>${l.sector||'—'}</td>
+      <td style="font-size:12px">${l.company_name}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector||'—'}</td>
       <td>${l.seniority||'—'}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+      <td>${l.contract_type||'—'}</td>
       <td>${l.location||'—'}</td>
       <td>${l.published_date||'—'}</td>
-    </tr>`).join('')}</tbody></table>`;
+    </tr>`).join('')}</tbody></table>
+    </div>`;
+}
 }
 
 function countBy(arr,key){
@@ -597,7 +616,7 @@ async function importApifyCSV(event){
     return vals.length>=2?[Math.round(vals[0]),Math.round(vals[1])]:[Math.round(vals[0]),null];
   };
 
-  let ok=0,skip=0,errors=0;
+  let ok=0,skip=0,updated=0,errors=0;
   for(const row of rows){
     const url=(row['link']||row['applyUrl']||'').trim();
     const title=(row['title']||'').trim();
@@ -621,17 +640,38 @@ async function importApifyCSV(event){
     };
 
     try{
+      // Try insert first
       await api('job_listings','POST',record);
       ok++;
     }catch(e){
       const m=e.message||'';
-      if(m.includes('duplicate')||m.includes('23505'))skip++;
-      else errors++;
+      if(m.includes('duplicate')||m.includes('23505')){
+        // Already exists — check if we should update missing fields only
+        try{
+          const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id,ral_min,ral_max,sector,functional_area,seniority`);
+          if(existing.length){
+            const ex=existing[0];
+            // Build patch with only fields that are currently null/empty
+            const patch={};
+            if(!ex.ral_min&&ral_min)patch.ral_min=ral_min;
+            if(!ex.ral_max&&ral_max)patch.ral_max=ral_max;
+            if(!ex.functional_area&&record.functional_area)patch.functional_area=record.functional_area;
+            if(!ex.seniority&&record.seniority)patch.seniority=record.seniority;
+            if(Object.keys(patch).length){
+              await api(`job_listings?id=eq.${ex.id}`,'PATCH',patch);
+              updated++;
+            }else{
+              skip++;
+            }
+          }
+        }catch(e2){skip++;}
+      }else{errors++;}
     }
   }
 
-  let msg=`Importati ${ok} annunci`;
-  if(skip)msg+=`, ${skip} già presenti`;
+  let msg=`Importati ${ok} nuovi annunci`;
+  if(updated)msg+=`, ${updated} aggiornati (campi mancanti)`;
+  if(skip)msg+=`, ${skip} già completi`;
   if(errors)msg+=`, ${errors} errori`;
   toast(msg,errors>0&&ok===0?'error':'success');
   loadListings();
@@ -686,6 +726,92 @@ async function saveRal(id){
 function cancelRal(id, min, max){
   const cell=document.getElementById('ral-cell-'+id);
   if(cell) cell.innerHTML=ralCell({id,ral_min:min||null,ral_max:max||null});
+}
+
+/* ── AI ANALYSIS ── */
+async function analyzeListings(){
+  const btn=document.getElementById('btn-analyze');
+  
+  // Load annunci senza settore o senza RAL
+  const toAnalyze=await api('job_listings?select=*&order=created_at.desc');
+  const needsAnalysis=toAnalyze.filter(l=>!l.sector||(!l.ral_min&&!l.ral_max));
+  
+  if(!needsAnalysis.length){
+    toast('Tutti gli annunci hanno già settore e RAL!');
+    return;
+  }
+
+  if(!confirm(`Trovati ${needsAnalysis.length} annunci senza settore o RAL.\nAnalizzo con Claude AI? (costo stimato: ~€${(needsAnalysis.length*0.001).toFixed(2)})`))return;
+
+  btn.textContent='⏳ Analisi in corso...';
+  btn.disabled=true;
+
+  let analyzed=0, failed=0;
+
+  for(const listing of needsAnalysis.slice(0,50)){ // max 50 per run
+    try{
+      const prompt=`Sei un esperto di recruitment nel settore Life Sciences italiano.
+Analizza questo annuncio di lavoro e restituisci SOLO un JSON valido con questi campi:
+- sector: uno tra ["Farmaceutico","Dispositivi Medici","Biotech","Cosmetica","Nutraceutica","Retail Farmacia","CRO / Clinical Research","CDMO / CMO","altro"]
+- ral_min: numero intero in euro annui (null se non indicato)
+- ral_max: numero intero in euro annui (null se non indicato)
+- functional_area: uno tra ["Regulatory","Medical","Sales","Marketing","R&D","Quality","HR","Finance","Operations","Market Access","Clinical","altro"]
+- seniority: uno tra ["Junior","Mid","Senior","Manager","Director","C-level","altro"]
+
+Titolo: ${listing.job_title}
+Azienda: ${listing.company_name}
+Sede: ${listing.location||'N/D'}
+Descrizione disponibile: NO - usa solo titolo e azienda per dedurre settore e area
+
+Rispondi SOLO con il JSON, nessun altro testo.`;
+
+      const response=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          model:'claude-haiku-4-5-20251001',
+          max_tokens:300,
+          messages:[{role:'user',content:prompt}]
+        })
+      });
+
+      if(!response.ok)throw new Error('API error');
+      const data=await response.json();
+      const text=data.content[0].text.trim();
+      
+      // Parse JSON
+      const clean=text.replace(/```json|```/g,'').trim();
+      const result=JSON.parse(clean);
+
+      // Build patch — only update null fields
+      const patch={};
+      if(!listing.sector&&result.sector)patch.sector=result.sector;
+      if(!listing.ral_min&&result.ral_min)patch.ral_min=result.ral_min;
+      if(!listing.ral_max&&result.ral_max)patch.ral_max=result.ral_max;
+      if(!listing.functional_area&&result.functional_area)patch.functional_area=result.functional_area;
+      if(!listing.seniority&&result.seniority)patch.seniority=result.seniority;
+
+      if(Object.keys(patch).length){
+        await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
+      }
+      analyzed++;
+
+    }catch(e){
+      failed++;
+    }
+
+    // Update button progress
+    btn.textContent=`⏳ ${analyzed+failed}/${Math.min(needsAnalysis.length,50)}...`;
+    // Small delay to avoid rate limiting
+    await new Promise(r=>setTimeout(r,200));
+  }
+
+  btn.textContent='🤖 Analizza con AI';
+  btn.disabled=false;
+
+  toast(`Analizzati ${analyzed} annunci${failed?`, ${failed} errori`:''}`);
+  loadListings();
+  loadDashboard();
 }
 
 async function loadListings(){
