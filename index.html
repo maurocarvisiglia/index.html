@@ -1221,6 +1221,10 @@ async function scrapeLS(){
   initApp();
 }
 
+let _listingsData = [];
+let _sortField = 'created_at';
+let _sortDir = 'desc';
+
 async function loadListings(){
   const entity=document.getElementById('f-entity').value;
   const area=document.getElementById('f-area').value;
@@ -1228,7 +1232,7 @@ async function loadListings(){
   const source=document.getElementById('f-source').value;
   const sector=document.getElementById('f-sector').value;
   const search=document.getElementById('f-search').value.toLowerCase();
-  let q='job_listings?select=*&order=created_at.desc';
+  let q=`job_listings?select=*&order=${_sortField}.${_sortDir}`;
   if(entity)q+=`&entity_type=eq.${entity}`;
   if(area)q+=`&functional_area=eq.${encodeURIComponent(area)}`;
   if(seniority)q+=`&seniority=eq.${seniority}`;
@@ -1237,11 +1241,56 @@ async function loadListings(){
   try{
     let data=await api(q);
     if(search)data=data.filter(l=>(l.job_title||'').toLowerCase().includes(search)||(l.company_name||'').toLowerCase().includes(search));
-    document.getElementById('listings-count').textContent=data.length+' annunci';
-    const body=document.getElementById('listings-body');
-    if(!data.length){body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div><div class="empty-sub">Aggiungi il primo annuncio o modifica i filtri</div></div>';return;}
-    body.innerHTML=`<table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Tipo</th><th>Settore</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Fonte</th><th>Data</th><th></th></tr></thead><tbody>${data.map(l=>`<tr><td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td><td>${l.company_name}</td><td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td><td><span style="font-size:11px;color:var(--text2)">${l.sector||'—'}</span></td><td>${l.functional_area||'—'}</td><td>${l.seniority||'—'}</td><td id="ral-cell-${l.id}">${ralCell(l)}</td><td>${l.contract_type||'—'}</td><td>${l.location||'—'}</td><td>${l.source||'—'}</td><td>${l.published_date||'—'}</td><td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td></tr>`).join('')}</tbody></table>`;
+    _listingsData=data;
+    renderListingsTable(data);
   }catch(e){document.getElementById('listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;}
+}
+
+function sortListings(field){
+  if(_sortField===field){
+    _sortDir=_sortDir==='asc'?'desc':'asc';
+  }else{
+    _sortField=field;
+    _sortDir='asc';
+  }
+  loadListings();
+}
+
+function renderListingsTable(data){
+  document.getElementById('listings-count').textContent=data.length+' annunci';
+  const body=document.getElementById('listings-body');
+  if(!data.length){body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div><div class="empty-sub">Aggiungi il primo annuncio o modifica i filtri</div></div>';return;}
+
+  const thStyle=`style="cursor:pointer;user-select:none;" title="Clicca per ordinare"`;
+  const arrow=f=>_sortField===f?(_sortDir==='asc'?' ↑':' ↓'):'';
+
+  body.innerHTML=`<table><thead><tr>
+    <th ${thStyle} onclick="sortListings('job_title')">Ruolo${arrow('job_title')}</th>
+    <th ${thStyle} onclick="sortListings('company_name')">Azienda${arrow('company_name')}</th>
+    <th>Tipo</th>
+    <th ${thStyle} onclick="sortListings('sector')">Settore${arrow('sector')}</th>
+    <th ${thStyle} onclick="sortListings('functional_area')">Area${arrow('functional_area')}</th>
+    <th ${thStyle} onclick="sortListings('seniority')">Seniority${arrow('seniority')}</th>
+    <th ${thStyle} onclick="sortListings('ral_min')">RAL${arrow('ral_min')}</th>
+    <th ${thStyle} onclick="sortListings('contract_type')">Contratto${arrow('contract_type')}</th>
+    <th ${thStyle} onclick="sortListings('location')">Sede${arrow('location')}</th>
+    <th ${thStyle} onclick="sortListings('source')">Fonte${arrow('source')}</th>
+    <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
+    <th></th>
+  </tr></thead><tbody>${data.map(l=>`<tr>
+    <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+    <td>${l.company_name}</td>
+    <td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td>
+    <td><span style="font-size:11px;color:var(--text2)">${l.sector||'—'}</span></td>
+    <td>${l.functional_area||'—'}</td>
+    <td>${l.seniority||'—'}</td>
+    <td id="ral-cell-${l.id}">${ralCell(l)}</td>
+    <td>${l.contract_type||'—'}</td>
+    <td>${l.location||'—'}</td>
+    <td>${l.source||'—'}</td>
+    <td>${l.published_date||'—'}</td>
+    <td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td>
+  </tr>`).join('')}</tbody></table>`;
 }
 
 async function saveListing(){
