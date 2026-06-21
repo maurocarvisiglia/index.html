@@ -202,13 +202,12 @@ a.job-link:hover{text-decoration:underline;}
   <div class="view" id="view-listings">
     <div class="section-header">
       <div class="section-title">Annunci di lavoro</div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
-        <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ Importa CSV Apify</button>
-        <button class="btn btn-secondary" onclick="scrapeLS()" id="btn-scrape">🔍 Scrapa siti LS</button>
-        <button class="btn btn-secondary" onclick="debugScrape()" id="btn-debug">🐛 Debug HTML</button>
+        <input type="file" id="theirstack-import" accept=".csv" style="display:none;" onchange="importTheirStackCSV(event)">
+        <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
-        <button class="btn btn-secondary" onclick="loadDashboard()" style="font-size:12px;">📈 Carica grafici</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -273,10 +272,13 @@ a.job-link:hover{text-decoration:underline;}
     </div>
 
     <!-- KPI -->
-    <div class="company-kpi-grid">
+    <div class="company-kpi-grid" style="grid-template-columns:repeat(7,1fr)">
       <div class="kpi-card"><div class="kpi-label">Annunci totali</div><div class="kpi-value" id="cd-kpi-total">—</div><div class="kpi-sub">pubblicati</div></div>
       <div class="kpi-card"><div class="kpi-label">Con RAL indicata</div><div class="kpi-value" id="cd-kpi-ral">—</div><div class="kpi-sub">annunci con range €</div></div>
       <div class="kpi-card"><div class="kpi-label">RAL media</div><div class="kpi-value" id="cd-kpi-ral-avg">—</div><div class="kpi-sub">media degli annunci</div></div>
+      <div class="kpi-card"><div class="kpi-label">Dipendenti</div><div class="kpi-value" id="cd-kpi-employees">—</div><div class="kpi-sub">dimensione azienda</div></div>
+      <div class="kpi-card"><div class="kpi-label">Fatturato</div><div class="kpi-value" id="cd-kpi-revenue">—</div><div class="kpi-sub">USD</div></div>
+      <div class="kpi-card"><div class="kpi-label">Hiring Manager</div><div class="kpi-value" id="cd-kpi-hm" style="font-size:14px;">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
       <div class="kpi-card"><div class="kpi-label">Primo annuncio</div><div class="kpi-value" id="cd-kpi-first">—</div><div class="kpi-sub">data rilevazione</div></div>
     </div>
 
@@ -568,6 +570,169 @@ function renderRal(id,listings){
 }
 
 /* ── LISTINGS ── */
+/* ── IMPORT THEIRSTACK CSV ── */
+async function importTheirStackCSV(event){
+  const file=event.target.files[0];if(!file)return;
+  event.target.value='';
+
+  if(!window.Papa){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
+      s.onload=res;s.onerror=rej;document.head.appendChild(s);
+    });
+  }
+
+  const text=await file.text();
+  const result=Papa.parse(text,{header:true,skipEmptyLines:true,transformHeader:h=>h.replace(/^\uFEFF/,'').replace(/^"|"$/g,'').trim()});
+  const rows=result.data;
+  if(!rows.length){toast('Nessun dato nel CSV','error');return;}
+
+  toast(`Importazione ${rows.length} annunci TheirStack...`,'success');
+
+  // Mappatura seniority TheirStack → nostro sistema
+  const mapSeniority=v=>{
+    if(!v)return null;
+    const l=v.toLowerCase();
+    if(l.includes('intern')||l.includes('entry')||l.includes('junior'))return'Junior';
+    if(l.includes('mid'))return'Mid';
+    if(l.includes('senior')||l.includes('lead')||l.includes('principal'))return'Senior';
+    if(l.includes('manager')||l.includes('director')&&!l.includes('associate'))return'Manager';
+    if(l.includes('director')||l.includes('vp')||l.includes('vice'))return'Director';
+    if(l.includes('c_level')||l.includes('executive')||l.includes('chief'))return'C-level';
+    return'altro';
+  };
+
+  // Mappatura settore da company_industry
+  const mapSector=v=>{
+    if(!v)return null;
+    const l=v.toLowerCase();
+    if(l.includes('biotech')||l.includes('biotechnology'))return'Biotech';
+    if(l.includes('pharma')||l.includes('pharmaceutical'))return'Farmaceutico';
+    if(l.includes('medical equipment')||l.includes('medical device')||l.includes('dispositiv'))return'Dispositivi Medici';
+    if(l.includes('cosmetic')||l.includes('cosmet'))return'Cosmetica';
+    if(l.includes('cro')||l.includes('clinical research')||l.includes('research service'))return'CRO / Clinical Research';
+    if(l.includes('hospital')||l.includes('health care'))return'Farmaceutico';
+    if(l.includes('nutraceut'))return'Nutraceutica';
+    return'Farmaceutico'; // default per LS
+  };
+
+  // Mappatura area funzionale dal titolo
+  const mapArea=v=>{
+    if(!v)return null;
+    const l=v.toLowerCase();
+    if(l.includes('regulatory')||l.includes('ra '))return'Regulatory';
+    if(l.includes('medical science')||l.includes('msl')||l.includes('medical affair'))return'Medical';
+    if(l.includes('sales')||l.includes('account')||l.includes('commercial'))return'Sales';
+    if(l.includes('marketing')||l.includes('market access'))return'Marketing';
+    if(l.includes('market access'))return'Market Access';
+    if(l.includes('clinical')||l.includes('cra ')||l.includes('trial'))return'Clinical';
+    if(l.includes('quality')||l.includes('qa ')||l.includes('qc '))return'Quality';
+    if(l.includes('research')||l.includes('r&d')||l.includes('scientist'))return'R&D';
+    if(l.includes('hr')||l.includes('human resource')||l.includes('talent'))return'HR';
+    if(l.includes('finance')||l.includes('control'))return'Finance';
+    if(l.includes('operation')||l.includes('supply')||l.includes('manufactur'))return'Operations';
+    return'altro';
+  };
+
+  // Mappatura contratto
+  const mapContract=v=>{
+    if(!v)return null;
+    const l=v.toLowerCase();
+    if(l.includes('full_time')||l.includes('full-time')||l.includes('permanent'))return'TI';
+    if(l.includes('contract')||l.includes('temporary'))return'TD';
+    if(l.includes('intern')||l.includes('stage'))return'Stage';
+    if(l.includes('freelance')||l.includes('contractor'))return'Freelance';
+    return null;
+  };
+
+  // Parse salary — es. "99.5k € - 134.6k € per year"
+  const parseSalary=v=>{
+    if(!v||!v.trim())return[null,null];
+    // cerca numeri con k o senza
+    const nums=v.replace(/,/g,'.').match(/[\d]+\.?\d*/g);
+    if(!nums)return[null,null];
+    const vals=nums.map(n=>{
+      const f=parseFloat(n);
+      // se il numero è piccolo potrebbe essere in k
+      return v.toLowerCase().includes('k')?Math.round(f*1000):Math.round(f);
+    }).filter(n=>n>1000&&n<1000000);
+    if(vals.length>=2)return[Math.min(...vals),Math.max(...vals)];
+    if(vals.length===1)return[vals[0],null];
+    return[null,null];
+  };
+
+  let ok=0,skip=0,updated=0,errors=0;
+
+  for(const row of rows){
+    const url=(row['url']||'').trim();
+    const title=(row['job_title']||'').trim();
+    const company=(row['company_name']||'').trim();
+    if(!url||!title||!company){errors++;continue;}
+
+    const[ral_min,ral_max]=parseSalary(row['salary']||'');
+    const[ral_min2,ral_max2]=parseSalary(row['salary_string']||'');
+
+    const record={
+      job_title:title,
+      company_name:company,
+      entity_type:'life_sciences',
+      sector:mapSector(row['company_industry']||''),
+      functional_area:mapArea(title),
+      seniority:mapSeniority(row['seniority']||''),
+      ral_min:ral_min||ral_min2||null,
+      ral_max:ral_max||ral_max2||null,
+      contract_type:mapContract(row['employment_status']||''),
+      location:(row['job_location']||'').replace(/, ?Italy$/i,'').trim()||null,
+      source:'TheirStack',
+      url:url,
+      source_url:(row['source_url']||'').trim()||null,
+      published_date:(row['posted_date']||'').trim()||null,
+      is_remote:(row['is_remote']||'').toLowerCase()==='true'?true:false,
+      job_description:(row['job_description']||'').trim().substring(0,5000)||null,
+      company_employees:row['company_employee_count']?parseInt(row['company_employee_count'])||null:null,
+      company_revenue_usd:row['company_revenue_usd']?Math.round(parseFloat(row['company_revenue_usd']))||null:null,
+      company_industry:(row['company_industry']||'').trim()||null,
+      company_url:(row['company_url']||'').trim()||null,
+      company_linkedin_url:(row['company_linkedin_url']||'').trim()||null,
+      hiring_manager_name:(row['hiring_manager_full_name']||'').trim()||null,
+      hiring_manager_role:(row['hiring_manager_role']||'').trim()||null,
+      hiring_manager_linkedin:(row['hiring_manager_linkedin_url']||'').trim()||null,
+    };
+
+    try{
+      await api('job_listings','POST',record);
+      ok++;
+    }catch(e){
+      const m=e.message||'';
+      if(m.includes('duplicate')||m.includes('23505')){
+        try{
+          const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id,ral_min,ral_max,sector,functional_area,seniority,company_employees,company_revenue_usd,hiring_manager_name,job_description,is_remote`);
+          if(existing.length){
+            const ex=existing[0];
+            const patch={};
+            const fields=['ral_min','ral_max','sector','functional_area','seniority',
+              'company_employees','company_revenue_usd','company_industry','company_url',
+              'company_linkedin_url','hiring_manager_name','hiring_manager_role',
+              'hiring_manager_linkedin','job_description','source_url','is_remote'];
+            fields.forEach(f=>{if((ex[f]===null||ex[f]===undefined||ex[f]==='')&&record[f])patch[f]=record[f];});
+            if(Object.keys(patch).length){await api(`job_listings?id=eq.${ex.id}`,'PATCH',patch);updated++;}
+            else skip++;
+          }
+        }catch(e2){skip++;}
+      }else errors++;
+    }
+  }
+
+  let msg=`TheirStack: ${ok} nuovi annunci`;
+  if(updated)msg+=`, ${updated} aggiornati`;
+  if(skip)msg+=`, ${skip} già completi`;
+  if(errors)msg+=`, ${errors} errori`;
+  toast(msg,errors>0&&ok===0?'error':'success');
+  loadListings();
+  initApp();
+}
+
 async function importApifyCSV(event){
   const file=event.target.files[0];if(!file)return;
   event.target.value='';
@@ -1237,6 +1402,24 @@ async function loadCompanyDetail(company){
       document.getElementById('cd-kpi-ral-avg').textContent='—';
     }
 
+    // Dipendenti e fatturato dal primo annuncio con dati
+    const withEmp=listings.find(l=>l.company_employees);
+    const withRev=listings.find(l=>l.company_revenue_usd);
+    document.getElementById('cd-kpi-employees').textContent=withEmp?
+      (withEmp.company_employees>=1000?`${(withEmp.company_employees/1000).toFixed(0)}k`:withEmp.company_employees):'—';
+    document.getElementById('cd-kpi-revenue').textContent=withRev?
+      (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—';
+
+    // Hiring manager
+    const withHM=listings.find(l=>l.hiring_manager_name);
+    if(withHM){
+      const hmEl=document.getElementById('cd-kpi-hm');
+      hmEl.innerHTML=withHM.hiring_manager_linkedin?
+        `<a href="${withHM.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:13px;">${withHM.hiring_manager_name} ↗</a>`:
+        withHM.hiring_manager_name;
+      document.getElementById('cd-kpi-hm-role').textContent=withHM.hiring_manager_role||'';
+    }
+
     const dates=listings.filter(l=>l.published_date).map(l=>l.published_date).sort();
     document.getElementById('cd-kpi-first').textContent=dates.length?dates[0]:'—';
 
@@ -1250,27 +1433,27 @@ async function loadCompanyDetail(company){
     }
 
     body.innerHTML=`<table><thead><tr>
-      <th>Titolo ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Fonte</th><th>Data pubbl.</th><th>Cluster info</th><th></th>
+      <th>Titolo ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Remote</th><th>Contratto</th><th>Sede</th><th>Dipendenti</th><th>Fatturato</th><th>Hiring Manager</th><th>Fonte</th><th>Data</th><th></th>
     </tr></thead><tbody>${listings.map(l=>{
-      // Build cluster tags for quick reading
-      const tags=[];
-      if(l.functional_area)tags.push(l.functional_area);
-      if(l.seniority)tags.push(l.seniority);
-      if(l.contract_type)tags.push(l.contract_type);
-      if(l.location)tags.push(l.location);
-      if(l.source)tags.push(l.source);
-      const clusterHtml=tags.length?`<div class="cluster-inline">${tags.map(t=>`<span class="cluster-tag">${t}</span>`).join('')}</div>`:'<span style="color:var(--text2);font-size:11px;">—</span>';
+      // Format company size
+      const empStr=l.company_employees?l.company_employees>=1000?`${(l.company_employees/1000).toFixed(0)}k`:`${l.company_employees}`:'—';
+      const revStr=l.company_revenue_usd?l.company_revenue_usd>=1e9?`$${(l.company_revenue_usd/1e9).toFixed(1)}B`:`$${(l.company_revenue_usd/1e6).toFixed(0)}M`:'—';
+      // Hiring manager with LinkedIn link
+      const hmStr=l.hiring_manager_name?l.hiring_manager_linkedin?`<a href="${l.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:11px;">${l.hiring_manager_name}</a>${l.hiring_manager_role?`<br><span style="color:var(--text2);font-size:10px;">${l.hiring_manager_role}</span>`:''}`:`<span style="font-size:11px;">${l.hiring_manager_name}</span>`:'—';
 
       return `<tr>
         <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
         <td>${l.functional_area||'—'}</td>
         <td>${l.seniority||'—'}</td>
         <td id="ral-cell-${l.id}">${ralCell(l)}</td>
+        <td>${l.is_remote?'<span style="color:var(--success);font-size:11px;">✓ Sì</span>':'<span style="color:var(--text2);font-size:11px;">No</span>'}</td>
         <td>${l.contract_type||'—'}</td>
-        <td>${l.location||'—'}</td>
-        <td>${l.source||'—'}</td>
-        <td>${l.published_date||'—'}</td>
-        <td>${clusterHtml}</td>
+        <td style="font-size:11px">${l.location||'—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${empStr}</td>
+        <td style="font-size:11px;color:var(--text2)">${revStr}</td>
+        <td>${hmStr}</td>
+        <td style="font-size:11px">${l.source||'—'}</td>
+        <td style="font-size:11px">${l.published_date||'—'}</td>
         <td style="white-space:nowrap;">
           ${l.url?`<a class="job-link" href="${l.url}" target="_blank">↗</a>`:''}
           <button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:6px;">✕</button>
