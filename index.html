@@ -208,7 +208,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
-        <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()" style="display:none;">🗑 Elimina selezionati</button>
+        <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -1285,17 +1285,13 @@ function updateDeleteSelectedBtn(){
   const btn=document.getElementById('btn-delete-selected');
   if(!btn)return;
   const n=_selectedIds.size;
-  if(n>0){
-    btn.style.display='inline-flex';
-    btn.textContent=`🗑 Elimina selezionati (${n})`;
-  }else{
-    btn.style.display='none';
-  }
+  btn.textContent=n>0?`🗑 Elimina selezionati (${n})`:'🗑 Elimina selezionati';
+  btn.style.opacity=n>0?'1':'0.5';
 }
 
 async function deleteSelected(){
   const n=_selectedIds.size;
-  if(!n)return;
+  if(!n){toast('Seleziona almeno un annuncio','error');return;}
   if(!confirm(`Eliminare ${n} annunci selezionati?`))return;
   let ok=0;
   for(const id of _selectedIds){
