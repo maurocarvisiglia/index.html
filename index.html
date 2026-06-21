@@ -688,10 +688,10 @@ async function importTheirStackCSV(event){
       url:url,
       source_url:(row['source_url']||'').trim()||null,
       published_date:(row['posted_date']||'').trim()||null,
-      is_remote:(row['is_remote']||'').toLowerCase()==='true'?true:false,
-      job_description:(row['job_description']||'').trim().substring(0,5000)||null,
-      company_employees:row['company_employee_count']?parseInt(row['company_employee_count'])||null:null,
-      company_revenue_usd:row['company_revenue_usd']?Math.round(parseFloat(row['company_revenue_usd']))||null:null,
+      is_remote:row['is_remote']==='True'||row['is_remote']==='true'||row['is_remote']===true?true:false,
+      job_description:(row['job_description']||'').trim().substring(0,4000)||null,
+      company_employees:row['company_employee_count']&&row['company_employee_count'].trim()?parseInt(row['company_employee_count'])||null:null,
+      company_revenue_usd:row['company_revenue_usd']&&row['company_revenue_usd'].trim()&&!isNaN(parseFloat(row['company_revenue_usd']))?Math.round(parseFloat(row['company_revenue_usd'])):null,
       company_industry:(row['company_industry']||'').trim()||null,
       company_url:(row['company_url']||'').trim()||null,
       company_linkedin_url:(row['company_linkedin_url']||'').trim()||null,
@@ -720,7 +720,10 @@ async function importTheirStackCSV(event){
             else skip++;
           }
         }catch(e2){skip++;}
-      }else errors++;
+      }else{
+        console.error('TheirStack import error:',m,'record:',JSON.stringify(record).substring(0,200));
+        errors++;
+      }
     }
   }
 
