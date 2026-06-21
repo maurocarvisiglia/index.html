@@ -208,6 +208,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
+        <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()" style="display:none;">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
       </div>
@@ -1224,6 +1225,7 @@ async function scrapeLS(){
 let _listingsData = [];
 let _sortField = 'created_at';
 let _sortDir = 'desc';
+let _selectedIds = new Set();
 
 async function loadListings(){
   const entity=document.getElementById('f-entity').value;
@@ -1242,6 +1244,8 @@ async function loadListings(){
     let data=await api(q);
     if(search)data=data.filter(l=>(l.job_title||'').toLowerCase().includes(search)||(l.company_name||'').toLowerCase().includes(search));
     _listingsData=data;
+    _selectedIds=new Set();
+    updateDeleteSelectedBtn();
     renderListingsTable(data);
   }catch(e){document.getElementById('listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;}
 }
@@ -1256,6 +1260,52 @@ function sortListings(field){
   loadListings();
 }
 
+function toggleSelectAll(cb){
+  const checkboxes=document.querySelectorAll('.listing-cb');
+  checkboxes.forEach(c=>{
+    c.checked=cb.checked;
+    if(cb.checked)_selectedIds.add(c.dataset.id);
+    else _selectedIds.delete(c.dataset.id);
+  });
+  updateDeleteSelectedBtn();
+}
+
+function toggleSelectOne(cb){
+  if(cb.checked)_selectedIds.add(cb.dataset.id);
+  else _selectedIds.delete(cb.dataset.id);
+  updateDeleteSelectedBtn();
+  // Update select-all state
+  const all=document.querySelectorAll('.listing-cb');
+  const allChecked=[...all].every(c=>c.checked);
+  const selectAllCb=document.getElementById('select-all-cb');
+  if(selectAllCb)selectAllCb.checked=allChecked;
+}
+
+function updateDeleteSelectedBtn(){
+  const btn=document.getElementById('btn-delete-selected');
+  if(!btn)return;
+  const n=_selectedIds.size;
+  if(n>0){
+    btn.style.display='inline-flex';
+    btn.textContent=`🗑 Elimina selezionati (${n})`;
+  }else{
+    btn.style.display='none';
+  }
+}
+
+async function deleteSelected(){
+  const n=_selectedIds.size;
+  if(!n)return;
+  if(!confirm(`Eliminare ${n} annunci selezionati?`))return;
+  let ok=0;
+  for(const id of _selectedIds){
+    try{await api(`job_listings?id=eq.${id}`,'DELETE');ok++;}catch(e){}
+  }
+  toast(`${ok} annunci eliminati`);
+  _selectedIds=new Set();
+  loadListings();
+}
+
 function renderListingsTable(data){
   document.getElementById('listings-count').textContent=data.length+' annunci';
   const body=document.getElementById('listings-body');
@@ -1265,6 +1315,7 @@ function renderListingsTable(data){
   const arrow=f=>_sortField===f?(_sortDir==='asc'?' ↑':' ↓'):'';
 
   body.innerHTML=`<table><thead><tr>
+    <th style="width:36px;"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" style="width:auto;cursor:pointer;"></th>
     <th ${thStyle} onclick="sortListings('job_title')">Ruolo${arrow('job_title')}</th>
     <th ${thStyle} onclick="sortListings('company_name')">Azienda${arrow('company_name')}</th>
     <th>Tipo</th>
@@ -1278,6 +1329,7 @@ function renderListingsTable(data){
     <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
     <th></th>
   </tr></thead><tbody>${data.map(l=>`<tr>
+    <td><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
     <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
     <td>${l.company_name}</td>
     <td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td>
