@@ -137,6 +137,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-listings" onclick="showView('listings',this)">📋 Annunci</button>
     <button class="nav-btn" id="nav-companies" onclick="showView('companies',this)">🏢 Aziende</button>
     <button class="nav-btn" id="nav-ruolo" onclick="showView('ruolo',this)">🔍 Analisi Ruolo</button>
+    <button class="nav-btn" id="nav-role-intel" onclick="showView('role-intel',this)">🎯 Role Intelligence</button>
   </div>
 </div>
 
@@ -534,6 +535,155 @@ a.job-link:hover{text-decoration:underline;}
         <div class="table-count" id="ruolo-count">—</div>
       </div>
       <div id="ruolo-table"><div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div></div>
+    </div>
+  </div>
+
+
+  <!-- ROLE INTELLIGENCE -->
+  <div class="view" id="view-role-intel">
+    <div class="section-header">
+      <div class="section-title">🎯 Role Intelligence <span style="font-size:13px;color:var(--text2);font-weight:400;">Benchmark per figura professionale</span></div>
+      <button class="btn btn-secondary" onclick="refreshBenchmarks()" style="font-size:12px;">🔄 Ricalcola benchmark</button>
+    </div>
+
+    <!-- Search -->
+    <div style="display:flex;gap:12px;margin-bottom:24px;align-items:flex-end;">
+      <div class="filter-group" style="flex:2;">
+        <div class="filter-label">Cerca figura professionale</div>
+        <input type="text" id="ri-search" placeholder="es. Medical Advisor, MSL, KAM, Regulatory Affairs Manager..."
+          style="width:100%;font-size:15px;padding:12px 16px;"
+          oninput="if(this.value.length>2||this.value.length===0)loadRoleIntelligence()">
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area funzionale</div>
+        <select id="ri-area" onchange="loadRoleIntelligence()">
+          <option value="">Tutte</option>
+          <option value="medical_affairs">Medical Affairs</option>
+          <option value="commercial">Commercial</option>
+          <option value="marketing">Marketing</option>
+          <option value="market_access">Market Access</option>
+          <option value="regulatory_affairs">Regulatory Affairs</option>
+          <option value="quality">Quality</option>
+          <option value="clinical_operations">Clinical Operations</option>
+          <option value="drug_safety">Drug Safety / PV</option>
+          <option value="rd">R&D</option>
+          <option value="manufacturing">Manufacturing</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area terapeutica</div>
+        <select id="ri-ta" onchange="loadRoleIntelligence()">
+          <option value="">Tutte</option>
+          <option value="oncology">Oncology</option>
+          <option value="rare_diseases">Rare Diseases</option>
+          <option value="immunology">Immunology</option>
+          <option value="hematology">Hematology</option>
+          <option value="cardiovascular">Cardiovascular</option>
+          <option value="neurology">Neurology</option>
+          <option value="respiratory">Respiratory</option>
+          <option value="diabetes">Diabetes</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Role list quick access -->
+    <div id="ri-role-list" style="margin-bottom:24px;">
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Ruoli nel database — clicca per analizzare</div>
+      <div id="ri-role-list-body" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+
+    <!-- Role detail panel -->
+    <div id="ri-detail" style="display:none;">
+
+      <!-- Role header -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:12px;padding:24px 28px;margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div id="ri-role-title" style="font-size:28px;font-weight:800;color:var(--text);margin-bottom:8px;">—</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ri-role-badges"></div>
+          </div>
+          <div style="text-align:right;font-size:11px;color:var(--text2);" id="ri-updated"></div>
+        </div>
+      </div>
+
+      <!-- Salary benchmark KPI -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">💶 Salary Benchmark</div>
+      <div class="stats-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:16px;">
+        <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="ri-kpi-total">—</div><div class="stat-sub">nel database</div></div>
+        <div class="stat-card"><div class="stat-label">Con RAL</div><div class="stat-value" id="ri-kpi-ral">—</div><div class="stat-sub" id="ri-kpi-ral-pct"></div></div>
+        <div class="stat-card" style="border-color:var(--text2)"><div class="stat-label">P25</div><div class="stat-value" id="ri-kpi-p25">—</div><div class="stat-sub">25° percentile</div></div>
+        <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">Mediana</div><div class="stat-value" id="ri-kpi-median" style="color:var(--success)">—</div><div class="stat-sub">P50</div></div>
+        <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">Media</div><div class="stat-value" id="ri-kpi-avg" style="color:var(--success)">—</div><div class="stat-sub">RAL media</div></div>
+        <div class="stat-card" style="border-color:var(--accent2)"><div class="stat-label">P75</div><div class="stat-value" id="ri-kpi-p75" style="color:var(--accent2)">—</div><div class="stat-sub">75° percentile</div></div>
+        <div class="stat-card" style="border-color:var(--accent2)"><div class="stat-label">P90</div><div class="stat-value" id="ri-kpi-p90" style="color:var(--accent2)">—</div><div class="stat-sub">90° percentile</div></div>
+      </div>
+
+      <!-- RAL visual range bar -->
+      <div class="chart-card" style="margin-bottom:24px;padding:20px 28px;">
+        <div class="chart-card-title">Range retributivo di mercato</div>
+        <div id="ri-ral-bar" style="margin-top:16px;"></div>
+      </div>
+
+      <!-- Hiring activity KPI -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">📈 Hiring Activity</div>
+      <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+        <div class="stat-card"><div class="stat-label">Aziende coinvolte</div><div class="stat-value" id="ri-kpi-companies">—</div><div class="stat-sub">che assumono</div></div>
+        <div class="stat-card"><div class="stat-label">Ultimi 30gg</div><div class="stat-value" id="ri-kpi-30d">—</div><div class="stat-sub">nuovi annunci</div></div>
+        <div class="stat-card"><div class="stat-label">Ultimi 90gg</div><div class="stat-value" id="ri-kpi-90d">—</div><div class="stat-sub">nuovi annunci</div></div>
+        <div class="stat-card"><div class="stat-label">Ultimi 12 mesi</div><div class="stat-value" id="ri-kpi-365d">—</div><div class="stat-sub">nuovi annunci</div></div>
+      </div>
+
+      <!-- Charts row 1 -->
+      <div class="chart-grid" style="margin-bottom:24px;">
+        <div class="chart-card">
+          <div class="chart-card-title">RAL per seniority</div>
+          <div id="ri-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Top aziende</div>
+          <div id="ri-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+      </div>
+
+      <!-- Charts row 2 -->
+      <div class="chart-grid" style="margin-bottom:24px;">
+        <div class="chart-card">
+          <div class="chart-card-title">Area terapeutica</div>
+          <div id="ri-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Distribuzione geografica</div>
+          <div id="ri-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+      </div>
+
+      <!-- Charts row 3 -->
+      <div class="chart-grid" style="margin-bottom:24px;">
+        <div class="chart-card">
+          <div class="chart-card-title">Distribuzione seniority</div>
+          <div id="ri-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title">Field vs HQ</div>
+          <div id="ri-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        </div>
+      </div>
+
+      <!-- Recent listings -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">Annunci recenti</div>
+          <div class="table-count" id="ri-listings-count">—</div>
+        </div>
+        <div id="ri-listings-table"></div>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="ri-empty" style="text-align:center;padding:60px 24px;color:var(--text2);">
+      <div style="font-size:48px;margin-bottom:16px;">🎯</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">Benchmark completo per ogni ruolo</div>
+      <div style="font-size:14px;">Digita il nome del ruolo o clicca uno dalla lista sopra</div>
     </div>
   </div>
 
@@ -958,6 +1108,7 @@ function showView(name,btn){
   document.getElementById('view-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
   if(name==='dashboard')loadDashboard();
+  if(name==='role-intel'){loadRoleIntelligence();loadRoleList();}
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -2515,7 +2666,226 @@ async function delListing(id){
   }catch(e){toast('Errore','error');}
 }
 
-/* ── COMPANIES LIST ── */
+/* ══════════════════════════════════════════════
+   ROLE INTELLIGENCE
+   ══════════════════════════════════════════════ */
+
+async function loadRoleList(){
+  try{
+    const benchmarks=await api('salary_benchmarks?select=canonical_role,functional_area_v2,total_listings&order=total_listings.desc&limit=60');
+    const body=document.getElementById('ri-role-list-body');
+    if(!body)return;
+    if(!benchmarks.length){
+      body.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessun benchmark ancora. Esegui prima 🏷 Normalizza ruoli e 🔄 Ricalcola benchmark.</div>';
+      return;
+    }
+    // Deduplica per canonical_role
+    const seen=new Set();
+    const unique=benchmarks.filter(b=>{if(seen.has(b.canonical_role))return false;seen.add(b.canonical_role);return true;});
+    body.innerHTML=unique.map(b=>`
+      <button onclick="selectRole('${b.canonical_role.replace(/'/g,"\\'")}','${b.functional_area_v2||''}')"
+        style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;color:var(--text);white-space:nowrap;">
+        ${b.canonical_role} <span style="color:var(--text2);font-size:10px;">${b.total_listings}</span>
+      </button>`).join('');
+  }catch(e){console.error('loadRoleList error:',e);}
+}
+
+function selectRole(role, area){
+  const searchEl=document.getElementById('ri-search');
+  if(searchEl)searchEl.value=role;
+  const areaEl=document.getElementById('ri-area');
+  if(areaEl&&area)areaEl.value=area;
+  loadRoleIntelligence();
+}
+
+async function loadRoleIntelligence(){
+  const search=(document.getElementById('ri-search')?.value||'').trim();
+  const area=document.getElementById('ri-area')?.value||'';
+  const ta=document.getElementById('ri-ta')?.value||'';
+
+  const detail=document.getElementById('ri-detail');
+  const empty=document.getElementById('ri-empty');
+
+  if(!search&&!area){
+    if(detail)detail.style.display='none';
+    if(empty)empty.style.display='block';
+    return;
+  }
+
+  if(empty)empty.style.display='none';
+  if(detail)detail.style.display='block';
+
+  try{
+    // 1. Carica benchmark pre-calcolati
+    let bq='salary_benchmarks?select=*&order=total_listings.desc&limit=50';
+    if(search)bq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
+    if(area)bq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
+    if(ta)bq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
+    const benchmarks=await api(bq);
+
+    // 2. Carica annunci grezzi per grafici dettagliati
+    let lq='job_listings?select=*&order=published_date.desc.nullslast&limit=500';
+    if(search)lq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
+    if(area)lq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
+    if(ta)lq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
+    const listings=await api(lq);
+
+    if(!listings.length&&!benchmarks.length){
+      document.getElementById('ri-role-title').textContent=search||area;
+      document.getElementById('ri-role-badges').innerHTML='<span style="color:var(--text2);font-size:13px;">Nessun dato trovato — prova a normalizzare i ruoli prima</span>';
+      ['ri-kpi-total','ri-kpi-ral','ri-kpi-p25','ri-kpi-median','ri-kpi-avg','ri-kpi-p75','ri-kpi-p90','ri-kpi-companies','ri-kpi-30d','ri-kpi-90d','ri-kpi-365d'].forEach(id=>{
+        const el=document.getElementById(id);if(el)el.textContent='—';
+      });
+      return;
+    }
+
+    // ── HEADER ──
+    const roleName=benchmarks[0]?.canonical_role||search||area;
+    document.getElementById('ri-role-title').textContent=roleName;
+
+    const badges=[];
+    if(benchmarks[0]?.role_family)badges.push(`<span class="badge badge-ls">${benchmarks[0].role_family}</span>`);
+    if(benchmarks[0]?.functional_area_v2)badges.push(`<span class="badge badge-hh">${benchmarks[0].functional_area_v2.replace(/_/g,' ').toUpperCase()}</span>`);
+    if(benchmarks[0]?.sub_area)badges.push(`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-size:11px;">${benchmarks[0].sub_area}</span>`);
+    document.getElementById('ri-role-badges').innerHTML=badges.join('');
+
+    const lastUpdate=benchmarks[0]?.updated_at?`Aggiornato: ${new Date(benchmarks[0].updated_at).toLocaleDateString('it-IT')}`:'';
+    document.getElementById('ri-updated').textContent=lastUpdate;
+
+    // ── SALARY BENCHMARK — aggrega i benchmark pre-calcolati ──
+    const totalListings=benchmarks.reduce((s,b)=>s+b.total_listings,0)||listings.length;
+    const totalRal=benchmarks.reduce((s,b)=>s+b.sample_size,0);
+    document.getElementById('ri-kpi-total').textContent=totalListings;
+    document.getElementById('ri-kpi-ral').textContent=totalRal;
+    document.getElementById('ri-kpi-ral-pct').textContent=totalListings?`${Math.round(totalRal/totalListings*100)}% degli annunci`:'';
+
+    // Usa il benchmark principale (più annunci) per i percentili
+    const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
+    const fmt=v=>v?`€${(v/1000).toFixed(0)}k`:'—';
+
+    document.getElementById('ri-kpi-p25').textContent=fmt(mainBench?.p25);
+    document.getElementById('ri-kpi-median').textContent=fmt(mainBench?.median);
+    document.getElementById('ri-kpi-avg').textContent=fmt(mainBench?.avg_ral);
+    document.getElementById('ri-kpi-p75').textContent=fmt(mainBench?.p75);
+    document.getElementById('ri-kpi-p90').textContent=fmt(mainBench?.p90);
+
+    // ── RAL RANGE BAR ──
+    const ralBar=document.getElementById('ri-ral-bar');
+    if(ralBar&&mainBench?.p25&&mainBench?.p90){
+      const min=mainBench.min_ral||mainBench.p25;
+      const max=mainBench.max_ral||mainBench.p90;
+      const range=max-min||1;
+      const pct=v=>Math.round((v-min)/range*100);
+      ralBar.innerHTML=`
+        <div style="position:relative;height:48px;margin:8px 0 4px;">
+          <!-- track -->
+          <div style="position:absolute;top:20px;left:0;right:0;height:8px;background:var(--surface2);border-radius:4px;"></div>
+          <!-- p25-p75 range -->
+          <div style="position:absolute;top:20px;left:${pct(mainBench.p25)}%;width:${pct(mainBench.p75)-pct(mainBench.p25)}%;height:8px;background:var(--success);opacity:.4;border-radius:4px;"></div>
+          <!-- median line -->
+          <div style="position:absolute;top:14px;left:${pct(mainBench.median)}%;width:3px;height:20px;background:var(--success);border-radius:2px;transform:translateX(-50%);"></div>
+          <!-- P25 label -->
+          <div style="position:absolute;top:34px;left:${pct(mainBench.p25)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P25<br><strong>${fmt(mainBench.p25)}</strong></div>
+          <!-- Median label -->
+          <div style="position:absolute;top:-2px;left:${pct(mainBench.median)}%;transform:translateX(-50%);font-size:10px;color:var(--success);font-weight:700;">MEDIANA<br>${fmt(mainBench.median)}</div>
+          <!-- P75 label -->
+          <div style="position:absolute;top:34px;left:${pct(mainBench.p75)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P75<br><strong>${fmt(mainBench.p75)}</strong></div>
+          <!-- P90 label -->
+          <div style="position:absolute;top:34px;left:${pct(mainBench.p90)}%;transform:translateX(-50%);font-size:10px;color:var(--accent2);">P90<br><strong style="color:var(--accent2)">${fmt(mainBench.p90)}</strong></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:11px;color:var(--text2);">
+          <span>Min: ${fmt(min)}</span>
+          <span style="color:var(--text2);font-size:11px;">Campione: ${totalRal} annunci con RAL su ${totalListings} totali</span>
+          <span>Max: ${fmt(max)}</span>
+        </div>`;
+    }else if(ralBar){
+      ralBar.innerHTML='<div style="color:var(--text2);font-size:13px;padding:16px 0;">Dati RAL insufficienti per questo ruolo — incolla descrizioni annunci con 📋 per arricchire il database</div>';
+    }
+
+    // ── HIRING ACTIVITY ──
+    document.getElementById('ri-kpi-companies').textContent=new Set(listings.map(l=>l.company_name).filter(Boolean)).size;
+    document.getElementById('ri-kpi-30d').textContent=benchmarks.reduce((s,b)=>s+b.listings_30d,0)||listings.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*24*60*60*1000)).length;
+    document.getElementById('ri-kpi-90d').textContent=benchmarks.reduce((s,b)=>s+b.listings_90d,0)||listings.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-90*24*60*60*1000)).length;
+    document.getElementById('ri-kpi-365d').textContent=benchmarks.reduce((s,b)=>s+b.listings_365d,0)||listings.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-365*24*60*60*1000)).length;
+
+    // ── CHARTS ──
+    // RAL per seniority
+    const withRal=listings.filter(l=>l.ral_min||l.ral_max);
+    const ralBySen={};
+    withRal.forEach(l=>{
+      const k=l.seniority_v2||l.seniority||'N/D';
+      if(!ralBySen[k])ralBySen[k]=[];
+      ralBySen[k].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    });
+    const ralSenData=Object.entries(ralBySen).map(([k,v])=>[k,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]);
+    const maxRal2=Math.max(...ralSenData.map(d=>d[1]),1);
+    const ralSenEl=document.getElementById('ri-chart-ral-seniority');
+    if(ralSenEl) ralSenEl.innerHTML=ralSenData.length?ralSenData.map(([l,v])=>`
+      <div class="bar-row">
+        <div class="bar-label">${l}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(v/maxRal2*100).toFixed(0)}%;background:var(--success)"></div></div>
+        <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
+      </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Dati RAL insufficienti</div>';
+
+    // Top companies
+    const byCo={};listings.forEach(l=>{if(l.company_name)byCo[l.company_name]=(byCo[l.company_name]||0)+1;});
+    renderRuoloBar('ri-chart-companies',Object.entries(byCo).sort((a,b)=>b[1]-a[1]).slice(0,8),'accent');
+
+    // Area terapeutica
+    const byTA={};listings.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable').forEach(l=>{byTA[l.therapeutic_area]=(byTA[l.therapeutic_area]||0)+1;});
+    if(Object.keys(byTA).length) renderRuoloBar('ri-chart-ta',Object.entries(byTA).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
+    else document.getElementById('ri-chart-ta').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">TA non specificata per questo ruolo</div>';
+
+    // Geo
+    const byGeo={};listings.forEach(l=>{const loc=(l.location||'').split(',')[0].trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
+    renderRuoloBar('ri-chart-geo',Object.entries(byGeo).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
+
+    // Seniority
+    const bySen={};listings.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySen[k]=(bySen[k]||0)+1;});
+    renderRuoloBar('ri-chart-seniority',Object.entries(bySen).sort((a,b)=>b[1]-a[1]),'blue');
+
+    // Field/HQ
+    const byFH={};listings.filter(l=>l.field_hq).forEach(l=>{byFH[l.field_hq]=(byFH[l.field_hq]||0)+1;});
+    if(Object.keys(byFH).length) renderRuoloBar('ri-chart-fieldhq',Object.entries(byFH).sort((a,b)=>b[1]-a[1]),'blue');
+    else document.getElementById('ri-chart-fieldhq').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati Field/HQ non disponibili</div>';
+
+    // ── RECENT LISTINGS TABLE ──
+    document.getElementById('ri-listings-count').textContent=`${listings.length} annunci`;
+    document.getElementById('ri-listings-table').innerHTML=listings.length?`
+      <table><thead><tr>
+        <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>TA</th><th>RAL</th><th>Sede</th><th>Data</th>
+      </tr></thead><tbody>${listings.slice(0,50).map(l=>`<tr>
+        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+        <td style="font-size:12px">${l.company_name||'—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+        <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
+        <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+        <td style="font-size:11px">${l.location||'—'}</td>
+        <td style="font-size:11px">${l.published_date||'—'}</td>
+      </tr>`).join('')}</tbody></table>
+      ${listings.length>50?`<div style="padding:12px 24px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);">Mostrati i primi 50 di ${listings.length}</div>`:''}`:
+      '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div></div>';
+
+  }catch(e){
+    console.error('Role Intelligence error:',e);
+    toast('Errore Role Intelligence: '+e.message,'error');
+  }
+}
+
+async function refreshBenchmarks(){
+  const btn=event.target;
+  btn.textContent='⏳ Ricalcolo...';
+  btn.disabled=true;
+  try{
+    // Esegue il ricalcolo via Supabase RPC se disponibile, altrimenti mostra istruzioni
+    toast('Per ricalcolare i benchmark incolla la query SQL su Supabase → salary_benchmarks','info');
+  }catch(e){toast('Errore: '+e.message,'error');}
+  btn.textContent='🔄 Ricalcola benchmark';
+  btn.disabled=false;
+}
+
+
 async function loadAllCompanies(){
   // Paginate through all companies using offset
   let all=[], offset=0, pageSize=1000;
