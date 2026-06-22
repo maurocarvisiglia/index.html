@@ -287,6 +287,40 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-primary" onclick="openModal('modal-company')">+ Aggiungi azienda</button>
       </div>
     </div>
+
+    <!-- Filtri e ordinamento -->
+    <div class="filters" style="margin-bottom:16px;">
+      <div class="filter-group" style="flex:2;">
+        <div class="filter-label">Cerca azienda</div>
+        <input type="text" id="co-search" placeholder="Nome azienda..." style="width:100%;" oninput="loadCompanies(0)">
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Tipo</div>
+        <select id="co-type" onchange="loadCompanies(0)">
+          <option value="">Tutti</option>
+          <option value="life_sciences">Life Sciences</option>
+          <option value="headhunter">Head Hunter</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Ordina per</div>
+        <select id="co-sort" onchange="loadCompanies(0)">
+          <option value="name_asc">Nome A→Z</option>
+          <option value="name_desc">Nome Z→A</option>
+          <option value="listings_desc">Più annunci</option>
+          <option value="recent_desc">Più recenti</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Stato</div>
+        <select id="co-status" onchange="loadCompanies(0)">
+          <option value="">Tutti</option>
+          <option value="true">Attive</option>
+          <option value="false">Inattive</option>
+        </select>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <div class="table-header"><div class="table-title">Database aziende</div><div class="table-count" id="companies-count">—</div></div>
       <div id="companies-body"><div class="loading">Caricamento...</div></div>
@@ -2209,59 +2243,93 @@ async function loadAllCompanies(){
 async function loadCompanies(offset=0){
   const pageSize=200;
   try{
+    const search=(document.getElementById('co-search')?.value||'').trim();
+    const type=document.getElementById('co-type')?.value||'';
+    const sort=document.getElementById('co-sort')?.value||'name_asc';
+    const status=document.getElementById('co-status')?.value||'';
+
+    // Build query
+    let q=`companies?select=*&limit=${pageSize}&offset=${offset}`;
+
+    // Filtri
+    if(type)q+=`&entity_type=eq.${type}`;
+    if(status!=='')q+=`&is_active=eq.${status}`;
+    if(search)q+=`&name=ilike.*${encodeURIComponent(search)}*`;
+
+    // Ordinamento
+    if(sort==='name_asc')q+=`&order=name.asc`;
+    else if(sort==='name_desc')q+=`&order=name.desc`;
+    else if(sort==='recent_desc')q+=`&order=created_at.desc`;
+    else q+=`&order=name.asc`; // listings_desc: lo gestiamo client-side
+
     const[companies, listings]=await Promise.all([
-      api(`companies?select=*&order=name.asc&limit=${pageSize}&offset=${offset}`),
-      api('job_listings?select=company_name')
+      api(q),
+      api('job_listings?select=company_name,company_id')
     ]);
 
+    // Count per company_name e company_id
     const countMap={};
+    const countById={};
     listings.forEach(l=>{
-      const k=(l.company_name||'').toLowerCase();
-      countMap[k]=(countMap[k]||0)+1;
+      if(l.company_name){
+        const k=l.company_name.toLowerCase();
+        countMap[k]=(countMap[k]||0)+1;
+      }
+      if(l.company_id){
+        countById[l.company_id]=(countById[l.company_id]||0)+1;
+      }
     });
 
-    // Get total count
-    const countResp=await fetch(`${SB_URL}/rest/v1/companies?select=id`,{
+    // Totale con filtri
+    let countQ=`companies?select=id`;
+    if(type)countQ+=`&entity_type=eq.${type}`;
+    if(status!=='')countQ+=`&is_active=eq.${status}`;
+    if(search)countQ+=`&name=ilike.*${encodeURIComponent(search)}*`;
+    const countResp=await fetch(`${SB_URL}/rest/v1/${countQ}`,{
       headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
     });
     const total=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||0);
 
     document.getElementById('companies-count').textContent=`${total} aziende`;
     const body=document.getElementById('companies-body');
-    
+
     if(!companies.length&&offset===0){
-      body.innerHTML='<div class="empty"><div class="empty-icon">🏢</div><div class="empty-title">Nessuna azienda nel database</div><div class="empty-sub">Aggiungi la prima azienda da monitorare</div></div>';
+      body.innerHTML='<div class="empty"><div class="empty-icon">🏢</div><div class="empty-title">Nessuna azienda trovata</div><div class="empty-sub">Prova a modificare i filtri di ricerca</div></div>';
       return;
     }
 
-    const rows=companies.map(c=>{
-      const cnt=countMap[c.name.toLowerCase()]||0;
-      return `<tr>
-        <td><span class="company-link" onclick="openCompanyDetail(${JSON.stringify(c).replace(/"/g,'&quot;')})">${c.name}</span></td>
-        <td><span class="badge ${c.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${c.entity_type==='life_sciences'?'Life Sciences':'Head Hunter'}</span></td>
-        <td><span class="count-badge ${cnt>0?'has-data':''}">${cnt}</span></td>
-        <td>${c.website?`<a class="job-link" href="${c.website}" target="_blank">${c.website.replace('https://','').replace('http://','').split('/')[0]}</a>`:'—'}</td>
-        <td>${c.linkedin_url?`<a class="job-link" href="${c.linkedin_url}" target="_blank">↗ LinkedIn</a>`:'—'}</td>
-        <td><span class="badge ${c.is_active?'badge-active':'badge-inactive'}">${c.is_active?'Attiva':'Inattiva'}</span></td>
-        <td style="white-space:nowrap;">
-          <button onclick="toggleCo('${c.id}',${c.is_active})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;">${c.is_active?'Disattiva':'Attiva'}</button>
-          <button onclick="delCo('${c.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:8px;">✕</button>
-        </td>
-      </tr>`;
-    }).join('');
+    // Arricchisci con conteggio annunci
+    let rows=companies.map(c=>{
+      const cnt=(countById[c.id]||0)+(countMap[c.name.toLowerCase()]||0);
+      return{...c,_cnt:cnt};
+    });
+
+    // Ordinamento per annunci (client-side)
+    if(sort==='listings_desc')rows=rows.sort((a,b)=>b._cnt-a._cnt);
+
+    const rowsHTML=rows.map(c=>`<tr>
+      <td><span class="company-link" onclick="openCompanyDetail(${JSON.stringify(c).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})">${c.name}</span></td>
+      <td><span class="badge ${c.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${c.entity_type==='life_sciences'?'Life Sciences':'Head Hunter'}</span></td>
+      <td><span class="count-badge ${c._cnt>0?'has-data':''}">${c._cnt}</span></td>
+      <td>${c.website?`<a class="job-link" href="${c.website}" target="_blank">${c.website.replace('https://','').replace('http://','').split('/')[0]}</a>`:'—'}</td>
+      <td>${c.linkedin_url?`<a class="job-link" href="${c.linkedin_url}" target="_blank">↗ LinkedIn</a>`:'—'}</td>
+      <td><span class="badge ${c.is_active?'badge-active':'badge-inactive'}">${c.is_active?'Attiva':'Inattiva'}</span></td>
+      <td style="white-space:nowrap;">
+        <button onclick="toggleCo('${c.id}',${c.is_active})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;">${c.is_active?'Disattiva':'Attiva'}</button>
+        <button onclick="delCo('${c.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:8px;">✕</button>
+      </td>
+    </tr>`).join('');
 
     const hasMore=offset+pageSize<total;
     const tableHTML=`<table><thead><tr>
       <th>Nome azienda</th><th>Tipo</th><th>Annunci</th><th>Sito web</th><th>LinkedIn</th><th>Stato</th><th></th>
-    </tr></thead><tbody id="companies-rows-body">${offset===0?rows:document.getElementById('companies-rows-body')?.innerHTML+rows||rows}</tbody></table>
-    ${hasMore?`<div style="text-align:center;padding:16px;border-top:1px solid var(--border);"><button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre ${Math.min(pageSize,total-offset-pageSize)} aziende (${offset+pageSize}/${total})</button></div>`:''}`;
+    </tr></thead><tbody id="companies-rows-body">${rowsHTML}</tbody></table>
+    ${hasMore?`<div style="text-align:center;padding:16px;border-top:1px solid var(--border);"><button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre aziende (${offset+pageSize}/${total})</button></div>`:''}`;
 
     if(offset===0){
       body.innerHTML=tableHTML;
     }else{
-      // Append rows
-      document.getElementById('companies-rows-body').innerHTML+=rows;
-      // Update load more button
+      document.getElementById('companies-rows-body').innerHTML+=rowsHTML;
       const loadMoreDiv=body.querySelector('div[style*="text-align:center"]');
       if(loadMoreDiv){
         if(hasMore)loadMoreDiv.innerHTML=`<button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre aziende (${offset+pageSize}/${total})</button>`;
