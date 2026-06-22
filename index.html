@@ -552,7 +552,7 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 
 const GROQ_API_KEY='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';
 const GROQ_URL='https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL='llama3-8b-8192';
+const GROQ_MODEL='llama-3.1-8b-instant';
 
 async function callAI(prompt, maxTokens=800){
   const resp=await fetch(GROQ_URL,{
