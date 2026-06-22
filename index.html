@@ -979,7 +979,7 @@ async function analyzeListings(){
   
   // Load annunci senza settore o senza RAL
   const toAnalyze=await api('job_listings?select=*&order=created_at.desc');
-  const needsAnalysis=toAnalyze.filter(l=>!l.sector||(!l.ral_min&&!l.ral_max));
+  const needsAnalysis=toAnalyze.filter(l=>!l.ai_analyzed&&(!l.sector||!l.functional_area||(!l.ral_min&&!l.ral_max)));
   
   if(!needsAnalysis.length){
     toast('Tutti gli annunci hanno già settore e RAL!');
@@ -1028,17 +1028,15 @@ Rispondi SOLO con il JSON, nessun altro testo.`;
       const clean=text.replace(/```json|```/g,'').trim();
       const result=JSON.parse(clean);
 
-      // Build patch — only update null fields
-      const patch={};
+      // Build patch — only update null fields, always mark as analyzed
+      const patch={ai_analyzed:true};
       if(!listing.sector&&result.sector)patch.sector=result.sector;
       if(!listing.ral_min&&result.ral_min)patch.ral_min=result.ral_min;
       if(!listing.ral_max&&result.ral_max)patch.ral_max=result.ral_max;
       if(!listing.functional_area&&result.functional_area)patch.functional_area=result.functional_area;
       if(!listing.seniority&&result.seniority)patch.seniority=result.seniority;
 
-      if(Object.keys(patch).length){
-        await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
-      }
+      await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
       analyzed++;
 
     }catch(e){
@@ -1383,7 +1381,7 @@ function renderListingsTable(data){
     <th></th>
   </tr></thead><tbody>${data.map(l=>`<tr>
     <td><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
-    <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+    <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span title="Analizzato con AI" style="font-size:10px;">🤖</span>':''}</td>
     <td>${l.company_name}</td>
     <td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td>
     <td><span style="font-size:11px;color:var(--text2)">${l.sector||'—'}</span></td>
@@ -1599,7 +1597,7 @@ async function loadCompanyDetail(company){
       const hmStr=l.hiring_manager_name?l.hiring_manager_linkedin?`<a href="${l.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:11px;">${l.hiring_manager_name}</a>${l.hiring_manager_role?`<br><span style="color:var(--text2);font-size:10px;">${l.hiring_manager_role}</span>`:''}`:`<span style="font-size:11px;">${l.hiring_manager_name}</span>`:'—';
 
       return `<tr>
-        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span title="Analizzato con AI" style="font-size:10px;">🤖</span>':''}</td>
         <td>${l.functional_area||'—'}</td>
         <td>${l.seniority||'—'}</td>
         <td id="ral-cell-${l.id}">${ralCell(l)}</td>
