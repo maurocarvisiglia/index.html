@@ -1700,15 +1700,18 @@ JSON richiesto:
     const result=JSON.parse(clean);
 
     // Build patch
+    const _vs=['Farmaceutico','Dispositivi Medici','Biotech','Cosmetica','Nutraceutica','Retail Farmacia','CRO / Clinical Research','CDMO / CMO','altro'];
+    const _va=['Sales','Marketing','Regulatory Affairs','Medical Affairs','MSL','Quality Assurance','Quality Control','Produzione','Engineering','Clinical Operations','Market Access','Pharmacovigilance','R&D','HR','Finance','Supply Chain','Business Development','IT','Operations','altro'];
+    const _vsen=['Junior','Middle','Senior','Lead','Manager','Director','C-level','altro'];
     const patch={ai_analyzed:true};
     if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
     if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
     if(result.job_description)patch.job_description=result.job_description;
-    if(result.sector)patch.sector=result.sector;
-    if(result.functional_area)patch.functional_area=result.functional_area;
-    if(result.seniority)patch.seniority=result.seniority;
+    if(result.sector&&_vs.includes(result.sector))patch.sector=result.sector;
+    if(result.functional_area&&_va.includes(result.functional_area))patch.functional_area=result.functional_area;
+    if(result.seniority&&_vsen.includes(result.seniority))patch.seniority=result.seniority;
     if(result.location)patch.location=result.location;
-    if(result.contract_type)patch.contract_type=result.contract_type;
+    if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
     await api(`job_listings?id=eq.${id}`,'PATCH',patch);
 
@@ -1786,15 +1789,19 @@ seniority: Junior|Middle|Senior|Lead|Manager|Director|C-level|altro`;
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
+    const validSectors=['Farmaceutico','Dispositivi Medici','Biotech','Cosmetica','Nutraceutica','Retail Farmacia','CRO / Clinical Research','CDMO / CMO','altro'];
+    const validAreas=['Sales','Marketing','Regulatory Affairs','Medical Affairs','MSL','Quality Assurance','Quality Control','Produzione','Engineering','Clinical Operations','Market Access','Pharmacovigilance','R&D','HR','Finance','Supply Chain','Business Development','IT','Operations','altro'];
+    const validSeniority=['Junior','Middle','Senior','Lead','Manager','Director','C-level','altro'];
+
     const patch={ai_analyzed:true};
     if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
     if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
     if(result.job_description)patch.job_description=result.job_description;
-    if(result.sector&&result.sector!=='altro')patch.sector=result.sector;
-    if(result.functional_area&&result.functional_area!=='altro')patch.functional_area=result.functional_area;
-    if(result.seniority&&result.seniority!=='altro')patch.seniority=result.seniority;
+    if(result.sector&&validSectors.includes(result.sector))patch.sector=result.sector;
+    if(result.functional_area&&validAreas.includes(result.functional_area))patch.functional_area=result.functional_area;
+    if(result.seniority&&validSeniority.includes(result.seniority))patch.seniority=result.seniority;
     if(result.location)patch.location=result.location;
-    if(result.contract_type)patch.contract_type=result.contract_type;
+    if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
     await api(`job_listings?id=eq.${id}`,'PATCH',patch);
 
