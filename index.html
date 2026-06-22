@@ -1736,46 +1736,74 @@ JSON richiesto:
 
 
 async function analyzeOneListing(id, url, title, btn){
-  if(!url){toast('Nessun URL disponibile per questo annuncio','error');return;}
-  
+  if(!url){toast('Nessun URL disponibile','error');return;}
   const origText=btn.textContent;
   btn.textContent='⏳';
   btn.disabled=true;
-
   try{
-    // Call Vercel serverless API — no CORS issues
-    const response=await fetch('/api/analyze',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({url, title, company:''})
-    });
+    // Step 1: prova a leggere la pagina via proxy
+    let pageText='';
+    try{
+      const proxies=[
+        'https://corsproxy.io/?'+encodeURIComponent(url),
+        'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+      ];
+      for(const proxy of proxies){
+        try{
+          const r=await fetch(proxy,{signal:AbortSignal.timeout(8000)});
+          if(r.ok){
+            const html=await r.text();
+            const parser=new DOMParser();
+            const doc=parser.parseFromString(html,'text/html');
+            doc.querySelectorAll('script,style,nav,header,footer,aside').forEach(el=>el.remove());
+            const main=doc.querySelector('main,[class*="description"],[class*="job-desc"],[id*="description"],[class*="content"]')||doc.body;
+            const txt=(main?.textContent||'').replace(/\s+/g,' ').trim();
+            if(txt.length>200){pageText=txt.substring(0,4000);break;}
+          }
+        }catch(e){}
+      }
+    }catch(e){}
 
-    if(!response.ok){
-      const err=await response.json().catch(()=>({error:'Errore '+response.status}));
-      throw new Error(err.error||'Errore API '+response.status);
-    }
+    const prompt=pageText?
+`Sei un esperto HR nel settore Life Sciences italiano. Analizza questa pagina di annuncio.
+Titolo: ${title}
+TESTO: ${pageText}
+Rispondi SOLO con JSON:
+{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector":"altro","functional_area":"altro","seniority":"altro","location":null,"contract_type":null,"page_read":true}
+- ral_min/ral_max: interi euro annui, null se assenti
+- sector: Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|Nutraceutica|Retail Farmacia|CRO / Clinical Research|CDMO / CMO|altro
+- functional_area: Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro
+- seniority: Junior|Middle|Senior|Lead|Manager|Director|C-level|altro`
+:`Classifica questo annuncio Life Sciences dal titolo.
+Titolo: ${title}
+Rispondi SOLO con JSON:
+{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector":"altro","functional_area":"altro","seniority":"altro","location":null,"contract_type":null,"page_read":false}
+sector: Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|CRO / Clinical Research|CDMO / CMO|altro
+functional_area: Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro
+seniority: Junior|Middle|Senior|Lead|Manager|Director|C-level|altro`;
 
-    const result=await response.json();
+    const rawText=await callAI(prompt,600);
+    const clean=rawText.replace(/```json|```/g,'').trim();
+    const result=JSON.parse(clean);
 
-    // Build patch
     const patch={ai_analyzed:true};
     if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
     if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
-    if(result.job_description)patch.job_description=result.job_description.substring(0,4000);
-    if(result.sector)patch.sector=result.sector;
-    if(result.functional_area)patch.functional_area=result.functional_area;
-    if(result.seniority)patch.seniority=result.seniority;
+    if(result.job_description)patch.job_description=result.job_description;
+    if(result.sector&&result.sector!=='altro')patch.sector=result.sector;
+    if(result.functional_area&&result.functional_area!=='altro')patch.functional_area=result.functional_area;
+    if(result.seniority&&result.seniority!=='altro')patch.seniority=result.seniority;
     if(result.location)patch.location=result.location;
     if(result.contract_type)patch.contract_type=result.contract_type;
 
     await api(`job_listings?id=eq.${id}`,'PATCH',patch);
 
+    const pageInfo=result.page_read?'✅ Pagina letta':'⚠️ Solo titolo';
     const ralInfo=result.ral_min||result.ral_max?
       `RAL: €${result.ral_min?(result.ral_min/1000).toFixed(0)+'k':'?'} – €${result.ral_max?(result.ral_max/1000).toFixed(0)+'k':'?'}`:
-      result.salary_text?`Stipendio: ${result.salary_text}`:
-      result.page_accessible?'Pagina letta — RAL non indicata':'Pagina non accessibile';
+      result.salary_text||'RAL non indicata';
 
-    toast(`✅ ${title.substring(0,30)}... — ${ralInfo}`,'success');
+    toast(`${pageInfo} — ${ralInfo}`,'success');
     btn.textContent='🤖';
     btn.style.opacity='0.4';
     btn.title='Già analizzato';
@@ -1784,9 +1812,8 @@ async function analyzeOneListing(id, url, title, btn){
     if(ralCellEl&&(result.ral_min||result.ral_max)){
       ralCellEl.innerHTML=ralCell({id,ral_min:result.ral_min||null,ral_max:result.ral_max||null});
     }
-
   }catch(e){
-    toast('Errore analisi: '+e.message,'error');
+    toast('Errore: '+e.message,'error');
     btn.textContent=origText;
   }
   btn.disabled=false;
