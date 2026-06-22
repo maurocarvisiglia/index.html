@@ -2402,28 +2402,15 @@ let _selectedIds = new Set();
 /* ── NORMALIZZA TUTTI I RUOLI ── */
 async function normalizeAllRoles(){
   const btn=document.getElementById('btn-normalize');
-  btn.textContent='⏳ Caricamento tassonomia...';
-  btn.disabled=true;
 
-  try{
+  // CASO 1: annunci selezionati con checkbox — normalizza SOLO quelli
+  if(_selectedIds.size>0){
+    if(!confirm(`Normalizzo i ${_selectedIds.size} annunci selezionati?\nAssegna canonical_role e role_family dalla tassonomia.`)){return;}
+    btn.textContent='⏳ Normalizzazione...';
+    btn.disabled=true;
     await loadTaxonomy();
-    
-    // Carica SOLO annunci senza canonical_role — filtro server-side
-    const listings=await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&order=published_date.desc.nullslast&limit=200');
-    
-    if(!listings.length){
-      toast('Tutti gli annunci hanno già il ruolo normalizzato!');
-      btn.textContent='🏷 Normalizza ruoli';
-      btn.disabled=false;
-      return;
-    }
-
-    if(!confirm(`Trovati ${listings.length} annunci senza ruolo canonico.\nNormalizzo con la tassonomia + AI?`)){
-      btn.textContent='🏷 Normalizza ruoli';
-      btn.disabled=false;
-      return;
-    }
-
+    const ids=[..._selectedIds];
+    const listings=await api(`job_listings?select=id,job_title,canonical_role&id=in.(${ids.join(',')})`);
     let ok=0,failed=0;
     for(const listing of listings){
       try{
@@ -2435,12 +2422,52 @@ async function normalizeAllRoles(){
           await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
           ok++;
         }else{failed++;}
-        await new Promise(r=>setTimeout(r,300)); // rate limit
+        await new Promise(r=>setTimeout(r,300));
       }catch(e){failed++;}
     }
+    toast(`Normalizzati ${ok} ruoli${failed?`, ${failed} non trovati`:''}`, 'success');
+    _selectedIds=new Set();
+    loadListings();
+    refreshPendingBadges();
+    btn.textContent='🏷 Normalizza ruoli';
+    btn.disabled=false;
+    return;
+  }
 
+  // CASO 2: nessuna selezione — normalizza i senza canonical_role
+  btn.textContent='⏳ Caricamento...';
+  btn.disabled=true;
+  try{
+    await loadTaxonomy();
+    const listings=await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&order=published_date.desc.nullslast&limit=200');
+    if(!listings.length){
+      toast('✅ Tutti gli annunci hanno già il ruolo canonico!');
+      btn.textContent='🏷 Normalizza ruoli';
+      btn.disabled=false;
+      return;
+    }
+    if(!confirm(`Trovati ${listings.length} annunci senza ruolo canonico.\nNormalizzo con tassonomia + AI?`)){
+      btn.textContent='🏷 Normalizza ruoli';
+      btn.disabled=false;
+      return;
+    }
+    let ok=0,failed=0;
+    for(const listing of listings){
+      try{
+        btn.textContent=`⏳ ${ok+failed}/${listings.length}...`;
+        const result=await normalizeJobTitle(listing.job_title);
+        if(result.canonical_role){
+          const patch={canonical_role:result.canonical_role,role_family:result.role_family};
+          if(result.functional_area)patch.functional_area=result.functional_area;
+          await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
+          ok++;
+        }else{failed++;}
+        await new Promise(r=>setTimeout(r,300));
+      }catch(e){failed++;}
+    }
     toast(`Normalizzati ${ok} ruoli${failed?`, ${failed} non trovati`:''}`, 'success');
     loadListings();
+    refreshPendingBadges();
   }catch(e){
     toast('Errore: '+e.message,'error');
   }
