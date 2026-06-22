@@ -1635,73 +1635,111 @@ async function analyzeOneListing(id, url, title, btn){
   btn.disabled=true;
 
   try{
-    // Call Claude API with web search to read the job page
-    const prompt=`Vai a leggere questo annuncio di lavoro: ${url}
+    // Step 1: fetch page content via CORS proxy
+    let pageText='';
+    try{
+      const proxyUrl='https://corsproxy.io/?'+encodeURIComponent(url);
+      const pageResp=await fetch(proxyUrl,{signal:AbortSignal.timeout(10000)});
+      if(pageResp.ok){
+        const html=await pageResp.text();
+        // Extract text content from HTML
+        const parser=new DOMParser();
+        const doc=parser.parseFromString(html,'text/html');
+        // Remove scripts and styles
+        doc.querySelectorAll('script,style,nav,header,footer').forEach(el=>el.remove());
+        // Get main content
+        const main=doc.querySelector('main,[class*="description"],[class*="job-desc"],[id*="description"],.details') || doc.body;
+        pageText=(main?.textContent||'').replace(/\s+/g,' ').trim().substring(0,3000);
+      }
+    }catch(e){
+      pageText=''; // proxy failed, continue with URL only
+    }
 
-Estrai le seguenti informazioni e rispondi SOLO con un JSON valido:
+    // Step 2: Send to Claude API (no web search — standard messages)
+    const prompt=pageText?
+      `Analizza questo annuncio di lavoro e rispondi SOLO con un JSON valido.
+
+URL: ${url}
+CONTENUTO PAGINA:
+${pageText}
+
+Estrai:
 {
   "ral_min": <numero intero in euro annui, null se non trovato>,
   "ral_max": <numero intero in euro annui, null se non trovato>,
-  "salary_text": "<testo originale della RAL/stipendio se presente, null altrimenti>",
-  "job_description": "<descrizione completa dell'annuncio, max 3000 caratteri>",
-  "sector": "<uno tra: Farmaceutico, Dispositivi Medici, Biotech, Cosmetica, Nutraceutica, Retail Farmacia, CRO / Clinical Research, CDMO / CMO, altro>",
-  "functional_area": "<uno tra: Sales, Marketing, Regulatory Affairs, Medical Affairs, MSL, Quality Assurance, Quality Control, Produzione, Engineering, Clinical Operations, Market Access, Pharmacovigilance, R&D, HR, Finance, Supply Chain, Business Development, IT, Operations, altro>",
-  "seniority": "<uno tra: Junior, Middle, Senior, Lead, Manager, Director, C-level, altro>",
-  "location": "<città e regione se presente>",
-  "contract_type": "<TI, TD, Freelance, Stage, altro>"
+  "salary_text": "<testo originale stipendio se presente, null altrimenti>",
+  "job_description": "<descrizione ruolo, max 2000 caratteri>",
+  "sector": "<Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|Nutraceutica|Retail Farmacia|CRO / Clinical Research|CDMO / CMO|altro>",
+  "functional_area": "<Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro>",
+  "seniority": "<Junior|Middle|Senior|Lead|Manager|Director|C-level|altro>",
+  "location": "<città>",
+  "contract_type": "<TI|TD|Freelance|Stage|altro>"
 }
+Rispondi SOLO con il JSON.`
+    :
+      `Analizza questo annuncio di lavoro dal titolo e URL e rispondi SOLO con un JSON valido.
+Titolo: ${title}
+URL: ${url}
 
-Se la pagina richiede login o non è accessibile, restituisci comunque il JSON con i campi null e job_description: "Pagina non accessibile".
-Rispondi SOLO con il JSON, nessun altro testo.`;
+{
+  "ral_min": null,
+  "ral_max": null,
+  "salary_text": null,
+  "job_description": null,
+  "sector": "<Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|Nutraceutica|Retail Farmacia|CRO / Clinical Research|CDMO / CMO|altro>",
+  "functional_area": "<Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro>",
+  "seniority": "<Junior|Middle|Senior|Lead|Manager|Director|C-level|altro>",
+  "location": null,
+  "contract_type": null
+}
+Rispondi SOLO con il JSON.`;
 
     const response=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         model:'claude-haiku-4-5-20251001',
-        max_tokens:1500,
-        tools:[{type:'web_search_20250305',name:'web_search'}],
+        max_tokens:1000,
         messages:[{role:'user',content:prompt}]
       })
     });
 
-    if(!response.ok)throw new Error('API error '+response.status);
+    if(!response.ok)throw new Error('Claude API error '+response.status);
     const data=await response.json();
     
-    // Extract text from response (may contain tool_use blocks)
     const textBlock=data.content?.find(b=>b.type==='text');
-    if(!textBlock)throw new Error('Nessuna risposta testuale');
+    if(!textBlock)throw new Error('Nessuna risposta');
     
     const clean=textBlock.text.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
     // Build patch
     const patch={ai_analyzed:true};
-    if(result.ral_min)patch.ral_min=result.ral_min;
-    if(result.ral_max)patch.ral_max=result.ral_max;
-    if(result.job_description&&result.job_description!=='Pagina non accessibile')patch.job_description=result.job_description.substring(0,4000);
-    if(result.sector&&result.sector!=='altro')patch.sector=result.sector;
-    if(result.functional_area&&result.functional_area!=='altro')patch.functional_area=result.functional_area;
-    if(result.seniority&&result.seniority!=='altro')patch.seniority=result.seniority;
+    if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
+    if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
+    if(result.job_description)patch.job_description=result.job_description.substring(0,4000);
+    if(result.sector)patch.sector=result.sector;
+    if(result.functional_area)patch.functional_area=result.functional_area;
+    if(result.seniority)patch.seniority=result.seniority;
     if(result.location)patch.location=result.location;
     if(result.contract_type)patch.contract_type=result.contract_type;
 
     await api(`job_listings?id=eq.${id}`,'PATCH',patch);
 
-    // Show result to user
     const ralInfo=result.ral_min||result.ral_max?
       `RAL: €${result.ral_min?(result.ral_min/1000).toFixed(0)+'k':'?'} – €${result.ral_max?(result.ral_max/1000).toFixed(0)+'k':'?'}`:
-      result.salary_text?`Stipendio: ${result.salary_text}`:'RAL non trovata';
+      result.salary_text?`Stipendio: ${result.salary_text}`:
+      pageText?'Pagina letta — RAL non indicata':'Pagina non accessibile';
     
     toast(`✅ ${title.substring(0,30)}... — ${ralInfo}`,'success');
     btn.textContent='🤖';
     btn.style.opacity='0.4';
     btn.title='Già analizzato';
 
-    // Update RAL cell inline
-    const ralCell=document.getElementById('ral-cell-'+id);
-    if(ralCell&&(result.ral_min||result.ral_max)){
-      ralCell.innerHTML=`<span class="ral-range ral-clickable" onclick="editRal('${id}',${result.ral_min||0},${result.ral_max||0})">€${result.ral_min?(result.ral_min/1000).toFixed(0)+'k':'?'} – €${result.ral_max?(result.ral_max/1000).toFixed(0)+'k':'?'} ✎</span>`;
+    // Update RAL cell inline if found
+    const ralCellEl=document.getElementById('ral-cell-'+id);
+    if(ralCellEl&&(result.ral_min||result.ral_max)){
+      ralCellEl.innerHTML=ralCell({id,ral_min:result.ral_min||null,ral_max:result.ral_max||null});
     }
 
   }catch(e){
