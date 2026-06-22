@@ -218,9 +218,9 @@ a.job-link:hover{text-decoration:underline;}
       <div class="filter-group"><div class="filter-label">Tipo entità</div>
         <select id="f-entity" onchange="loadListings()"><option value="">Tutti</option><option value="life_sciences">Life Sciences</option><option value="headhunter">Head Hunter</option></select></div>
       <div class="filter-group"><div class="filter-label">Area funzionale</div>
-        <select id="f-area" onchange="loadListings()"><option value="">Tutte</option><option>Regulatory</option><option>Medical</option><option>Sales</option><option>Marketing</option><option>R&D</option><option>Quality</option><option>HR</option><option>Finance</option><option>Operations</option><option>Market Access</option><option>Clinical</option><option>altro</option></select></div>
+        <select id="f-area" onchange="loadListings()"><option value="">Tutte</option><option>Sales</option><option>Marketing</option><option>Regulatory Affairs</option><option>Medical Affairs</option><option>MSL</option><option>Quality Assurance</option><option>Quality Control</option><option>Produzione</option><option>Engineering</option><option>Clinical Operations</option><option>Market Access</option><option>Pharmacovigilance</option><option>R&D</option><option>HR</option><option>Finance</option><option>Supply Chain</option><option>Business Development</option><option>IT</option><option>Operations</option><option>altro</option></select></div>
       <div class="filter-group"><div class="filter-label">Seniority</div>
-        <select id="f-seniority" onchange="loadListings()"><option value="">Tutte</option><option>Junior</option><option>Mid</option><option>Senior</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
+        <select id="f-seniority" onchange="loadListings()"><option value="">Tutte</option><option>Junior</option><option>Middle</option><option>Senior</option><option>Lead</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
       <div class="filter-group"><div class="filter-label">Fonte</div>
         <select id="f-source" onchange="loadListings()"><option value="">Tutte</option><option>LinkedIn</option><option>Indeed</option><option>Glassdoor</option><option>Sito aziendale</option><option>altro</option></select></div>
       <div class="filter-group"><div class="filter-label">Settore</div>
@@ -323,9 +323,9 @@ a.job-link:hover{text-decoration:underline;}
       <div class="form-group full"><div class="form-label">Titolo ruolo *</div><input type="text" id="l-title" placeholder="es. Medical Science Liaison"></div>
       <div class="form-group"><div class="form-label">Azienda *</div><input type="text" id="l-company" placeholder="Nome azienda"></div>
       <div class="form-group"><div class="form-label">Tipo entità *</div><select id="l-entity"><option value="life_sciences">Life Sciences</option><option value="headhunter">Head Hunter</option></select></div>
-      <div class="form-group"><div class="form-label">Area funzionale</div><select id="l-area"><option value="">— seleziona —</option><option>Regulatory</option><option>Medical</option><option>Sales</option><option>Marketing</option><option>R&D</option><option>Quality</option><option>HR</option><option>Finance</option><option>Operations</option><option>Market Access</option><option>Clinical</option><option>altro</option></select></div>
+      <div class="form-group"><div class="form-label">Area funzionale</div><select id="l-area"><option value="">— seleziona —</option><option>Sales</option><option>Marketing</option><option>Regulatory Affairs</option><option>Medical Affairs</option><option>MSL</option><option>Quality Assurance</option><option>Quality Control</option><option>Produzione</option><option>Engineering</option><option>Clinical Operations</option><option>Market Access</option><option>Pharmacovigilance</option><option>R&D</option><option>HR</option><option>Finance</option><option>Supply Chain</option><option>Business Development</option><option>IT</option><option>Operations</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">Settore</div><select id="l-sector"><option value="">— seleziona —</option><option>Farmaceutico</option><option>Dispositivi Medici</option><option>Biotech</option><option>Cosmetica</option><option>Nutraceutica</option><option>Retail Farmacia</option><option>CRO / Clinical Research</option><option>CDMO / CMO</option><option>altro</option></select></div>
-      <div class="form-group"><div class="form-label">Seniority</div><select id="l-seniority"><option value="">— seleziona —</option><option>Junior</option><option>Mid</option><option>Senior</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
+      <div class="form-group"><div class="form-label">Seniority</div><select id="l-seniority"><option value="">— seleziona —</option><option>Junior</option><option>Middle</option><option>Senior</option><option>Lead</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">RAL minima (€)</div><input type="number" id="l-ral-min" placeholder="es. 35000"></div>
       <div class="form-group"><div class="form-label">RAL massima (€)</div><input type="number" id="l-ral-max" placeholder="es. 45000"></div>
       <div class="form-group"><div class="form-label">Tipo contratto</div><select id="l-contract"><option value="">— seleziona —</option><option>TI</option><option>TD</option><option>Freelance</option><option>Stage</option><option>altro</option></select></div>
@@ -1000,8 +1000,8 @@ Analizza questo annuncio di lavoro e restituisci SOLO un JSON valido con questi 
 - sector: uno tra ["Farmaceutico","Dispositivi Medici","Biotech","Cosmetica","Nutraceutica","Retail Farmacia","CRO / Clinical Research","CDMO / CMO","altro"]
 - ral_min: numero intero in euro annui (null se non indicato)
 - ral_max: numero intero in euro annui (null se non indicato)
-- functional_area: uno tra ["Regulatory","Medical","Sales","Marketing","R&D","Quality","HR","Finance","Operations","Market Access","Clinical","altro"]
-- seniority: uno tra ["Junior","Mid","Senior","Manager","Director","C-level","altro"]
+- functional_area: uno tra ["Sales","Marketing","Regulatory Affairs","Medical Affairs","MSL","Quality Assurance","Quality Control","Produzione","Engineering","Clinical Operations","Market Access","Pharmacovigilance","R&D","HR","Finance","Supply Chain","Business Development","IT","Operations","altro"]
+- seniority: uno tra ["Junior","Middle","Senior","Lead","Manager","Director","C-level","altro"]
 
 Titolo: ${listing.job_title}
 Azienda: ${listing.company_name}
@@ -1870,7 +1870,7 @@ async function searchTheirStack(){
       // Location
       const loc=(job.long_location||job.location||'').replace(/, ?Italy$/i,'').replace(/, ?IT$/i,'').trim();
 
-      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l==='junior')return'Junior';if(l==='mid_level')return'Mid';if(l==='senior'||l==='staff')return'Senior';if(l==='c_level')return'C-level';return'Mid';};
+      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l==='junior'||l.includes('entry')||l.includes('intern'))return'Junior';if(l==='mid_level'||l==='mid')return'Middle';if(l==='staff'||l==='lead')return'Lead';if(l==='senior')return'Senior';if(l.includes('manager'))return'Manager';if(l==='director'||l.includes('director'))return'Director';if(l==='c_level'||l.includes('executive')||l.includes('chief'))return'C-level';return'Middle';};
       const mapArea=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('regulatory'))return'Regulatory';if(l.includes('medical')||l.includes('msl'))return'Medical';if(l.includes('sales')||l.includes('account'))return'Sales';if(l.includes('marketing'))return'Marketing';if(l.includes('market access'))return'Market Access';if(l.includes('clinical'))return'Clinical';if(l.includes('quality'))return'Quality';if(l.includes('research')||l.includes('scientist'))return'R&D';if(l.includes('hr')||l.includes('talent'))return'HR';return'altro';};
       const mapSector=v=>{if(!v)return'Farmaceutico';const l=v.toLowerCase();if(l.includes('biotech'))return'Biotech';if(l.includes('medical equipment')||l.includes('medical device'))return'Dispositivi Medici';if(l.includes('cosmetic'))return'Cosmetica';if(l.includes('cro')||l.includes('clinical research'))return'CRO / Clinical Research';if(l.includes('nutraceut'))return'Nutraceutica';return'Farmaceutico';};
 
