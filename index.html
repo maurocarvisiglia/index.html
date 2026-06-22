@@ -210,6 +210,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
+        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli</button>
         <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
@@ -570,6 +571,73 @@ async function callAI(prompt, maxTokens=800){
   return data.choices[0].message.content.trim();
 }
 
+/* ── TAXONOMY ENGINE ── */
+let _taxonomyCache=null;
+let _aliasCache=null;
+
+async function loadTaxonomy(){
+  if(_taxonomyCache&&_aliasCache)return;
+  const[taxonomy,aliases]=await Promise.all([
+    api('job_taxonomy?select=*'),
+    api('job_aliases?select=*')
+  ]);
+  _taxonomyCache=taxonomy;
+  _aliasCache={};
+  aliases.forEach(a=>{_aliasCache[a.alias.toLowerCase()]=a;});
+}
+
+async function normalizeJobTitle(jobTitle){
+  await loadTaxonomy();
+  
+  const title=jobTitle.trim();
+  const titleLower=title.toLowerCase();
+  
+  // Step 1: cerca match esatto negli alias
+  if(_aliasCache[titleLower]){
+    const a=_aliasCache[titleLower];
+    return{canonical_role:a.canonical_role,role_family:a.role_family,functional_area:a.functional_area};
+  }
+  
+  // Step 2: cerca match parziale negli alias
+  for(const[alias,data] of Object.entries(_aliasCache)){
+    if(titleLower.includes(alias)||alias.includes(titleLower.split(' ').slice(0,3).join(' '))){
+      return{canonical_role:data.canonical_role,role_family:data.role_family,functional_area:data.functional_area};
+    }
+  }
+  
+  // Step 3: usa Groq per normalizzare
+  const canonicalRoles=[..._taxonomyCache.map(t=>t.canonical_role)];
+  const prompt=`Sei un esperto di Job Taxonomy nel settore Life Sciences italiano.
+Dato questo titolo di annuncio: "${title}"
+Trova il ruolo canonico più adatto tra questi:
+${canonicalRoles.slice(0,80).join(', ')}
+
+Rispondi SOLO con JSON:
+{"canonical_role":"<ruolo esatto dalla lista>","role_family":"<famiglia>","functional_area":"<area>"}
+
+Se nessuno è adatto rispondi: {"canonical_role":null,"role_family":null,"functional_area":null}`;
+
+  try{
+    const raw=await callAI(prompt,200);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const result=JSON.parse(clean);
+    
+    // Salva il nuovo alias per uso futuro
+    if(result.canonical_role){
+      try{
+        await api('job_aliases','POST',{
+          alias:title,
+          canonical_role:result.canonical_role,
+          role_family:result.role_family,
+          functional_area:result.functional_area
+        });
+        _aliasCache[titleLower]={canonical_role:result.canonical_role,role_family:result.role_family,functional_area:result.functional_area};
+      }catch(e){} // ignore duplicate alias errors
+    }
+    return result;
+  }catch(e){return{canonical_role:null,role_family:null,functional_area:null};}
+}
+
 const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
 
 let currentCompany=null; // company object shown in detail view
@@ -619,9 +687,13 @@ async function analyzeRuolo(){
 
     let data=await api(q);
 
-    // Filter by search text
+    // Filter by search text — cerca in job_title E canonical_role
     if(search){
-      data=data.filter(l=>(l.job_title||'').toLowerCase().includes(search));
+      data=data.filter(l=>
+        (l.job_title||'').toLowerCase().includes(search)||
+        (l.canonical_role||'').toLowerCase().includes(search)||
+        (l.role_family||'').toLowerCase().includes(search)
+      );
     }
 
     document.getElementById('ruolo-count').textContent=`${data.length} annunci`;
@@ -688,9 +760,10 @@ async function analyzeRuolo(){
     }
 
     document.getElementById('ruolo-table').innerHTML=`<table><thead><tr>
-      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Sede</th><th>Data</th>
+      <th>Ruolo originale</th><th>Ruolo canonico</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Sede</th><th>Data</th>
     </tr></thead><tbody>${data.slice(0,100).map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
+      <td style="font-size:11px;color:var(--accent2)">${l.canonical_role||'—'}</td>
       <td style="font-size:12px">${l.company_name||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector||'—'}</td>
       <td>${l.seniority||'—'}</td>
@@ -1489,6 +1562,55 @@ let _listingsData = [];
 let _sortField = 'created_at';
 let _sortDir = 'desc';
 let _selectedIds = new Set();
+
+/* ── NORMALIZZA TUTTI I RUOLI ── */
+async function normalizeAllRoles(){
+  const btn=document.getElementById('btn-normalize');
+  btn.textContent='⏳ Caricamento tassonomia...';
+  btn.disabled=true;
+
+  try{
+    await loadTaxonomy();
+    
+    // Load listings without canonical_role
+    const listings=await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&limit=100');
+    
+    if(!listings.length){
+      toast('Tutti gli annunci hanno già il ruolo normalizzato!');
+      btn.textContent='🏷 Normalizza ruoli';
+      btn.disabled=false;
+      return;
+    }
+
+    if(!confirm(`Trovati ${listings.length} annunci senza ruolo canonico.\nNormalizzo con la tassonomia + AI?`)){
+      btn.textContent='🏷 Normalizza ruoli';
+      btn.disabled=false;
+      return;
+    }
+
+    let ok=0,failed=0;
+    for(const listing of listings){
+      try{
+        btn.textContent=`⏳ ${ok+failed}/${listings.length}...`;
+        const result=await normalizeJobTitle(listing.job_title);
+        if(result.canonical_role){
+          const patch={canonical_role:result.canonical_role,role_family:result.role_family};
+          if(result.functional_area)patch.functional_area=result.functional_area;
+          await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
+          ok++;
+        }else{failed++;}
+        await new Promise(r=>setTimeout(r,300)); // rate limit
+      }catch(e){failed++;}
+    }
+
+    toast(`Normalizzati ${ok} ruoli${failed?`, ${failed} non trovati`:''}`, 'success');
+    loadListings();
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+  }
+  btn.textContent='🏷 Normalizza ruoli';
+  btn.disabled=false;
+}
 
 async function loadListings(){
   const entity=document.getElementById('f-entity').value;
