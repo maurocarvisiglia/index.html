@@ -2305,13 +2305,28 @@ Titolo: ${title}
 DESCRIZIONE COMPLETA:
 ${text.substring(0,4000)}
 
-REGOLE ESTRAZIONE RAL:
-- Cerca: "RAL", "retribuzione annua lorda", "stipendio", "salary", "compensation", "€", "k€", "KEUR"
-- Converti sempre in euro interi annui (es. "50k" → 50000, "€4.500/mese" → 54000)
-- Se range: "40-50k" → ral_min:40000, ral_max:50000
-- Se fisso: "45k" → ral_min:45000, ral_max:45000
-- Se mensile: moltiplica x12 (lordo) o x13/14 se indicato
-- salary_text: copia il testo originale esatto dove appare lo stipendio
+REGOLE ESTRAZIONE RAL — LEGGI CON ATTENZIONE:
+Cerca nel testo TUTTE queste pattern e convertile in euro annui lordi:
+
+PATTERN DA CERCARE:
+1. Parole chiave: "RAL", "R.A.L.", "retribuzione annua lorda", "stipendio", "salary", "compensation", "package", "remunerazione", "inquadramento economico", "offriamo", "range retributivo", "fascia retributiva"
+2. Numeri a 5-6 cifre: qualsiasi numero tra 20000 e 200000 vicino a parole salariali
+3. Formato K: "40K", "40k", "40.000", "40,000", "€40k", "40K€", "KEUR", "40-50K", "tra 40 e 50K"
+4. Formato mensile: "€3.500/mese", "3500 mensili", "3.500 al mese" → moltiplica x13 (RAL)
+5. Range espliciti: "40.000 - 50.000", "tra 45K e 55K", "dai 40K ai 60K", "40-50k€"
+6. Con benefit: "RAL 50K + MBO", "45K + auto", "50.000 + variabile" → prendi solo la parte fissa
+
+CONVERSIONI:
+- "50K" o "50k" → 50000
+- "€3.500 mensili" → 3500 x 13 = 45500
+- "40-50K" → ral_min: 40000, ral_max: 50000  
+- "circa 45K" → ral_min: 43000, ral_max: 47000
+- "fino a 60K" → ral_min: null, ral_max: 60000
+- "da 40K" → ral_min: 40000, ral_max: null
+- "50.000 euro" → 50000
+
+SE NON TROVI RAL: ral_min e ral_max devono essere null (non inventare valori)
+salary_text: copia ESATTAMENTE il testo originale dove hai trovato il dato salariale
 
 REGOLE SENIORITY:
 - Cerca: "anni di esperienza", "years of experience", livello indicato nel titolo
@@ -2423,38 +2438,47 @@ async function analyzeOneListing(id, url, title, btn){
     }catch(e){}
 
     const prompt=pageText?
-`Sei un esperto HR nel settore Life Sciences italiano. Analizza questa pagina di annuncio.
-Titolo: ${title}
-TESTO: ${pageText}
-Rispondi SOLO con JSON:
-{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector":"altro","functional_area":"altro","seniority":"altro","location":null,"contract_type":null,"page_read":true}
-- ral_min/ral_max: interi euro annui, null se assenti
-- sector: Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|Nutraceutica|Retail Farmacia|CRO / Clinical Research|CDMO / CMO|altro
-- functional_area: Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro
-- seniority: Junior|Middle|Senior|Lead|Manager|Director|C-level|altro`
-:`Classifica questo annuncio Life Sciences dal titolo.
-Titolo: ${title}
-Rispondi SOLO con JSON:
-{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector":"altro","functional_area":"altro","seniority":"altro","location":null,"contract_type":null,"page_read":false}
-sector: Farmaceutico|Dispositivi Medici|Biotech|Cosmetica|CRO / Clinical Research|CDMO / CMO|altro
-functional_area: Sales|Marketing|Regulatory Affairs|Medical Affairs|MSL|Quality Assurance|Quality Control|Produzione|Engineering|Clinical Operations|Market Access|Pharmacovigilance|R&D|HR|Finance|Supply Chain|Business Development|IT|Operations|altro
-seniority: Junior|Middle|Senior|Lead|Manager|Director|C-level|altro`;
+`Sei un esperto HR nel settore Life Sciences italiano.
+Titolo annuncio: ${title}
 
-    const rawText=await callAI(prompt,600);
+TESTO PAGINA:
+${pageText}
+
+OBIETTIVO PRINCIPALE: trovare il range retributivo (RAL).
+
+CERCA NEL TESTO QUESTI PATTERN RAL:
+- Parole: "RAL", "R.A.L.", "retribuzione", "stipendio", "salary", "compensation", "remunerazione", "offriamo", "range retributivo", "fascia"
+- Numeri 5-6 cifre: qualsiasi numero tra 20000-200000 vicino a contesto salariale
+- Formato K: "40K", "40k", "40.000€", "40-50K", "tra 40 e 50k", "KEUR", "k€"
+- Mensile: "€3.500/mese" → moltiplica x13
+- Range: "40.000-50.000", "dai 40K ai 60K", "40-50k€"
+- Con benefit: "50K + MBO", "45K + auto" → solo parte fissa
+
+CONVERSIONI: "50K"→50000, "3500 mensili"→45500, "40-50K"→min:40000 max:50000
+
+Rispondi SOLO con questo JSON:
+{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto sullo stipendio, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|manager|senior_manager|head_of|director|vp|c_level>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
+:
+`Classifica questo annuncio Life Sciences solo dal titolo.
+Titolo: ${title}
+Rispondi SOLO con JSON:
+{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector_v2":"altro","functional_area_v2":"altro","seniority_v2":"specialist","location":null,"contract_type":null,"page_read":false}`;
+
+    const rawText=await callAI(prompt,700);
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
-    const validSectors=['Farmaceutico','Dispositivi Medici','Biotech','Cosmetica','Nutraceutica','Retail Farmacia','CRO / Clinical Research','CDMO / CMO','altro'];
-    const validAreas=['Sales','Marketing','Regulatory Affairs','Medical Affairs','MSL','Quality Assurance','Quality Control','Produzione','Engineering','Clinical Operations','Market Access','Pharmacovigilance','R&D','HR','Finance','Supply Chain','Business Development','IT','Operations','altro'];
-    const validSeniority=['Junior','Middle','Senior','Lead','Manager','Director','C-level','altro'];
+    const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
+    const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
+    const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
 
     const patch={ai_analyzed:true};
     if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
     if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
     if(result.job_description)patch.job_description=result.job_description;
-    if(result.sector&&validSectors.includes(result.sector))patch.sector=result.sector;
-    if(result.functional_area&&validAreas.includes(result.functional_area))patch.functional_area=result.functional_area;
-    if(result.seniority&&validSeniority.includes(result.seniority))patch.seniority=result.seniority;
+    if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
+    if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
+    if(result.seniority_v2&&_vsen2.includes(result.seniority_v2))patch.seniority_v2=result.seniority_v2;
     if(result.location)patch.location=result.location;
     if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
