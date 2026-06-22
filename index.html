@@ -1814,8 +1814,22 @@ async function analyzeListings(){
   btn.textContent='⏳ Verifica...';
   btn.disabled=true;
 
-  // Carica SOLO annunci senza sector_v2 — filtro server-side
-  const needsAnalysis=await api('job_listings?select=id,job_title,company_name,location,job_description&sector_v2=is.null&order=published_date.desc.nullslast&limit=1000');
+  // Carica annunci da classificare:
+  // 1. Non ancora classificati (sector_v2 IS NULL)
+  // 2. Classificati male (functional_area = 'altro' o functional_area_v2 = NULL)
+  // Non tocca la RAL — mai
+  const [unclassified, misclassified] = await Promise.all([
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
+  ]);
+  
+  // Deduplica per ID
+  const seen = new Set();
+  const needsAnalysis = [...unclassified, ...misclassified].filter(l => {
+    if(seen.has(l.id)) return false;
+    seen.add(l.id);
+    return true;
+  });
   
   if(!needsAnalysis.length){
     toast('✅ Tutti gli annunci sono già classificati con schema v2!');
@@ -1944,18 +1958,23 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
   "seniority_v2": "<valore>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<valore>",
-  "company_type": "<valore>"
+  "company_type": "<valore>",
+  "location": "<città italiana estratta dal titolo o descrizione, null se non trovata>",
+  "canonical_role": "<ruolo canonico es: Informatore Scientifico del Farmaco, Medical Science Liaison, Key Account Manager, Medical Advisor, ecc>"
 }`;
 
-      const text=await callAI(prompt,600);
+      const text=await callAI(prompt,700);
       const clean=text.replace(/```json|```/g,'').trim();
       const result=JSON.parse(clean);
 
+      // Sovrascrive SEMPRE tutti i campi classificati — tranne RAL (mai sovrascrivere)
       const patch={
         ai_analyzed:true,
         classified_at:new Date().toISOString(),
         classification_source:'groq_v2'
       };
+
+      // Campi v2 — sovrascrive sempre
       if(result.sector_v2)patch.sector_v2=result.sector_v2;
       if(result.functional_area_v2)patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
@@ -1964,11 +1983,45 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
       if(result.company_type)patch.company_type=result.company_type;
 
-      // Also update old fields for backward compatibility
-      if(result.sector_v2&&!listing.sector){
-        const sectorMap={pharma_rx:'Farmaceutico',biotech:'Biotech',medical_devices:'Dispositivi Medici',cro:'CRO / Clinical Research',cdmo:'CDMO / CMO',cosmetics:'Cosmetica',nutraceutical:'Nutraceutica',consumer_health:'Cosmetica',otc:'Farmaceutico'};
-        if(sectorMap[result.sector_v2])patch.sector=sectorMap[result.sector_v2];
-      }
+      // Location — sovrascrive se trovata nel titolo/descrizione
+      if(result.location)patch.location=result.location;
+
+      // Canonical role — sovrascrive sempre
+      if(result.canonical_role)patch.canonical_role=result.canonical_role;
+
+      // Campi legacy — sovrascrive sempre con mapping corretto
+      const sectorMap={
+        pharma_rx:'Farmaceutico',biotech:'Biotech',medical_devices:'Dispositivi Medici',
+        cro:'CRO / Clinical Research',cdmo:'CDMO / CMO',cosmetics:'Cosmetica',
+        nutraceutical:'Nutraceutica',consumer_health:'Consumer Health',otc:'Farmaceutico',
+        diagnostics:'Dispositivi Medici',veterinary:'altro',digital_health:'altro',
+        healthcare_services:'altro'
+      };
+      if(result.sector_v2&&sectorMap[result.sector_v2])patch.sector=sectorMap[result.sector_v2];
+
+      const areaMap={
+        medical_affairs:'Medical Affairs',commercial:'Sales',marketing:'Marketing',
+        market_access:'Market Access',regulatory_affairs:'Regulatory Affairs',
+        quality:'Quality Assurance',clinical_operations:'Clinical Operations',
+        drug_safety:'Pharmacovigilance',rd:'R&D',manufacturing:'Produzione',
+        supply_chain:'Supply Chain',finance:'Finance',hr:'HR',
+        it:'IT',business_development:'Business Development',general_management:'altro'
+      };
+      if(result.functional_area_v2&&areaMap[result.functional_area_v2])patch.functional_area=areaMap[result.functional_area_v2];
+
+      const senMap={
+        internship:'Junior',entry_level:'Junior',associate:'Junior',
+        specialist:'Middle',senior_specialist:'Senior',expert:'Senior',
+        principal:'Senior',lead:'Lead',manager:'Manager',
+        senior_manager:'Manager',head_of:'Manager',director:'Director',
+        senior_director:'Director',vp:'Director',general_manager:'Director',
+        country_manager:'Director',c_level:'C-level'
+      };
+      if(result.seniority_v2&&senMap[result.seniority_v2])patch.seniority=senMap[result.seniority_v2];
+
+      // RAL — aggiunge SOLO se mancante, mai sovrascrive
+      if(!listing.ral_min&&result.ral_min)patch.ral_min=parseInt(result.ral_min);
+      if(!listing.ral_max&&result.ral_max)patch.ral_max=parseInt(result.ral_max);
 
       await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
       analyzed++;
