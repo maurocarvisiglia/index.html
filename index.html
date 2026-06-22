@@ -293,7 +293,7 @@ a.job-link:hover{text-decoration:underline;}
     </div>
   </div>
 
-  <!-- COMPANY DETAIL -->
+  <!-- COMPANY DETAIL v2 -->
   <div class="view" id="view-company-detail">
     <button class="back-btn" onclick="backToCompanies()">← Torna alle aziende</button>
 
@@ -305,6 +305,7 @@ a.job-link:hover{text-decoration:underline;}
           <div class="company-hero-meta">
             <span class="badge" id="cd-type-badge">—</span>
             <span id="cd-status-badge"></span>
+            <span id="cd-company-type" style="font-size:11px;color:var(--text2);margin-left:8px;"></span>
           </div>
           <div class="company-hero-links" id="cd-links"></div>
         </div>
@@ -314,15 +315,47 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
-    <!-- KPI -->
-    <div class="company-kpi-grid" style="grid-template-columns:repeat(7,1fr)">
-      <div class="kpi-card"><div class="kpi-label">Annunci totali</div><div class="kpi-value" id="cd-kpi-total">—</div><div class="kpi-sub">pubblicati</div></div>
-      <div class="kpi-card"><div class="kpi-label">Con RAL indicata</div><div class="kpi-value" id="cd-kpi-ral">—</div><div class="kpi-sub">annunci con range €</div></div>
-      <div class="kpi-card"><div class="kpi-label">RAL media</div><div class="kpi-value" id="cd-kpi-ral-avg">—</div><div class="kpi-sub">media degli annunci</div></div>
-      <div class="kpi-card"><div class="kpi-label">Dipendenti</div><div class="kpi-value" id="cd-kpi-employees">—</div><div class="kpi-sub">dimensione azienda</div></div>
+    <!-- KPI row 1: dati azienda -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Profilo Azienda</div>
+    <div class="company-kpi-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:24px;">
+      <div class="kpi-card"><div class="kpi-label">Dipendenti</div><div class="kpi-value" id="cd-kpi-employees">—</div><div class="kpi-sub">dimensione</div></div>
       <div class="kpi-card"><div class="kpi-label">Fatturato</div><div class="kpi-value" id="cd-kpi-revenue">—</div><div class="kpi-sub">USD</div></div>
-      <div class="kpi-card"><div class="kpi-label">Hiring Manager</div><div class="kpi-value" id="cd-kpi-hm" style="font-size:14px;">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
-      <div class="kpi-card"><div class="kpi-label">Primo annuncio</div><div class="kpi-value" id="cd-kpi-first">—</div><div class="kpi-sub">data rilevazione</div></div>
+      <div class="kpi-card"><div class="kpi-label">Settore</div><div class="kpi-value" id="cd-kpi-sector" style="font-size:13px;">—</div><div class="kpi-sub">principale</div></div>
+      <div class="kpi-card"><div class="kpi-label">Hiring Manager</div><div class="kpi-value" id="cd-kpi-hm" style="font-size:13px;">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Sede HQ</div><div class="kpi-value" id="cd-kpi-hq" style="font-size:13px;">—</div><div class="kpi-sub">headquarter</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ultimo annuncio</div><div class="kpi-value" id="cd-kpi-last">—</div><div class="kpi-sub">pubblicato</div></div>
+    </div>
+
+    <!-- KPI row 2: hiring intelligence -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Hiring Intelligence</div>
+    <div class="company-kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:24px;">
+      <div class="kpi-card"><div class="kpi-label">Annunci totali</div><div class="kpi-value" id="cd-kpi-total">—</div><div class="kpi-sub">nel database</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ultimi 30gg</div><div class="kpi-value" id="cd-kpi-30">—</div><div class="kpi-sub">nuovi annunci</div></div>
+      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" id="cd-kpi-ral">—</div><div class="kpi-sub">annunci con €</div></div>
+      <div class="kpi-card"><div class="kpi-label">RAL media</div><div class="kpi-value" id="cd-kpi-ral-avg">—</div><div class="kpi-sub">di questa azienda</div></div>
+      <div class="kpi-card"><div class="kpi-label">Primo annuncio</div><div class="kpi-value" id="cd-kpi-first">—</div><div class="kpi-sub">rilevato</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Funzioni ricercate</div>
+        <div id="cd-chart-areas"><div class="loading">Caricamento...</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Seniority ricercata</div>
+        <div id="cd-chart-seniority"><div class="loading">Caricamento...</div></div>
+      </div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Aree terapeutiche</div>
+        <div id="cd-chart-ta"><div class="loading">Caricamento...</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Benchmark salariale per funzione</div>
+        <div id="cd-chart-ral"><div class="loading">Caricamento...</div></div>
+      </div>
     </div>
 
     <!-- Annunci table -->
@@ -2225,26 +2258,58 @@ function openCompanyDetail(company){
 }
 
 async function loadCompanyDetail(company){
-  // Fill hero
   document.getElementById('cd-name').textContent=company.name;
   document.getElementById('cd-type-badge').className='badge '+(company.entity_type==='life_sciences'?'badge-ls':'badge-hh');
   document.getElementById('cd-type-badge').textContent=company.entity_type==='life_sciences'?'Life Sciences':'Head Hunter';
   document.getElementById('cd-status-badge').innerHTML=`<span class="badge ${company.is_active?'badge-active':'badge-inactive'}">${company.is_active?'Attiva':'Inattiva'}</span>`;
 
-  // Links
   const links=[];
   if(company.website)links.push(`<a class="hero-link-btn" href="${company.website}" target="_blank">🌐 Sito web</a>`);
   if(company.linkedin_url)links.push(`<a class="hero-link-btn" href="${company.linkedin_url}" target="_blank">in LinkedIn</a>`);
-  if(company.indeed_url)links.push(`<a class="hero-link-btn" href="${company.indeed_url}" target="_blank">🔍 Indeed</a>`);
-  if(company.glassdoor_url)links.push(`<a class="hero-link-btn" href="${company.glassdoor_url}" target="_blank">⭐ Glassdoor</a>`);
   document.getElementById('cd-links').innerHTML=links.join('');
 
-  // Load listings for this company
   try{
     const listings=await api(`job_listings?select=*&company_name=eq.${encodeURIComponent(company.name)}&order=published_date.desc.nullslast`);
 
-    // KPIs
+    // ── PROFILO AZIENDA ──
+    const withEmp=listings.find(l=>l.company_employees);
+    const withRev=listings.find(l=>l.company_revenue_usd);
+    const withLoc=listings.find(l=>l.company_url||l.location);
+
+    document.getElementById('cd-kpi-employees').textContent=withEmp?
+      (withEmp.company_employees>=1000?`${(withEmp.company_employees/1000).toFixed(0)}k`:withEmp.company_employees):'—';
+    document.getElementById('cd-kpi-revenue').textContent=withRev?
+      (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—';
+
+    // Settore principale
+    const sectors=listings.filter(l=>l.sector_v2||l.sector).map(l=>l.sector_v2||l.sector);
+    const topSector=sectors.length?Object.entries(sectors.reduce((a,s)=>{a[s]=(a[s]||0)+1;return a;},{} )).sort((a,b)=>b[1]-a[1])[0][0]:'—';
+    document.getElementById('cd-kpi-sector').textContent=topSector;
+
+    // Hiring manager
+    const withHM=listings.find(l=>l.hiring_manager_name);
+    if(withHM){
+      document.getElementById('cd-kpi-hm').innerHTML=withHM.hiring_manager_linkedin?
+        `<a href="${withHM.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:12px;">${withHM.hiring_manager_name} ↗</a>`:
+        `<span style="font-size:12px;">${withHM.hiring_manager_name}</span>`;
+      document.getElementById('cd-kpi-hm-role').textContent=withHM.hiring_manager_role||'';
+    }
+
+    // Sede HQ
+    const hqLoc=listings.find(l=>l.location);
+    document.getElementById('cd-kpi-hq').textContent=hqLoc?(hqLoc.location||'').split(',')[0]:'—';
+
+    // Ultimo annuncio
+    const dates=listings.filter(l=>l.published_date).map(l=>l.published_date).sort().reverse();
+    document.getElementById('cd-kpi-last').textContent=dates.length?dates[0]:'—';
+
+    // ── HIRING INTELLIGENCE ──
     document.getElementById('cd-kpi-total').textContent=listings.length;
+
+    const now=new Date();
+    const d30=new Date(now-30*24*60*60*1000);
+    document.getElementById('cd-kpi-30').textContent=listings.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
+
     const withRal=listings.filter(l=>l.ral_min||l.ral_max);
     document.getElementById('cd-kpi-ral').textContent=withRal.length;
 
@@ -2256,64 +2321,73 @@ async function loadCompanyDetail(company){
       document.getElementById('cd-kpi-ral-avg').textContent='—';
     }
 
-    // Dipendenti e fatturato dal primo annuncio con dati
-    const withEmp=listings.find(l=>l.company_employees);
-    const withRev=listings.find(l=>l.company_revenue_usd);
-    document.getElementById('cd-kpi-employees').textContent=withEmp?
-      (withEmp.company_employees>=1000?`${(withEmp.company_employees/1000).toFixed(0)}k`:withEmp.company_employees):'—';
-    document.getElementById('cd-kpi-revenue').textContent=withRev?
-      (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—';
+    const firstDates=listings.filter(l=>l.published_date).map(l=>l.published_date).sort();
+    document.getElementById('cd-kpi-first').textContent=firstDates.length?firstDates[0]:'—';
 
-    // Hiring manager
-    const withHM=listings.find(l=>l.hiring_manager_name);
-    if(withHM){
-      const hmEl=document.getElementById('cd-kpi-hm');
-      hmEl.innerHTML=withHM.hiring_manager_linkedin?
-        `<a href="${withHM.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:13px;">${withHM.hiring_manager_name} ↗</a>`:
-        withHM.hiring_manager_name;
-      document.getElementById('cd-kpi-hm-role').textContent=withHM.hiring_manager_role||'';
+    // ── GRAFICI ──
+    // Funzioni ricercate
+    const byArea={}; listings.forEach(l=>{const k=l.functional_area_v2||l.functional_area||'N/D';byArea[k]=(byArea[k]||0)+1;});
+    const areaData=Object.entries(byArea).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    renderRuoloBar('cd-chart-areas',areaData,'');
+
+    // Seniority
+    const bySen={}; listings.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySen[k]=(bySen[k]||0)+1;});
+    renderRuoloBar('cd-chart-seniority',Object.entries(bySen).sort((a,b)=>b[1]-a[1]),'blue');
+
+    // Area terapeutica
+    const byTA={}; listings.filter(l=>l.therapeutic_area).forEach(l=>{byTA[l.therapeutic_area]=(byTA[l.therapeutic_area]||0)+1;});
+    const taData=Object.entries(byTA).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    if(taData.length) renderRuoloBar('cd-chart-ta',taData,'accent');
+    else document.getElementById('cd-chart-ta').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Dati TA non disponibili</div>';
+
+    // RAL per funzione
+    const ralByArea={}; withRal.forEach(l=>{
+      const k=l.functional_area_v2||l.functional_area||'N/D';
+      if(!ralByArea[k])ralByArea[k]=[];
+      ralByArea[k].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    });
+    const ralAreaData=Object.entries(ralByArea).map(([k,v])=>[k,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]);
+    const maxRal=Math.max(...ralAreaData.map(d=>d[1]),1);
+    const ralEl=document.getElementById('cd-chart-ral');
+    if(ralAreaData.length){
+      ralEl.innerHTML=ralAreaData.map(([l,v])=>`
+        <div class="bar-row">
+          <div class="bar-label">${l}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(v/maxRal*100).toFixed(0)}%;background:var(--success)"></div></div>
+          <div class="bar-count" style="font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
+        </div>`).join('');
+    }else{
+      ralEl.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato RAL</div>';
     }
 
-    const dates=listings.filter(l=>l.published_date).map(l=>l.published_date).sort();
-    document.getElementById('cd-kpi-first').textContent=dates.length?dates[0]:'—';
-
-    // Listings table
+    // ── TABELLA ANNUNCI ──
     document.getElementById('cd-listings-count').textContent=listings.length+' annunci';
     const body=document.getElementById('cd-listings-body');
-
     if(!listings.length){
-      body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio per questa azienda</div><div class="empty-sub">Clicca "+ Aggiungi annuncio" per iniziare</div></div>';
+      body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio</div></div>';
       return;
     }
 
     body.innerHTML=`<table><thead><tr>
-      <th>Titolo ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Remote</th><th>Contratto</th><th>Sede</th><th>Dipendenti</th><th>Fatturato</th><th>Hiring Manager</th><th>Fonte</th><th>Data</th><th></th>
+      <th>Ruolo</th><th>Sub-area</th><th>Seniority</th><th>TA</th><th>RAL</th><th>Field/HQ</th><th>Hiring Manager</th><th>Fonte</th><th>Data</th><th></th>
     </tr></thead><tbody>${listings.map(l=>{
-      // Format company size
-      const empStr=l.company_employees?l.company_employees>=1000?`${(l.company_employees/1000).toFixed(0)}k`:`${l.company_employees}`:'—';
-      const revStr=l.company_revenue_usd?l.company_revenue_usd>=1e9?`$${(l.company_revenue_usd/1e9).toFixed(1)}B`:`$${(l.company_revenue_usd/1e6).toFixed(0)}M`:'—';
-      // Hiring manager with LinkedIn link
-      const hmStr=l.hiring_manager_name?l.hiring_manager_linkedin?`<a href="${l.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:11px;">${l.hiring_manager_name}</a>${l.hiring_manager_role?`<br><span style="color:var(--text2);font-size:10px;">${l.hiring_manager_role}</span>`:''}`:`<span style="font-size:11px;">${l.hiring_manager_name}</span>`:'—';
-
+      const hmStr=l.hiring_manager_name?l.hiring_manager_linkedin?
+        `<a href="${l.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:11px;">${l.hiring_manager_name} ↗</a>`:
+        `<span style="font-size:11px;">${l.hiring_manager_name}</span>`:'—';
       return `<tr>
-        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span title="Analizzato con AI" style="font-size:10px;">🤖</span>':''}</td>
-        <td>${l.functional_area||'—'}</td>
-        <td>${l.seniority||'—'}</td>
+        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
+        <td style="font-size:11px;color:var(--accent2)">${l.sub_area||l.functional_area||'—'}</td>
+        <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
         <td id="ral-cell-${l.id}">${ralCell(l)}</td>
-        <td>${l.is_remote?'<span style="color:var(--success);font-size:11px;">✓ Sì</span>':'<span style="color:var(--text2);font-size:11px;">No</span>'}</td>
-        <td>${l.contract_type||'—'}</td>
-        <td style="font-size:11px">${l.location||'—'}</td>
-        <td style="font-size:11px;color:var(--text2)">${empStr}</td>
-        <td style="font-size:11px;color:var(--text2)">${revStr}</td>
+        <td style="font-size:11px">${l.field_hq||'—'}</td>
         <td>${hmStr}</td>
         <td style="font-size:11px">${l.source||'—'}</td>
         <td style="font-size:11px">${l.published_date||'—'}</td>
-        <td style="white-space:nowrap;">
-          ${l.url?`<a class="job-link" href="${l.url}" target="_blank">↗</a>`:''}
-          <button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;margin-left:6px;">✕</button>
-        </td>
+        <td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td>
       </tr>`;
     }).join('')}</tbody></table>`;
+
   }catch(e){
     document.getElementById('cd-listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;
   }
