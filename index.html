@@ -133,30 +133,48 @@ a.job-link:hover{text-decoration:underline;}
 
 <div class="main">
 
-  <!-- DASHBOARD -->
+  <!-- DASHBOARD v2 -->
   <div class="view active" id="view-dashboard">
     <div class="section-header">
-      <div class="section-title">Dashboard</div>
+      <div class="section-title">Market Intelligence <span style="font-size:13px;color:var(--text2);font-weight:400;">Life Sciences Italia</span></div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <div class="filter-group">
-          <select id="dash-sector" onchange="loadDashboard()" style="font-size:12px;padding:6px 12px;">
-            <option value="">Tutti i settori</option>
-            <option>Farmaceutico</option><option>Dispositivi Medici</option><option>Biotech</option>
-            <option>Cosmetica</option><option>Nutraceutica</option><option>Retail Farmacia</option>
-            <option>CRO / Clinical Research</option><option>CDMO / CMO</option>
-          </select>
-        </div>
-        <button class="btn btn-pdf" onclick="exportPDF()">⬇ Esporta Report PDF</button>
+        <select id="dash-sector-v2" onchange="loadDashboard()" style="font-size:12px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+          <option value="">Tutti i settori</option>
+          <option value="pharma_rx">Pharma RX</option>
+          <option value="biotech">Biotech</option>
+          <option value="medical_devices">Medical Devices</option>
+          <option value="diagnostics">Diagnostics</option>
+          <option value="cro">CRO</option>
+          <option value="cdmo">CDMO</option>
+          <option value="consumer_health">Consumer Health</option>
+          <option value="cosmetics">Cosmetics</option>
+          <option value="nutraceutical">Nutraceutical</option>
+        </select>
+        <button class="btn btn-secondary" onclick="loadDashboard()" style="font-size:12px;">📈 Aggiorna</button>
+        <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
       </div>
     </div>
-    <div class="stats-grid">
+
+    <!-- SEZIONE 1: Executive Summary -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Executive Summary</div>
+    <div class="stats-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:24px;">
       <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="stat-total">—</div><div class="stat-sub">nel database</div></div>
-      <div class="stat-card"><div class="stat-label">Aziende LS</div><div class="stat-value" id="stat-ls">—</div><div class="stat-sub">monitorate</div></div>
-      <div class="stat-card"><div class="stat-label">Head Hunter</div><div class="stat-value" id="stat-hh">—</div><div class="stat-sub">monitorati</div></div>
-      <div class="stat-card"><div class="stat-label">Con RAL indicata</div><div class="stat-value" id="stat-ral">—</div><div class="stat-sub" id="stat-ral-pct"></div></div>
+      <div class="stat-card"><div class="stat-label">Aziende uniche</div><div class="stat-value" id="stat-companies-unique">—</div><div class="stat-sub">che assumono</div></div>
+      <div class="stat-card"><div class="stat-label">Attive 90gg</div><div class="stat-value" id="stat-active-90">—</div><div class="stat-sub">aziende recenti</div></div>
+      <div class="stat-card"><div class="stat-label">Con RAL</div><div class="stat-value" id="stat-ral">—</div><div class="stat-sub" id="stat-ral-pct"></div></div>
+      <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="stat-ral-avg">—</div><div class="stat-sub">mercato</div></div>
+      <div class="stat-card"><div class="stat-label">Classificati v2</div><div class="stat-value" id="stat-classified">—</div><div class="stat-sub" id="stat-classified-pct"></div></div>
     </div>
 
-    <!-- Detail panel — shown when clicking a bar -->
+    <!-- SEZIONE 2: Hiring Trends -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Hiring Trends</div>
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Ultimi 30 giorni</div><div class="stat-value" id="stat-trend-30">—</div><div class="stat-sub">nuovi annunci</div></div>
+      <div class="stat-card"><div class="stat-label">Ultimi 90 giorni</div><div class="stat-value" id="stat-trend-90">—</div><div class="stat-sub">nuovi annunci</div></div>
+      <div class="stat-card"><div class="stat-label">Ultimi 12 mesi</div><div class="stat-value" id="stat-trend-365">—</div><div class="stat-sub">nuovi annunci</div></div>
+    </div>
+
+    <!-- Detail panel -->
     <div id="detail-panel" style="display:none;margin-bottom:24px;">
       <div class="table-wrap">
         <div class="table-header">
@@ -167,34 +185,55 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
-    <div class="chart-grid">
+    <!-- SEZIONE 3+4: Funzioni e Sottofunzioni -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Funzioni più richieste</div>
+    <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
-        <div class="chart-card-title">Annunci per area funzionale <span style="font-size:10px;color:var(--text2);font-weight:400;">(clicca per dettaglio)</span></div>
-        <div id="chart-area"><div class="loading">Caricamento...</div></div>
+        <div class="chart-card-title">Aree funzionali <span style="font-size:10px;color:var(--text2);font-weight:400;">(clicca per dettaglio)</span></div>
+        <div id="chart-area"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare</div></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Annunci per seniority <span style="font-size:10px;color:var(--text2);font-weight:400;">(clicca per dettaglio)</span></div>
-        <div id="chart-seniority"><div class="loading">Caricamento...</div></div>
-      </div>
-    </div>
-    <div class="chart-grid">
-      <div class="chart-card">
-        <div class="chart-card-title">Annunci per settore <span style="font-size:10px;color:var(--text2);font-weight:400;">(clicca per dettaglio)</span></div>
-        <div id="chart-sector"><div class="loading">Caricamento...</div></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">RAL media per area (€)</div>
-        <div id="chart-ral"><div class="loading">Caricamento...</div></div>
+        <div class="chart-card-title">Sottoaree più richieste</div>
+        <div id="chart-subarea"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
       </div>
     </div>
-    <div class="chart-grid">
+
+    <!-- SEZIONE 5: Area Terapeutica -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Area Terapeutica</div>
+    <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
-        <div class="chart-card-title">Top fonti</div>
-        <div id="chart-source"><div class="loading">Caricamento...</div></div>
+        <div class="chart-card-title">Distribuzione per TA <span style="font-size:10px;color:var(--text2);font-weight:400;">(clicca per dettaglio)</span></div>
+        <div id="chart-therapeutic"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
       </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Seniority richiesta</div>
+        <div id="chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+    </div>
+
+    <!-- SEZIONE 6: Salary Intelligence -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Salary Intelligence</div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">RAL media per area funzionale (€)</div>
+        <div id="chart-ral"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Percentili RAL mercato</div>
+        <div id="chart-percentiles"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+    </div>
+
+    <!-- SEZIONE 7: Top aziende + Settore + Fonte -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Market Intelligence</div>
+    <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
         <div class="chart-card-title">Top aziende per annunci</div>
-        <div id="chart-companies"><div class="loading">Caricamento...</div></div>
+        <div id="chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Settori più attivi</div>
+        <div id="chart-sector"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
       </div>
     </div>
   </div>
@@ -806,35 +845,100 @@ function toast(msg,type){
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
-/* ── DASHBOARD ── */
+/* ── DASHBOARD v2 ── */
 async function loadDashboard(){
   try{
-    const sector=document.getElementById('dash-sector')?.value||'';
-    
-    // Load listings + company counts separately (avoid loading 1754 companies in full)
-    const[allListings, lsCount, hhCount]=await Promise.all([
-      api('job_listings?select=*'),
-      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>r.headers.get('Content-Range')?.split('/')[1]||0),
-      fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>r.headers.get('Content-Range')?.split('/')[1]||0)
-    ]);
-    
-    const listings=sector?allListings.filter(l=>l.sector===sector):allListings;
+    const sectorFilter=document.getElementById('dash-sector-v2')?.value||'';
 
-    document.getElementById('stat-total').textContent=listings.length;
-    document.getElementById('stat-ls').textContent=lsCount;
-    document.getElementById('stat-hh').textContent=hhCount;
-    const withRal=listings.filter(l=>l.ral_min||l.ral_max).length;
-    document.getElementById('stat-ral').textContent=withRal;
-    const pct=listings.length?Math.round(withRal/listings.length*100):0;
-    document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
+    // Load all listings with essential fields
+    let q='job_listings?select=id,job_title,company_name,sector,sector_v2,functional_area,functional_area_v2,sub_area,seniority,seniority_v2,therapeutic_area,field_hq,company_type,ral_min,ral_max,published_date,classified_at,location';
+    const listings=await api(q);
 
-    renderClickableBar('chart-area', countBy(listings,'functional_area'), '', 'functional_area', listings);
-    renderClickableBar('chart-seniority', countBy(listings,'seniority'), 'blue', 'seniority', listings);
-    renderClickableBar('chart-sector', countBy(listings,'sector'), 'accent', 'sector', listings);
-    renderBar('chart-source', countBy(listings,'source'), '');
-    renderBar('chart-companies', countBy(listings,'company_name').slice(0,8), 'blue');
-    renderRal('chart-ral', listings);
-  }catch(e){console.error('Dashboard error:',e);}
+    // Apply sector filter
+    const data=sectorFilter?listings.filter(l=>l.sector_v2===sectorFilter):listings;
+
+    // ── EXECUTIVE SUMMARY ──
+    document.getElementById('stat-total').textContent=data.length;
+
+    const uniqueCompanies=new Set(data.map(l=>l.company_name).filter(Boolean));
+    document.getElementById('stat-companies-unique').textContent=uniqueCompanies.size;
+
+    const now=new Date();
+    const d90=new Date(now-90*24*60*60*1000);
+    const active90=new Set(data.filter(l=>l.published_date&&new Date(l.published_date)>d90).map(l=>l.company_name));
+    document.getElementById('stat-active-90').textContent=active90.size;
+
+    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    document.getElementById('stat-ral').textContent=withRal.length;
+    document.getElementById('stat-ral-pct').textContent=`${data.length?Math.round(withRal.length/data.length*100):0}% degli annunci`;
+
+    if(withRal.length){
+      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const avg=Math.round(mids.reduce((a,b)=>a+b,0)/mids.length);
+      document.getElementById('stat-ral-avg').textContent=`€${(avg/1000).toFixed(0)}k`;
+    }else{
+      document.getElementById('stat-ral-avg').textContent='—';
+    }
+
+    const classified=data.filter(l=>l.sector_v2);
+    document.getElementById('stat-classified').textContent=classified.length;
+    document.getElementById('stat-classified-pct').textContent=`${data.length?Math.round(classified.length/data.length*100):0}% classificati`;
+
+    // ── HIRING TRENDS ──
+    const d30=new Date(now-30*24*60*60*1000);
+    const d365=new Date(now-365*24*60*60*1000);
+    document.getElementById('stat-trend-30').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
+    document.getElementById('stat-trend-90').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
+    document.getElementById('stat-trend-365').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d365).length;
+
+    // ── AREE FUNZIONALI ── usa functional_area_v2 se disponibile, altrimenti functional_area
+    const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
+    renderClickableBar('chart-area',areaData,'','functional_area',data);
+
+    // ── SOTTOAREE ──
+    const subData=countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10);
+    renderBar('chart-subarea',subData,'blue');
+
+    // ── AREA TERAPEUTICA ──
+    const taData=countBy(data.filter(l=>l.therapeutic_area),'therapeutic_area').slice(0,10);
+    renderClickableBar('chart-therapeutic',taData,'accent','therapeutic_area',data);
+
+    // ── SENIORITY ── usa seniority_v2 se disponibile
+    const senData=countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen');
+    renderClickableBar('chart-seniority',senData,'blue','seniority',data);
+
+    // ── RAL PER AREA ──
+    renderRal('chart-ral',data);
+
+    // ── PERCENTILI RAL ──
+    if(withRal.length>=5){
+      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const p=n=>mids[Math.floor(mids.length*n/100)];
+      const pEl=document.getElementById('chart-percentiles');
+      const stats=[
+        ['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b)/mids.length)],['P75',p(75)],['P90',p(90)]
+      ];
+      const maxVal=Math.max(...stats.map(s=>s[1]));
+      pEl.innerHTML=stats.map(([l,v])=>`
+        <div class="bar-row">
+          <div class="bar-label" style="width:70px">${l}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(v/maxVal*100).toFixed(0)}%;background:var(--success)"></div></div>
+          <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
+        </div>`).join('');
+    }else{
+      document.getElementById('chart-percentiles').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Dati RAL insufficienti</div>';
+    }
+
+    // ── TOP AZIENDE ──
+    renderBar('chart-companies',countBy(data,'company_name').slice(0,8),'blue');
+
+    // ── SETTORI ──
+    const secData=countBy(data.map(l=>({...l,_sec:l.sector_v2||l.sector})),'_sec').slice(0,8);
+    renderClickableBar('chart-sector',secData,'accent','sector',data);
+
+    _dashListings=data;
+
+  }catch(e){console.error('Dashboard v2 error:',e);}
 }
 
 // Global store for dashboard listings data (avoids huge inline JSON in onclick)
