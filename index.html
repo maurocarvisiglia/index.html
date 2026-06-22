@@ -1750,20 +1750,23 @@ async function analyzeOneListing(id, url, title, btn){
       const proxies=[
         'https://corsproxy.io/?'+encodeURIComponent(url),
         'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+        'https://thingproxy.freeboard.io/fetch/'+url,
+        'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url),
       ];
       for(const proxy of proxies){
         try{
           const r=await fetch(proxy,{signal:AbortSignal.timeout(8000)});
           if(r.ok){
             const html=await r.text();
+            if(html.length<500)continue; // skip empty/blocked responses
             const parser=new DOMParser();
             const doc=parser.parseFromString(html,'text/html');
             doc.querySelectorAll('script,style,nav,header,footer,aside').forEach(el=>el.remove());
-            const main=doc.querySelector('main,[class*="description"],[class*="job-desc"],[id*="description"],[class*="content"]')||doc.body;
+            const main=doc.querySelector('main,[class*="description"],[class*="job-desc"],[id*="description"],[class*="content"],[class*="posting"]')||doc.body;
             const txt=(main?.textContent||'').replace(/\s+/g,' ').trim();
-            if(txt.length>200){pageText=txt.substring(0,4000);break;}
+            if(txt.length>300){pageText=txt.substring(0,5000);break;}
           }
-        }catch(e){}
+        }catch(e){continue;}
       }
     }catch(e){}
 
