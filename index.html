@@ -445,9 +445,7 @@ a.job-link:hover{text-decoration:underline;}
         <div class="form-label">Numero risultati</div>
         <select id="ts-limit">
           <option value="10">10</option>
-          <option value="25" selected>25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
+          <option value="25" selected>25 (max piano free)</option>
         </select>
       </div>
       <div class="form-group">
@@ -1805,7 +1803,7 @@ async function searchTheirStack(){
   const keywords=document.getElementById('ts-keywords').value.trim();
   const country=document.getElementById('ts-country').value;
   const days=parseInt(document.getElementById('ts-days').value);
-  const limit=parseInt(document.getElementById('ts-limit').value);
+  const limit=Math.min(parseInt(document.getElementById('ts-limit').value),25);
   const industry=document.getElementById('ts-industry').value;
 
   if(!keywords){toast('Inserisci almeno una parola chiave','error');return;}
@@ -1823,13 +1821,14 @@ async function searchTheirStack(){
 
   // Build request body
   const body={
-    job_title_or:[keywords],
+    job_title_or:keywords.split(',').map(k=>k.trim()).filter(k=>k),
     job_country_code_or:['IT'],
-    posted_at_gte:dateFromStr,
+    posted_at_max_age_days:days,
     limit:limit,
-    page:0
+    page:0,
+    order_by:[{desc:true,field:'date_posted'}]
   };
-  if(industry)body.company_industry_or=[industry];
+  if(industry)body.industry_or=[industry];
 
   try{
     const resp=await fetch('https://api.theirstack.com/v1/jobs/search',{
@@ -1847,56 +1846,59 @@ async function searchTheirStack(){
     }
 
     const data=await resp.json();
-    const jobs=data.data||data.jobs||data||[];
-
+    const jobs=data.data||[];
     info.textContent=`Trovati ${jobs.length} annunci. Importazione in corso...`;
 
-    // Import jobs using same mapping as CSV import
     let ok=0,skip=0,errors=0;
     for(const job of jobs){
-      const url=job.url||job.job_url||'';
-      const title=job.job_title||job.title||'';
-      const company=job.company?.name||job.company_name||'';
+      const url=(job.url||job.source_url||'').trim();
+      const title=(job.job_title||'').trim();
+      const co=job.company_object||{};
+      const company=(co.name||job.company||'').trim();
       if(!url||!title)continue;
 
-      // Map salary
-      let ral_min=null,ral_max=null;
-      if(job.salary_string){
-        const nums=job.salary_string.replace(/,/g,'.').match(/[\d]+\.?\d*/g);
-        if(nums){
-          const vals=nums.map(n=>{const f=parseFloat(n);return job.salary_string.toLowerCase().includes('k')?Math.round(f*1000):Math.round(f);}).filter(n=>n>1000&&n<1000000);
-          if(vals.length>=2){ral_min=Math.min(...vals);ral_max=Math.max(...vals);}
-          else if(vals.length===1)ral_min=vals[0];
-        }
-      }
+      // Salary — API returns min_annual_salary / max_annual_salary in local currency
+      let ral_min=job.min_annual_salary||null;
+      let ral_max=job.max_annual_salary||null;
+      // If USD values available and local not, use USD
+      if(!ral_min&&job.min_annual_salary_usd)ral_min=Math.round(job.min_annual_salary_usd);
+      if(!ral_max&&job.max_annual_salary_usd)ral_max=Math.round(job.max_annual_salary_usd);
 
-      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('entry')||l.includes('junior'))return'Junior';if(l.includes('mid'))return'Mid';if(l.includes('senior')||l.includes('lead'))return'Senior';if(l.includes('director'))return'Director';if(l.includes('executive')||l.includes('chief'))return'C-level';return'Mid';};
-      const mapArea=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('regulatory'))return'Regulatory';if(l.includes('medical')||l.includes('msl'))return'Medical';if(l.includes('sales')||l.includes('account'))return'Sales';if(l.includes('marketing'))return'Marketing';if(l.includes('clinical'))return'Clinical';if(l.includes('quality'))return'Quality';if(l.includes('research')||l.includes('scientist'))return'R&D';return'altro';};
-      const mapSector=v=>{if(!v)return'Farmaceutico';const l=v.toLowerCase();if(l.includes('biotech'))return'Biotech';if(l.includes('medical equipment')||l.includes('device'))return'Dispositivi Medici';if(l.includes('cosmetic'))return'Cosmetica';if(l.includes('cro')||l.includes('clinical research'))return'CRO / Clinical Research';return'Farmaceutico';};
+      // Hiring manager from hiring_team array
+      const hm=job.hiring_team&&job.hiring_team.length?job.hiring_team[0]:null;
+
+      // Location
+      const loc=(job.long_location||job.location||'').replace(/, ?Italy$/i,'').replace(/, ?IT$/i,'').trim();
+
+      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l==='junior')return'Junior';if(l==='mid_level')return'Mid';if(l==='senior'||l==='staff')return'Senior';if(l==='c_level')return'C-level';return'Mid';};
+      const mapArea=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('regulatory'))return'Regulatory';if(l.includes('medical')||l.includes('msl'))return'Medical';if(l.includes('sales')||l.includes('account'))return'Sales';if(l.includes('marketing'))return'Marketing';if(l.includes('market access'))return'Market Access';if(l.includes('clinical'))return'Clinical';if(l.includes('quality'))return'Quality';if(l.includes('research')||l.includes('scientist'))return'R&D';if(l.includes('hr')||l.includes('talent'))return'HR';return'altro';};
+      const mapSector=v=>{if(!v)return'Farmaceutico';const l=v.toLowerCase();if(l.includes('biotech'))return'Biotech';if(l.includes('medical equipment')||l.includes('medical device'))return'Dispositivi Medici';if(l.includes('cosmetic'))return'Cosmetica';if(l.includes('cro')||l.includes('clinical research'))return'CRO / Clinical Research';if(l.includes('nutraceut'))return'Nutraceutica';return'Farmaceutico';};
 
       const record={
         job_title:title,
         company_name:company,
         entity_type:'life_sciences',
-        sector:mapSector(job.company?.industry||''),
+        sector:mapSector(co.industry||''),
         functional_area:mapArea(title),
         seniority:mapSeniority(job.seniority||''),
-        ral_min,ral_max,
-        contract_type:job.employment_status==='full_time'?'TI':job.employment_status==='contract'?'TD':null,
-        location:(job.job_location||'').replace(/, ?Italy$/i,'').trim()||null,
+        ral_min:ral_min||null,
+        ral_max:ral_max||null,
+        contract_type:(job.employment_statuses||[]).includes('full_time')?'TI':(job.employment_statuses||[]).includes('contract')?'TD':null,
+        location:loc||null,
         source:'TheirStack',
         url:url,
-        published_date:job.posted_at||job.date_posted||null,
+        source_url:(job.source_url||'').trim()||null,
+        published_date:(job.date_posted||'').trim()||null,
         is_remote:job.remote===true?true:false,
         job_description:(job.description||'').substring(0,4000)||null,
-        company_employees:job.company?.employee_count||null,
-        company_revenue_usd:job.company?.revenue_usd||null,
-        company_industry:job.company?.industry||null,
-        company_url:job.company?.url||null,
-        company_linkedin_url:job.company?.linkedin_url||null,
-        hiring_manager_name:job.hiring_manager?.full_name||null,
-        hiring_manager_role:job.hiring_manager?.role||null,
-        hiring_manager_linkedin:job.hiring_manager?.linkedin_url||null,
+        company_employees:co.employee_count||null,
+        company_revenue_usd:co.annual_revenue_usd?Math.round(co.annual_revenue_usd):null,
+        company_industry:co.industry||null,
+        company_url:co.domain||co.url||null,
+        company_linkedin_url:co.linkedin_url||null,
+        hiring_manager_name:hm?hm.full_name||null:null,
+        hiring_manager_role:hm?hm.role||null:null,
+        hiring_manager_linkedin:hm?hm.linkedin_url||null:null,
       };
 
       try{
