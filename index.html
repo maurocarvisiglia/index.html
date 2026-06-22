@@ -138,6 +138,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-companies" onclick="showView('companies',this)">🏢 Aziende</button>
     <button class="nav-btn" id="nav-ruolo" onclick="showView('ruolo',this)">🔍 Analisi Ruolo</button>
     <button class="nav-btn" id="nav-role-intel" onclick="showView('role-intel',this)">🎯 Role Intelligence</button>
+    <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
   </div>
 </div>
 
@@ -208,6 +209,19 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- SEZIONE Role Family -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Role Family Intelligence</div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Famiglie di ruolo più ricercate</div>
+        <div id="chart-role-family"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Ruoli canonici più richiesti</div>
+        <div id="chart-canonical-role"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
+      </div>
+    </div>
+
     <!-- SEZIONE 5: Area Terapeutica -->
     <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Area Terapeutica</div>
     <div class="chart-grid" style="margin-bottom:24px;">
@@ -266,6 +280,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);">🧹 Pulizia</button>
         <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
@@ -471,6 +486,14 @@ a.job-link:hover{text-decoration:underline;}
           <option value="respiratory">Respiratory</option>
         </select>
       </div>
+      <div class="filter-group">
+        <div class="filter-label">RAL</div>
+        <select id="ruolo-ral" onchange="analyzeRuolo()">
+          <option value="">Tutti</option>
+          <option value="only">Solo con RAL</option>
+          <option value="no">Solo senza RAL</option>
+        </select>
+      </div>
     </div>
 
     <!-- KPI benchmark -->
@@ -539,11 +562,70 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 
 
+  <!-- COMPLIANCE D.Lgs. 96/2026 -->
+  <div class="view" id="view-compliance">
+    <div class="section-header">
+      <div class="section-title">⚖️ Compliance D.Lgs. 96/2026 <span style="font-size:13px;color:var(--text2);font-weight:400;">Trasparenza retributiva</span></div>
+      <button class="btn btn-pdf" onclick="exportCompliancePDF()">⬇ Esporta Report</button>
+    </div>
+
+    <!-- Intro box -->
+    <div style="background:linear-gradient(135deg,#1C3557,#2E6DA4);border-radius:16px;padding:28px 32px;margin-bottom:28px;color:white;">
+      <div style="font-size:20px;font-weight:800;margin-bottom:8px;">D.Lgs. 96/2026 — In vigore dal 7 giugno 2026</div>
+      <div style="font-size:14px;opacity:.85;line-height:1.6;">La normativa italiana sulla trasparenza retributiva impone alle aziende di indicare il range salariale negli annunci di lavoro. MC Pharma monitora il livello di adeguamento nel settore Life Sciences.</div>
+    </div>
+
+    <!-- KPI compliance -->
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:28px;" id="compliance-kpi">
+      <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="comp-total">—</div><div class="stat-sub">monitorati</div></div>
+      <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">✅ Conformi</div><div class="stat-value" id="comp-ok" style="color:var(--success)">—</div><div class="stat-sub" id="comp-ok-pct"></div></div>
+      <div class="stat-card" style="border-color:var(--danger)"><div class="stat-label">❌ Non conformi</div><div class="stat-value" id="comp-no" style="color:var(--danger)">—</div><div class="stat-sub" id="comp-no-pct"></div></div>
+      <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="comp-ral-avg">—</div><div class="stat-sub">annunci conformi</div></div>
+      <div class="stat-card"><div class="stat-label">Aziende conformi</div><div class="stat-value" id="comp-companies">—</div><div class="stat-sub">almeno 1 annuncio con RAL</div></div>
+    </div>
+
+    <!-- Grafici -->
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Compliance per settore</div>
+        <div id="comp-chart-sector"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Compliance per area funzionale</div>
+        <div id="comp-chart-area"></div>
+      </div>
+    </div>
+
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Top aziende conformi (più RAL indicate)</div>
+        <div id="comp-chart-companies-ok"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Trend conformità nel tempo</div>
+        <div id="comp-chart-trend"></div>
+      </div>
+    </div>
+
+    <!-- Tabella annunci conformi -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Annunci con RAL indicata — esempi virtuosi</div>
+        <div class="table-count" id="comp-listings-count">—</div>
+      </div>
+      <div id="comp-listings-body"></div>
+    </div>
+  </div>
+
+
   <!-- ROLE INTELLIGENCE -->
   <div class="view" id="view-role-intel">
     <div class="section-header">
       <div class="section-title">🎯 Role Intelligence <span style="font-size:13px;color:var(--text2);font-weight:400;">Benchmark per figura professionale</span></div>
-      <button class="btn btn-secondary" onclick="refreshBenchmarks()" style="font-size:12px;">🔄 Ricalcola benchmark</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-pdf" onclick="exportRoleIntelligencePDF()" id="btn-ri-pdf" style="display:none;">⬇ Esporta PDF</button>
+        <button class="btn btn-secondary" onclick="refreshBenchmarks()" style="font-size:12px;">🔄 Ricalcola benchmark</button>
+      </div>
     </div>
 
     <!-- Search -->
@@ -582,6 +664,13 @@ a.job-link:hover{text-decoration:underline;}
           <option value="neurology">Neurology</option>
           <option value="respiratory">Respiratory</option>
           <option value="diabetes">Diabetes</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">RAL</div>
+        <select id="ri-ral" onchange="loadRoleIntelligence()">
+          <option value="">Tutti</option>
+          <option value="only">Solo con RAL</option>
         </select>
       </div>
     </div>
@@ -1109,6 +1198,7 @@ function showView(name,btn){
   if(btn)btn.classList.add('active');
   if(name==='dashboard')loadDashboard();
   if(name==='role-intel'){loadRoleIntelligence();loadRoleList();}
+  if(name==='compliance')loadCompliance();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -1151,6 +1241,10 @@ async function analyzeRuolo(){
         (l.role_family||'').toLowerCase().includes(search)
       );
     }
+    // Filter by RAL
+    const ralFilter=document.getElementById('ruolo-ral')?.value||'';
+    if(ralFilter==='only')data=data.filter(l=>l.ral_min||l.ral_max);
+    if(ralFilter==='no')data=data.filter(l=>!l.ral_min&&!l.ral_max);
 
     document.getElementById('ruolo-count').textContent=`${data.length} annunci`;
     document.getElementById('ruolo-kpi-total').textContent=data.length;
@@ -1273,7 +1367,7 @@ async function loadDashboard(){
     const sectorFilter=document.getElementById('dash-sector-v2')?.value||'';
 
     // Load all listings with essential fields
-    let q='job_listings?select=id,job_title,company_name,sector,sector_v2,functional_area,functional_area_v2,sub_area,seniority,seniority_v2,therapeutic_area,field_hq,company_type,ral_min,ral_max,published_date,classified_at,location';
+    let q='job_listings?select=id,job_title,company_name,sector,sector_v2,functional_area,functional_area_v2,sub_area,seniority,seniority_v2,therapeutic_area,field_hq,company_type,ral_min,ral_max,published_date,classified_at,location,role_family,canonical_role';
     const listings=await api(q);
 
     // Apply sector filter
@@ -1320,6 +1414,12 @@ async function loadDashboard(){
     // ── SOTTOAREE ──
     const subData=countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10);
     renderBar('chart-subarea',subData,'blue');
+
+    // ── ROLE FAMILY ──
+    const rfData=countBy(data.filter(l=>l.role_family),'role_family').slice(0,10);
+    renderBar('chart-role-family',rfData,'accent');
+    const crData=countBy(data.filter(l=>l.canonical_role),'canonical_role').slice(0,10);
+    renderBar('chart-canonical-role',crData,'');
 
     // ── AREA TERAPEUTICA ──
     const taData=countBy(data.filter(l=>l.therapeutic_area),'therapeutic_area').slice(0,10);
@@ -2751,8 +2851,151 @@ async function delListing(id){
 }
 
 /* ══════════════════════════════════════════════
-   ROLE INTELLIGENCE
+   COMPLIANCE D.Lgs. 96/2026
    ══════════════════════════════════════════════ */
+async function loadCompliance(){
+  try{
+    const data=await api('job_listings?select=id,job_title,company_name,sector_v2,sector,functional_area_v2,functional_area,ral_min,ral_max,published_date,url,location');
+
+    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    const noRal=data.filter(l=>!l.ral_min&&!l.ral_max);
+    const pct=data.length?Math.round(withRal.length/data.length*100):0;
+
+    document.getElementById('comp-total').textContent=data.length;
+    document.getElementById('comp-ok').textContent=withRal.length;
+    document.getElementById('comp-ok-pct').textContent=`${pct}% degli annunci`;
+    document.getElementById('comp-no').textContent=noRal.length;
+    document.getElementById('comp-no-pct').textContent=`${100-pct}% non conformi`;
+
+    // RAL media
+    if(withRal.length){
+      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const avg=Math.round(mids.reduce((a,b)=>a+b)/mids.length);
+      document.getElementById('comp-ral-avg').textContent=`€${(avg/1000).toFixed(0)}k`;
+    }
+
+    // Aziende conformi
+    const companyOk=new Set(withRal.map(l=>l.company_name).filter(Boolean));
+    document.getElementById('comp-companies').textContent=companyOk.size;
+
+    // Chart compliance per settore
+    const bySec={};
+    data.forEach(l=>{
+      const k=l.sector_v2||l.sector||'N/D';
+      if(!bySec[k])bySec[k]={ok:0,no:0};
+      if(l.ral_min||l.ral_max)bySec[k].ok++;
+      else bySec[k].no++;
+    });
+    const secEl=document.getElementById('comp-chart-sector');
+    if(secEl){
+      const sorted=Object.entries(bySec).sort((a,b)=>(b[1].ok+b[1].no)-(a[1].ok+a[1].no)).slice(0,8);
+      const maxT=Math.max(...sorted.map(([,v])=>v.ok+v.no),1);
+      secEl.innerHTML=sorted.map(([k,v])=>{
+        const tot=v.ok+v.no;
+        const p=Math.round(v.ok/tot*100);
+        return `<div class="bar-row">
+          <div class="bar-label">${k}</div>
+          <div class="bar-track" style="position:relative;">
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(tot/maxT*100).toFixed(0)}%;background:var(--surface2);border-radius:4px;"></div>
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(v.ok/maxT*100).toFixed(0)}%;background:var(--success);opacity:.7;border-radius:4px;"></div>
+          </div>
+          <div class="bar-count" style="width:70px;font-size:11px;color:${p>20?'var(--success)':'var(--danger)'};">${p}% ✓</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Chart compliance per area
+    const byArea={};
+    data.forEach(l=>{
+      const k=l.functional_area_v2||l.functional_area||'N/D';
+      if(!byArea[k])byArea[k]={ok:0,no:0};
+      if(l.ral_min||l.ral_max)byArea[k].ok++;
+      else byArea[k].no++;
+    });
+    const areaEl=document.getElementById('comp-chart-area');
+    if(areaEl){
+      const sorted=Object.entries(byArea).sort((a,b)=>(b[1].ok+b[1].no)-(a[1].ok+a[1].no)).slice(0,8);
+      const maxT=Math.max(...sorted.map(([,v])=>v.ok+v.no),1);
+      areaEl.innerHTML=sorted.map(([k,v])=>{
+        const tot=v.ok+v.no;
+        const p=Math.round(v.ok/tot*100);
+        return `<div class="bar-row">
+          <div class="bar-label">${k.replace(/_/g,' ')}</div>
+          <div class="bar-track" style="position:relative;">
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(tot/maxT*100).toFixed(0)}%;background:var(--surface2);border-radius:4px;"></div>
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(v.ok/maxT*100).toFixed(0)}%;background:var(--success);opacity:.7;border-radius:4px;"></div>
+          </div>
+          <div class="bar-count" style="width:70px;font-size:11px;color:${p>20?'var(--success)':'var(--danger)'};">${p}% ✓</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Top aziende conformi
+    const byCoOk={};
+    withRal.forEach(l=>{if(l.company_name)byCoOk[l.company_name]=(byCoOk[l.company_name]||0)+1;});
+    renderRuoloBar('comp-chart-companies-ok',Object.entries(byCoOk).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
+
+    // Trend nel tempo
+    const byMonth={};
+    data.forEach(l=>{
+      if(!l.published_date)return;
+      const m=l.published_date.substring(0,7);
+      if(!byMonth[m])byMonth[m]={ok:0,tot:0};
+      byMonth[m].tot++;
+      if(l.ral_min||l.ral_max)byMonth[m].ok++;
+    });
+    const trendEl=document.getElementById('comp-chart-trend');
+    if(trendEl){
+      const months=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-12);
+      const maxT=Math.max(...months.map(([,v])=>v.tot),1);
+      trendEl.innerHTML=months.map(([m,v])=>{
+        const p=Math.round(v.ok/v.tot*100);
+        return `<div class="bar-row">
+          <div class="bar-label" style="width:70px;font-size:10px;">${m}</div>
+          <div class="bar-track" style="position:relative;">
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(v.tot/maxT*100).toFixed(0)}%;background:var(--surface2);border-radius:4px;"></div>
+            <div style="position:absolute;left:0;top:0;height:100%;width:${(v.ok/maxT*100).toFixed(0)}%;background:var(--accent2);opacity:.8;border-radius:4px;"></div>
+          </div>
+          <div class="bar-count" style="width:50px;font-size:10px;color:var(--accent2);">${p}%</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Tabella annunci conformi
+    document.getElementById('comp-listings-count').textContent=`${withRal.length} annunci`;
+    document.getElementById('comp-listings-body').innerHTML=`<table><thead><tr>
+      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>RAL</th><th>Sede</th><th>Data</th>
+    </tr></thead><tbody>${withRal.slice(0,50).map(l=>`<tr>
+      <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+      <td style="font-size:12px">${l.company_name||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+      <td><span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span></td>
+      <td style="font-size:11px">${l.location||'—'}</td>
+      <td style="font-size:11px">${l.published_date||'—'}</td>
+    </tr>`).join('')}</tbody></table>
+    ${withRal.length>50?`<div style="padding:12px 24px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);">Mostrati i primi 50 di ${withRal.length}</div>`:''}`;
+
+  }catch(e){console.error('Compliance error:',e);}
+}
+
+async function exportCompliancePDF(){
+  toast('Funzione PDF compliance in sviluppo','info');
+}
+
+/* ── EXPORT PDF ROLE INTELLIGENCE ── */
+async function exportRoleIntelligencePDF(){
+  const role=document.getElementById('ri-role-title')?.textContent;
+  if(!role||role==='—'){toast('Seleziona prima un ruolo','error');return;}
+  // Usa window.print con stile dedicato
+  const printContent=document.getElementById('ri-detail').innerHTML;
+  const win=window.open('','_blank');
+  win.document.write(`<html><head><title>Benchmark ${role}</title>
+    <style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style>
+    </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}</body></html>`);
+  win.print();
+}
+
+
 
 async function loadRoleList(){
   try{
@@ -2808,10 +3051,12 @@ async function loadRoleIntelligence(){
     const benchmarks=await api(bq);
 
     // 2. Carica annunci grezzi per grafici dettagliati
+    const riRal=document.getElementById('ri-ral')?.value||'';
     let lq='job_listings?select=*&order=published_date.desc.nullslast&limit=500';
     if(search)lq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
     if(area)lq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)lq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
+    if(riRal==='only')lq+=`&or=(ral_min.not.is.null,ral_max.not.is.null)`;
     const listings=await api(lq);
 
     if(!listings.length&&!benchmarks.length){
@@ -2835,6 +3080,9 @@ async function loadRoleIntelligence(){
 
     const lastUpdate=benchmarks[0]?.updated_at?`Aggiornato: ${new Date(benchmarks[0].updated_at).toLocaleDateString('it-IT')}`:'';
     document.getElementById('ri-updated').textContent=lastUpdate;
+    // Mostra pulsante PDF
+    const pdfBtn=document.getElementById('btn-ri-pdf');
+    if(pdfBtn)pdfBtn.style.display='inline-flex';
 
     // ── SALARY BENCHMARK — aggrega i benchmark pre-calcolati ──
     const totalListings=benchmarks.reduce((s,b)=>s+b.total_listings,0)||listings.length;
