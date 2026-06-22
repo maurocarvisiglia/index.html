@@ -1270,70 +1270,84 @@ function cancelRal(id, min, max){
 async function analyzeListings(){
   const btn=document.getElementById('btn-analyze');
   
-  // Load annunci senza settore o senza RAL
-  const toAnalyze=await api('job_listings?select=*&order=created_at.desc');
-  const needsAnalysis=toAnalyze.filter(l=>!l.ai_analyzed&&(!l.sector||!l.functional_area||(!l.ral_min&&!l.ral_max)));
+  // Load annunci non ancora classificati con schema v2
+  const toAnalyze=await api('job_listings?select=*&order=created_at.desc&limit=1000');
+  const needsAnalysis=toAnalyze.filter(l=>!l.sector_v2);
   
   if(!needsAnalysis.length){
-    toast('Tutti gli annunci hanno già settore e RAL!');
+    toast('Tutti gli annunci sono già classificati con schema v2!');
     return;
   }
 
-  if(!confirm(`Trovati ${needsAnalysis.length} annunci senza settore o RAL.\nAnalizzo con Claude AI? (costo stimato: ~€${(needsAnalysis.length*0.001).toFixed(2)})`))return;
+  if(!confirm(`Trovati ${needsAnalysis.length} annunci da classificare.\nProcess 50 alla volta con AI?`))return;
 
-  btn.textContent='⏳ Analisi in corso...';
+  btn.textContent='⏳ Classificazione v2...';
   btn.disabled=true;
 
   let analyzed=0, failed=0;
 
-  for(const listing of needsAnalysis.slice(0,50)){ // max 50 per run
+  for(const listing of needsAnalysis.slice(0,50)){
     try{
-      const prompt=`Sei un esperto di recruitment nel settore Life Sciences italiano.
-Analizza questo annuncio di lavoro e restituisci SOLO un JSON valido con questi campi:
-- sector: uno tra ["Farmaceutico","Dispositivi Medici","Biotech","Cosmetica","Nutraceutica","Retail Farmacia","CRO / Clinical Research","CDMO / CMO","altro"]
-- ral_min: numero intero in euro annui (null se non indicato)
-- ral_max: numero intero in euro annui (null se non indicato)
-- functional_area: uno tra ["Sales","Marketing","Regulatory Affairs","Medical Affairs","MSL","Quality Assurance","Quality Control","Produzione","Engineering","Clinical Operations","Market Access","Pharmacovigilance","R&D","HR","Finance","Supply Chain","Business Development","IT","Operations","altro"]
-- seniority: uno tra ["Junior","Middle","Senior","Lead","Manager","Director","C-level","altro"]
+      const desc=listing.job_description?`\nDescrizione: ${listing.job_description.substring(0,800)}`:'';
+      
+      const prompt=`Sei un esperto di Job Classification nel settore Life Sciences italiano.
+Classifica questo annuncio e rispondi SOLO con JSON valido.
 
 Titolo: ${listing.job_title}
 Azienda: ${listing.company_name}
-Sede: ${listing.location||'N/D'}
-Descrizione disponibile: NO - usa solo titolo e azienda per dedurre settore e area
+Sede: ${listing.location||'N/D'}${desc}
 
-Rispondi SOLO con il JSON, nessun altro testo.`;
+JSON richiesto:
+{
+  "sector_v2": "<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
+  "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
+  "sub_area": "<codice sottoarea es: msl|medical_advisor|kam|area_manager|isf|product_manager|regulatory_specialist|qa_specialist|cra|pv_specialist|scientist|ecc>",
+  "seniority_v2": "<internship|entry_level|associate|specialist|senior_specialist|expert|principal|lead|manager|senior_manager|head_of|director|senior_director|vp|general_manager|country_manager|c_level>",
+  "field_hq": "<Field Based|Hybrid|Headquarters>",
+  "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|neuroscience|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
+  "company_type": "<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>"
+}
+Solo JSON, nessun testo aggiuntivo.`;
 
-      const text=await callAI(prompt,300);
-      
-      // Parse JSON
+      const text=await callAI(prompt,400);
       const clean=text.replace(/```json|```/g,'').trim();
       const result=JSON.parse(clean);
 
-      // Build patch — only update null fields, always mark as analyzed
-      const patch={ai_analyzed:true};
-      if(!listing.sector&&result.sector)patch.sector=result.sector;
-      if(!listing.ral_min&&result.ral_min)patch.ral_min=result.ral_min;
-      if(!listing.ral_max&&result.ral_max)patch.ral_max=result.ral_max;
-      if(!listing.functional_area&&result.functional_area)patch.functional_area=result.functional_area;
-      if(!listing.seniority&&result.seniority)patch.seniority=result.seniority;
+      const patch={
+        ai_analyzed:true,
+        classified_at:new Date().toISOString(),
+        classification_source:'groq_v2'
+      };
+      if(result.sector_v2)patch.sector_v2=result.sector_v2;
+      if(result.functional_area_v2)patch.functional_area_v2=result.functional_area_v2;
+      if(result.sub_area)patch.sub_area=result.sub_area;
+      if(result.seniority_v2)patch.seniority_v2=result.seniority_v2;
+      if(result.field_hq)patch.field_hq=result.field_hq;
+      if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
+      if(result.company_type)patch.company_type=result.company_type;
+
+      // Also update old fields for backward compatibility
+      if(result.sector_v2&&!listing.sector){
+        const sectorMap={pharma_rx:'Farmaceutico',biotech:'Biotech',medical_devices:'Dispositivi Medici',cro:'CRO / Clinical Research',cdmo:'CDMO / CMO',cosmetics:'Cosmetica',nutraceutical:'Nutraceutica',consumer_health:'Cosmetica',otc:'Farmaceutico'};
+        if(sectorMap[result.sector_v2])patch.sector=sectorMap[result.sector_v2];
+      }
 
       await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
       analyzed++;
 
     }catch(e){
+      console.error('Classification error:',e.message);
       failed++;
     }
 
-    // Update button progress
     btn.textContent=`⏳ ${analyzed+failed}/${Math.min(needsAnalysis.length,50)}...`;
-    // Small delay to avoid rate limiting
-    await new Promise(r=>setTimeout(r,200));
+    await new Promise(r=>setTimeout(r,300));
   }
 
   btn.textContent='🤖 Analizza con AI';
   btn.disabled=false;
 
-  toast(`Analizzati ${analyzed} annunci${failed?`, ${failed} errori`:''}`);
+  toast(`Classificati ${analyzed} annunci con schema v2${failed?`, ${failed} errori`:''}`);
   loadListings();
   loadDashboard();
 }
