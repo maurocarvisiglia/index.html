@@ -101,7 +101,16 @@ a.job-link:hover{text-decoration:underline;}
 /* COMPANY DETAIL VIEW */
 .back-btn{display:inline-flex;align-items:center;gap:8px;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;padding:0;margin-bottom:24px;transition:color .15s;}
 .back-btn:hover{color:var(--accent);}
-.company-hero{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-bottom:24px;}
+.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;display:flex;flex-direction:column;gap:8px;transition:border-color .2s;}
+.insight-card:hover{border-color:var(--accent);}
+.insight-card.alert{border-left:4px solid var(--danger);}
+.insight-card.positive{border-left:4px solid var(--success);}
+.insight-card.neutral{border-left:4px solid var(--accent2);}
+.insight-card.info{border-left:4px solid var(--accent);}
+.insight-icon{font-size:24px;margin-bottom:4px;}
+.insight-title{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;}
+.insight-value{font-size:22px;font-weight:800;color:var(--text);}
+.insight-sub{font-size:12px;color:var(--text2);line-height:1.4;}
 .company-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;}
 .company-hero-name{font-family:'DM Serif Display',serif;font-size:28px;color:var(--text);margin-bottom:8px;}
 .company-hero-meta{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
@@ -235,6 +244,12 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card-title">Settori più attivi</div>
         <div id="chart-sector"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">—</div></div>
       </div>
+    </div>
+
+    <!-- SEZIONE 8: Insights -->
+    <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">📡 Market Insights</div>
+    <div id="insights-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;">
+      <div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;grid-column:1/-1;">Carica la dashboard per vedere gli insights</div>
     </div>
   </div>
 
@@ -724,7 +739,119 @@ async function callAI(prompt, maxTokens=800){
   return data.choices[0].message.content.trim();
 }
 
-/* ── TAXONOMY ENGINE ── */
+function renderInsights(data, now){
+  const insights=[];
+  const d7=new Date(now-7*24*60*60*1000);
+  const d30=new Date(now-30*24*60*60*1000);
+  const d60=new Date(now-60*24*60*60*1000);
+
+  const last7=data.filter(l=>l.published_date&&new Date(l.published_date)>d7);
+  const last30=data.filter(l=>l.published_date&&new Date(l.published_date)>d30);
+  const prev30=data.filter(l=>l.published_date&&new Date(l.published_date)>d60&&new Date(l.published_date)<=d30);
+
+  // INSIGHT 1: Velocità assunzioni
+  const growthPct=prev30.length?Math.round((last30.length-prev30.length)/prev30.length*100):0;
+  const growthSign=growthPct>=0?'+':'';
+  insights.push({
+    type: growthPct>=10?'positive':growthPct<=-10?'alert':'neutral',
+    icon: growthPct>=0?'📈':'📉',
+    title: 'Trend assunzioni (30gg vs 30gg precedenti)',
+    value: `${growthSign}${growthPct}%`,
+    sub: `${last30.length} annunci ultimi 30gg vs ${prev30.length} nel mese precedente`
+  });
+
+  // INSIGHT 2: Azienda più attiva ultimi 7gg
+  const byCoLast7={};
+  last7.forEach(l=>{if(l.company_name)byCoLast7[l.company_name]=(byCoLast7[l.company_name]||0)+1;});
+  const topCoLast7=Object.entries(byCoLast7).sort((a,b)=>b[1]-a[1])[0];
+  if(topCoLast7){
+    insights.push({
+      type:'info',
+      icon:'🏆',
+      title: 'Azienda più attiva (ultimi 7gg)',
+      value: topCoLast7[0],
+      sub: `${topCoLast7[1]} nuovi annunci questa settimana`
+    });
+  }
+
+  // INSIGHT 3: Area funzionale in crescita
+  const areaLast30={};
+  const areaPrev30={};
+  last30.forEach(l=>{const k=l.functional_area_v2||l.functional_area;if(k)areaLast30[k]=(areaLast30[k]||0)+1;});
+  prev30.forEach(l=>{const k=l.functional_area_v2||l.functional_area;if(k)areaPrev30[k]=(areaPrev30[k]||0)+1;});
+  let topGrowthArea=null, topGrowthPct=-999;
+  Object.keys(areaLast30).forEach(k=>{
+    const prev=areaPrev30[k]||1;
+    const pct=Math.round((areaLast30[k]-prev)/prev*100);
+    if(pct>topGrowthPct&&areaLast30[k]>=3){topGrowthPct=pct;topGrowthArea=k;}
+  });
+  if(topGrowthArea){
+    insights.push({
+      type: topGrowthPct>0?'positive':'neutral',
+      icon:'🚀',
+      title: 'Area funzionale in crescita',
+      value: topGrowthArea.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
+      sub: `+${topGrowthPct}% rispetto al mese scorso (${areaLast30[topGrowthArea]} annunci)`
+    });
+  }
+
+  // INSIGHT 4: TA più richiesta questo mese
+  const taLast30={};
+  last30.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable').forEach(l=>{
+    taLast30[l.therapeutic_area]=(taLast30[l.therapeutic_area]||0)+1;
+  });
+  const topTA=Object.entries(taLast30).sort((a,b)=>b[1]-a[1])[0];
+  if(topTA){
+    insights.push({
+      type:'info',
+      icon:'🧬',
+      title: 'Area terapeutica più richiesta (30gg)',
+      value: topTA[0].replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
+      sub: `${topTA[1]} annunci con questa TA negli ultimi 30 giorni`
+    });
+  }
+
+  // INSIGHT 5: % annunci con RAL (D.Lgs. 96/2026)
+  const ralPct=data.length?Math.round(data.filter(l=>l.ral_min||l.ral_max).length/data.length*100):0;
+  insights.push({
+    type: ralPct>=15?'positive':ralPct>=5?'neutral':'alert',
+    icon:'💶',
+    title: 'Compliance D.Lgs. 96/2026',
+    value: `${ralPct}%`,
+    sub: `degli annunci indica la RAL. ${ralPct<10?'Molte aziende non ancora conformi.':ralPct<20?'Adeguamento in corso.':'Buona adozione della norma.'}`
+  });
+
+  // INSIGHT 6: Figura più ricercata questa settimana
+  const roleWeek={};
+  last7.forEach(l=>{const k=l.canonical_role||l.sub_area;if(k)roleWeek[k]=(roleWeek[k]||0)+1;});
+  const topRole=Object.entries(roleWeek).sort((a,b)=>b[1]-a[1])[0];
+  if(topRole){
+    insights.push({
+      type:'positive',
+      icon:'👤',
+      title: 'Figura più ricercata (7gg)',
+      value: topRole[0],
+      sub: `${topRole[1]} annunci per questa figura negli ultimi 7 giorni`
+    });
+  }
+
+  // Render
+  const grid=document.getElementById('insights-grid');
+  if(!grid)return;
+  if(!insights.length){
+    grid.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;grid-column:1/-1;">Dati insufficienti per gli insights — classifica gli annunci con AI</div>';
+    return;
+  }
+  grid.innerHTML=insights.map(ins=>`
+    <div class="insight-card ${ins.type}">
+      <div class="insight-icon">${ins.icon}</div>
+      <div class="insight-title">${ins.title}</div>
+      <div class="insight-value">${ins.value}</div>
+      <div class="insight-sub">${ins.sub}</div>
+    </div>`).join('');
+}
+
+
 let _taxonomyCache=null;
 let _aliasCache=null;
 
@@ -1079,6 +1206,9 @@ async function loadDashboard(){
     // ── SETTORI ──
     const secData=countBy(data.map(l=>({...l,_sec:l.sector_v2||l.sector})),'_sec').slice(0,8);
     renderClickableBar('chart-sector',secData,'accent','sector',data);
+
+    // ── INSIGHTS ──
+    renderInsights(data, now);
 
     _dashListings=data;
 
