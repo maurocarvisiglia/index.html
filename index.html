@@ -127,6 +127,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn active" id="nav-dashboard" onclick="showView('dashboard',this)">📊 Dashboard</button>
     <button class="nav-btn" id="nav-listings" onclick="showView('listings',this)">📋 Annunci</button>
     <button class="nav-btn" id="nav-companies" onclick="showView('companies',this)">🏢 Aziende</button>
+    <button class="nav-btn" id="nav-ruolo" onclick="showView('ruolo',this)">🔍 Analisi Ruolo</button>
   </div>
 </div>
 
@@ -291,6 +292,79 @@ a.job-link:hover{text-decoration:underline;}
         <div class="table-count" id="cd-listings-count">—</div>
       </div>
       <div id="cd-listings-body"><div class="loading">Caricamento...</div></div>
+    </div>
+  </div>
+
+  <!-- ANALISI RUOLO -->
+  <div class="view" id="view-ruolo">
+    <div class="section-header">
+      <div class="section-title">🔍 Analisi per Ruolo</div>
+    </div>
+
+    <!-- Search bar -->
+    <div class="filters" style="margin-bottom:24px;">
+      <div class="filter-group" style="flex:1;">
+        <div class="filter-label">Cerca figura professionale</div>
+        <input type="text" id="ruolo-search" placeholder="es. Area Manager, MSL, Regulatory Affairs Specialist..." style="width:100%;" oninput="if(this.value.length>2||this.value.length===0)analyzeRuolo()">
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Settore</div>
+        <select id="ruolo-sector" onchange="analyzeRuolo()">
+          <option value="">Tutti</option>
+          <option>Farmaceutico</option><option>Dispositivi Medici</option><option>Biotech</option>
+          <option>Cosmetica</option><option>Nutraceutica</option><option>CRO / Clinical Research</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area funzionale</div>
+        <select id="ruolo-area" onchange="analyzeRuolo()">
+          <option value="">Tutte</option>
+          <option>Sales</option><option>Marketing</option><option>Regulatory Affairs</option>
+          <option>Medical Affairs</option><option>MSL</option><option>Quality Assurance</option>
+          <option>Quality Control</option><option>Clinical Operations</option><option>Market Access</option>
+          <option>Pharmacovigilance</option><option>R&D</option><option>Engineering</option>
+          <option>Produzione</option><option>Supply Chain</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="stats-grid" id="ruolo-kpi" style="margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Annunci trovati</div><div class="stat-value" id="ruolo-kpi-total">—</div><div class="stat-sub">per questo ruolo</div></div>
+      <div class="stat-card"><div class="stat-label">RAL minima</div><div class="stat-value" id="ruolo-kpi-min">—</div><div class="stat-sub">rilevata</div></div>
+      <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="ruolo-kpi-avg">—</div><div class="stat-sub">di mercato</div></div>
+      <div class="stat-card"><div class="stat-label">RAL massima</div><div class="stat-value" id="ruolo-kpi-max">—</div><div class="stat-sub">rilevata</div></div>
+    </div>
+
+    <!-- Charts grid -->
+    <div class="chart-grid" style="margin-bottom:24px;" id="ruolo-charts-section" style="display:none;">
+      <div class="chart-card">
+        <div class="chart-card-title">Distribuzione seniority</div>
+        <div id="ruolo-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo per vedere i dati</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Top aziende che cercano questo ruolo</div>
+        <div id="ruolo-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo per vedere i dati</div></div>
+      </div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">RAL per seniority</div>
+        <div id="ruolo-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo per vedere i dati</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Distribuzione geografica</div>
+        <div id="ruolo-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo per vedere i dati</div></div>
+      </div>
+    </div>
+
+    <!-- Results table -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Annunci trovati</div>
+        <div class="table-count" id="ruolo-count">—</div>
+      </div>
+      <div id="ruolo-table"><div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div></div>
     </div>
   </div>
 
@@ -495,6 +569,131 @@ function showView(name,btn){
   if(name==='dashboard')loadDashboard();
   if(name==='listings')loadListings();
   if(name==='companies')loadCompanies();
+  if(name==='ruolo')analyzeRuolo();
+}
+
+async function analyzeRuolo(){
+  const search=(document.getElementById('ruolo-search')?.value||'').trim().toLowerCase();
+  const sector=document.getElementById('ruolo-sector')?.value||'';
+  const area=document.getElementById('ruolo-area')?.value||'';
+
+  // Reset KPIs
+  ['ruolo-kpi-total','ruolo-kpi-min','ruolo-kpi-avg','ruolo-kpi-max'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent='—';
+  });
+
+  if(!search&&!area){
+    document.getElementById('ruolo-table').innerHTML='<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div>';
+    ['ruolo-chart-seniority','ruolo-chart-companies','ruolo-chart-ral-seniority','ruolo-chart-geo'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo per vedere i dati</div>';
+    });
+    return;
+  }
+
+  try{
+    // Load all matching jobs
+    let q='job_listings?select=*&order=published_date.desc.nullslast';
+    if(sector)q+=`&sector=eq.${encodeURIComponent(sector)}`;
+    if(area)q+=`&functional_area=eq.${encodeURIComponent(area)}`;
+
+    let data=await api(q);
+
+    // Filter by search text
+    if(search){
+      data=data.filter(l=>(l.job_title||'').toLowerCase().includes(search));
+    }
+
+    document.getElementById('ruolo-count').textContent=`${data.length} annunci`;
+    document.getElementById('ruolo-kpi-total').textContent=data.length;
+
+    // RAL analysis
+    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    if(withRal.length){
+      const mins=withRal.filter(l=>l.ral_min).map(l=>l.ral_min);
+      const maxs=withRal.filter(l=>l.ral_max).map(l=>l.ral_max);
+      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const avg=Math.round(mids.reduce((a,b)=>a+b,0)/mids.length);
+      const minVal=Math.min(...mins);
+      const maxVal=Math.max(...maxs);
+      document.getElementById('ruolo-kpi-min').textContent=`€${(minVal/1000).toFixed(0)}k`;
+      document.getElementById('ruolo-kpi-avg').textContent=`€${(avg/1000).toFixed(0)}k`;
+      document.getElementById('ruolo-kpi-max').textContent=`€${(maxVal/1000).toFixed(0)}k`;
+    }
+
+    // Chart: seniority distribution
+    const bySeniority={};
+    data.forEach(l=>{const k=l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
+    const senData=Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]);
+    renderRuoloBar('ruolo-chart-seniority', senData, 'blue');
+
+    // Chart: top companies
+    const byCompany={};
+    data.forEach(l=>{const k=l.company_name||'N/D';byCompany[k]=(byCompany[k]||0)+1;});
+    const coData=Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    renderRuoloBar('ruolo-chart-companies', coData, 'accent');
+
+    // Chart: RAL per seniority
+    const ralBySen={};
+    withRal.forEach(l=>{
+      const k=l.seniority||'N/D';
+      if(!ralBySen[k])ralBySen[k]=[];
+      ralBySen[k].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    });
+    const ralSenData=Object.entries(ralBySen).map(([k,v])=>[k,Math.round(v.reduce((a,b)=>a+b,0)/v.length)]).sort((a,b)=>b[1]-a[1]);
+    const maxRal=Math.max(...ralSenData.map(d=>d[1]),1);
+    const ralSenEl=document.getElementById('ruolo-chart-ral-seniority');
+    if(ralSenEl){
+      ralSenEl.innerHTML=ralSenData.length?ralSenData.map(([l,v])=>`
+        <div class="bar-row">
+          <div class="bar-label">${l}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(v/maxRal*100).toFixed(1)}%"></div></div>
+          <div class="bar-count" style="width:60px;font-size:11px">€${(v/1000).toFixed(0)}k</div>
+        </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato RAL</div>';
+    }
+
+    // Chart: geography
+    const byGeo={};
+    data.forEach(l=>{
+      const loc=(l.location||'').split(',')[0].trim()||'N/D';
+      byGeo[loc]=(byGeo[loc]||0)+1;
+    });
+    const geoData=Object.entries(byGeo).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    renderRuoloBar('ruolo-chart-geo', geoData, '');
+
+    // Table
+    if(!data.length){
+      document.getElementById('ruolo-table').innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div><div class="empty-sub">Prova con un termine di ricerca diverso</div></div>';
+      return;
+    }
+
+    document.getElementById('ruolo-table').innerHTML=`<table><thead><tr>
+      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Sede</th><th>Data</th>
+    </tr></thead><tbody>${data.slice(0,100).map(l=>`<tr>
+      <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
+      <td style="font-size:12px">${l.company_name||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector||'—'}</td>
+      <td>${l.seniority||'—'}</td>
+      <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+      <td style="font-size:11px">${l.location||'—'}</td>
+      <td style="font-size:11px">${l.published_date||'—'}</td>
+    </tr>`).join('')}</tbody></table>${data.length>100?`<div style="padding:12px 24px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);">Mostrati i primi 100 di ${data.length} risultati</div>`:''}`;
+
+  }catch(e){
+    document.getElementById('ruolo-table').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;
+  }
+}
+
+function renderRuoloBar(id, data, cls){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
+  const max=Math.max(...data.map(d=>d[1]),1);
+  el.innerHTML=data.map(([l,n])=>`
+    <div class="bar-row">
+      <div class="bar-label">${l}</div>
+      <div class="bar-track"><div class="bar-fill ${cls==='blue'?'blue':''}" style="width:${(n/max*100).toFixed(1)}%;${cls==='accent'?'background:var(--accent)':''}"></div></div>
+      <div class="bar-count">${n}</div>
+    </div>`).join('');
 }
 
 function backToCompanies(){
