@@ -310,6 +310,7 @@ a.job-link:hover{text-decoration:underline;}
           <div class="company-hero-links" id="cd-links"></div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
+          <button class="btn btn-secondary" id="btn-link-listings" onclick="linkListingsToCompany()" style="font-size:12px;">🔗 Collega annunci</button>
           <button class="btn btn-primary" onclick="openListingFromCompany()">+ Aggiungi annuncio</button>
         </div>
       </div>
@@ -710,37 +711,59 @@ async function normalizeJobTitle(jobTitle){
   const title=jobTitle.trim();
   const titleLower=title.toLowerCase();
   
-  // Step 1: cerca match esatto negli alias
+  // Step 1: match esatto negli alias
   if(_aliasCache[titleLower]){
     const a=_aliasCache[titleLower];
     return{canonical_role:a.canonical_role,role_family:a.role_family,functional_area:a.functional_area};
   }
   
-  // Step 2: cerca match parziale negli alias
+  // Step 2: match con word boundary — evita falsi positivi
+  // "Manager" non matcha "Area Manager" per errore
   for(const[alias,data] of Object.entries(_aliasCache)){
-    if(titleLower.includes(alias)||alias.includes(titleLower.split(' ').slice(0,3).join(' '))){
+    if(alias.length<4)continue; // skip alias troppo corti
+    // Crea regex con word boundary
+    const escaped=alias.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const regex=new RegExp(`\\b${escaped}\\b`,'i');
+    if(regex.test(title)){
       return{canonical_role:data.canonical_role,role_family:data.role_family,functional_area:data.functional_area};
     }
   }
+
+  // Step 3: match per canonical_role nella tassonomia con word boundary
+  for(const t of _taxonomyCache){
+    const escaped=t.canonical_role.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const regex=new RegExp(`\\b${escaped}\\b`,'i');
+    if(regex.test(title)){
+      return{canonical_role:t.canonical_role,role_family:t.role_family,functional_area:t.functional_area};
+    }
+  }
   
-  // Step 3: usa Groq per normalizzare
-  const canonicalRoles=[..._taxonomyCache.map(t=>t.canonical_role)];
+  // Step 4: usa Groq con lista completa (nessun slice)
+  // Raggruppa per area per ridurre token mantenendo tutti i ruoli
+  const rolesByArea={};
+  _taxonomyCache.forEach(t=>{
+    if(!rolesByArea[t.functional_area])rolesByArea[t.functional_area]=[];
+    rolesByArea[t.functional_area].push(t.canonical_role);
+  });
+  const rolesText=Object.entries(rolesByArea)
+    .map(([area,roles])=>`${area}: ${roles.join(', ')}`)
+    .join('\n');
+
   const prompt=`Sei un esperto di Job Taxonomy nel settore Life Sciences italiano.
 Dato questo titolo di annuncio: "${title}"
-Trova il ruolo canonico più adatto tra questi:
-${canonicalRoles.slice(0,80).join(', ')}
+Trova il ruolo canonico più adatto tra questi (organizzati per area):
+${rolesText}
 
 Rispondi SOLO con JSON:
 {"canonical_role":"<ruolo esatto dalla lista>","role_family":"<famiglia>","functional_area":"<area>"}
-
-Se nessuno è adatto rispondi: {"canonical_role":null,"role_family":null,"functional_area":null}`;
+Se nessuno è adatto: {"canonical_role":null,"role_family":null,"functional_area":null}`;
 
   try{
-    const raw=await callAI(prompt,200);
+    const raw=await callAI(prompt,250);
     const clean=raw.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
     
-    // Salva il nuovo alias per uso futuro
+    // Salva alias per uso futuro
     if(result.canonical_role){
       try{
         await api('job_aliases','POST',{
@@ -750,7 +773,7 @@ Se nessuno è adatto rispondi: {"canonical_role":null,"role_family":null,"functi
           functional_area:result.functional_area
         });
         _aliasCache[titleLower]={canonical_role:result.canonical_role,role_family:result.role_family,functional_area:result.functional_area};
-      }catch(e){} // ignore duplicate alias errors
+      }catch(e){}
     }
     return result;
   }catch(e){return{canonical_role:null,role_family:null,functional_area:null};}
@@ -2269,7 +2292,11 @@ async function loadCompanyDetail(company){
   document.getElementById('cd-links').innerHTML=links.join('');
 
   try{
-    const listings=await api(`job_listings?select=*&company_name=eq.${encodeURIComponent(company.name)}&order=published_date.desc.nullslast`);
+    // Query per company_id se disponibile, altrimenti fallback su company_name
+    const q=company.id
+      ? `job_listings?select=*&or=(company_id.eq.${company.id},company_name.eq.${encodeURIComponent(company.name)})&order=published_date.desc.nullslast`
+      : `job_listings?select=*&company_name=eq.${encodeURIComponent(company.name)}&order=published_date.desc.nullslast`;
+    const listings=await api(q);
 
     // ── PROFILO AZIENDA ──
     const withEmp=listings.find(l=>l.company_employees);
@@ -2399,6 +2426,52 @@ function openListingFromCompany(){
     document.getElementById('l-entity').value=currentCompany.entity_type;
   }
   openModal('modal-listing');
+}
+
+async function linkListingsToCompany(){
+  if(!currentCompany)return;
+  const btn=document.getElementById('btn-link-listings');
+  btn.textContent='⏳ Collegamento...';
+  btn.disabled=true;
+
+  try{
+    // Cerca annunci con nome simile non ancora collegati a questa azienda
+    const nameParts=currentCompany.name.toLowerCase().trim().split(' ').filter(p=>p.length>3);
+    const allListings=await api(`job_listings?select=id,company_name,company_id&company_id=is.null&limit=1000`);
+    
+    const toLink=allListings.filter(l=>{
+      const lname=(l.company_name||'').toLowerCase().trim();
+      return nameParts.some(part=>lname.includes(part)||currentCompany.name.toLowerCase().includes(lname.split(' ')[0]));
+    });
+
+    if(!toLink.length){
+      toast('Nessun annuncio da collegare trovato');
+      btn.textContent='🔗 Collega annunci';
+      btn.disabled=false;
+      return;
+    }
+
+    if(!confirm(`Trovati ${toLink.length} annunci simili da collegare a ${currentCompany.name}. Procedo?`)){
+      btn.textContent='🔗 Collega annunci';
+      btn.disabled=false;
+      return;
+    }
+
+    let ok=0;
+    for(const l of toLink){
+      try{
+        await api(`job_listings?id=eq.${l.id}`,'PATCH',{company_id:currentCompany.id});
+        ok++;
+      }catch(e){}
+    }
+
+    toast(`${ok} annunci collegati a ${currentCompany.name}`,'success');
+    loadCompanyDetail(currentCompany);
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+  }
+  btn.textContent='🔗 Collega annunci';
+  btn.disabled=false;
 }
 
 /* ── COMPANIES CRUD ── */
