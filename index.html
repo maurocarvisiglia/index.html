@@ -1811,45 +1811,93 @@ async function refreshPendingBadges(){
 
 async function analyzeListings(){
   const btn=document.getElementById('btn-analyze');
+
+  // CASO 1: L'utente ha selezionato annunci con i checkbox — analizza solo quelli
+  if(_selectedIds.size>0){
+    if(!confirm(`Analizzo i ${_selectedIds.size} annunci selezionati con AI?\n\nVerranno aggiornati: settore, area funzionale, seniority, sede, ruolo canonico.\nLa RAL non verrà mai sovrascritta.`)){
+      return;
+    }
+    btn.textContent='⏳ Analisi...';
+    btn.disabled=true;
+
+    // Carica i dati degli annunci selezionati
+    const ids=[..._selectedIds];
+    const listings=await api(`job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&id=in.(${ids.join(',')})`);
+
+    let analyzed=0, failed=0;
+    for(const listing of listings){
+      try{
+        await classifyOneListing(listing);
+        analyzed++;
+      }catch(e){
+        console.error('Error:',e.message);
+        failed++;
+      }
+      btn.textContent=`⏳ ${analyzed+failed}/${listings.length}...`;
+      await new Promise(r=>setTimeout(r,300));
+    }
+
+    btn.textContent='🤖 Analizza con AI';
+    btn.disabled=false;
+    toast(`✅ Analizzati ${analyzed} annunci selezionati${failed?`, ${failed} errori`:''}`, 'success');
+    _selectedIds=new Set();
+    loadListings();
+    refreshPendingBadges();
+    return;
+  }
+
+  // CASO 2: Nessuna selezione — chiede se vuole analizzare i non classificati
   btn.textContent='⏳ Verifica...';
   btn.disabled=true;
 
-  // Carica annunci da classificare:
-  // 1. Non ancora classificati (sector_v2 IS NULL)
-  // 2. Classificati male (functional_area = 'altro' o functional_area_v2 = NULL)
-  // Non tocca la RAL — mai
   const [unclassified, misclassified] = await Promise.all([
     api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
     api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
   ]);
-  
-  // Deduplica per ID
-  const seen = new Set();
-  const needsAnalysis = [...unclassified, ...misclassified].filter(l => {
-    if(seen.has(l.id)) return false;
+
+  const seen=new Set();
+  const needsAnalysis=[...unclassified,...misclassified].filter(l=>{
+    if(seen.has(l.id))return false;
     seen.add(l.id);
     return true;
   });
-  
+
   if(!needsAnalysis.length){
-    toast('✅ Tutti gli annunci sono già classificati con schema v2!');
+    toast('✅ Tutti gli annunci sono già classificati!');
     btn.textContent='🤖 Analizza con AI';
     btn.disabled=false;
     return;
   }
 
-  if(!confirm(`Trovati ${needsAnalysis.length} annunci NON ancora classificati.\nClassifico i prossimi 50 con AI?`)){
+  if(!confirm(`Nessun annuncio selezionato.\n\nTrovati ${needsAnalysis.length} annunci non classificati.\nAnalizzo i prossimi 50 automaticamente?`)){
     btn.textContent='🤖 Analizza con AI';
     btn.disabled=false;
     return;
   }
 
-  btn.textContent='⏳ Classificazione v2...';
-
+  btn.textContent='⏳ Classificazione...';
   let analyzed=0, failed=0;
-
   for(const listing of needsAnalysis.slice(0,50)){
     try{
+      await classifyOneListing(listing);
+      analyzed++;
+    }catch(e){
+      console.error('Classification error:',e.message);
+      failed++;
+    }
+    btn.textContent=`⏳ ${analyzed+failed}/${Math.min(needsAnalysis.length,50)}...`;
+    await new Promise(r=>setTimeout(r,300));
+  }
+
+  btn.textContent='🤖 Analizza con AI';
+  btn.disabled=false;
+  toast(`Classificati ${analyzed} annunci${failed?`, ${failed} errori`:''}`, 'success');
+  loadListings();
+  loadDashboard();
+  refreshPendingBadges();
+}
+/* ── CLASSIFICA SINGOLO ANNUNCIO (usata da analyzeListings e da selezione manuale) ── */
+async function classifyOneListing(listing){
       const desc=listing.job_description?`\nDESCRIZIONE (estratto): ${listing.job_description.substring(0,1200)}`:'';
       const azienda=listing.company_name||'N/D';
       
@@ -2024,23 +2072,6 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(!listing.ral_max&&result.ral_max)patch.ral_max=parseInt(result.ral_max);
 
       await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
-      analyzed++;
-
-    }catch(e){
-      console.error('Classification error:',e.message);
-      failed++;
-    }
-
-    btn.textContent=`⏳ ${analyzed+failed}/${Math.min(needsAnalysis.length,50)}...`;
-    await new Promise(r=>setTimeout(r,300));
-  }
-
-  btn.textContent='🤖 Analizza con AI';
-  btn.disabled=false;
-
-  toast(`Classificati ${analyzed} annunci con schema v2${failed?`, ${failed} errori`:''}`);
-  loadListings();
-  loadDashboard();
 }
 
 /* ── SCRAPE LS SITES ── */
