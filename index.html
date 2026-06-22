@@ -263,8 +263,8 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
-        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
-        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli</button>
+        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
         <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
@@ -958,7 +958,7 @@ function showView(name,btn){
   document.getElementById('view-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
   if(name==='dashboard')loadDashboard();
-  if(name==='listings')loadListings();
+  if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
 }
@@ -1644,23 +1644,42 @@ function cancelRal(id, min, max){
   if(cell) cell.innerHTML=ralCell({id,ral_min:min||null,ral_max:max||null});
 }
 
-/* ── AI ANALYSIS ── */
+async function refreshPendingBadges(){
+  try{
+    const[unclassified, unnormalized]=await Promise.all([
+      fetch(`${SB_URL}/rest/v1/job_listings?sector_v2=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0)),
+      fetch(`${SB_URL}/rest/v1/job_listings?canonical_role=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0))
+    ]);
+    const b1=document.getElementById('badge-unclassified');
+    const b2=document.getElementById('badge-unnormalized');
+    if(b1){b1.textContent=unclassified;b1.style.display=unclassified>0?'inline':'none';}
+    if(b2){b2.textContent=unnormalized;b2.style.display=unnormalized>0?'inline':'none';}
+  }catch(e){}
+}
+
+
 async function analyzeListings(){
   const btn=document.getElementById('btn-analyze');
-  
-  // Load annunci non ancora classificati con schema v2
-  const toAnalyze=await api('job_listings?select=*&order=created_at.desc&limit=1000');
-  const needsAnalysis=toAnalyze.filter(l=>!l.sector_v2);
+  btn.textContent='⏳ Verifica...';
+  btn.disabled=true;
+
+  // Carica SOLO annunci senza sector_v2 — filtro server-side
+  const needsAnalysis=await api('job_listings?select=id,job_title,company_name,location,job_description&sector_v2=is.null&order=published_date.desc.nullslast&limit=1000');
   
   if(!needsAnalysis.length){
-    toast('Tutti gli annunci sono già classificati con schema v2!');
+    toast('✅ Tutti gli annunci sono già classificati con schema v2!');
+    btn.textContent='🤖 Analizza con AI';
+    btn.disabled=false;
     return;
   }
 
-  if(!confirm(`Trovati ${needsAnalysis.length} annunci da classificare.\nProcess 50 alla volta con AI?`))return;
+  if(!confirm(`Trovati ${needsAnalysis.length} annunci NON ancora classificati.\nClassifico i prossimi 50 con AI?`)){
+    btn.textContent='🤖 Analizza con AI';
+    btn.disabled=false;
+    return;
+  }
 
   btn.textContent='⏳ Classificazione v2...';
-  btn.disabled=true;
 
   let analyzed=0, failed=0;
 
@@ -1964,8 +1983,8 @@ async function normalizeAllRoles(){
   try{
     await loadTaxonomy();
     
-    // Load listings without canonical_role
-    const listings=await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&limit=100');
+    // Carica SOLO annunci senza canonical_role — filtro server-side
+    const listings=await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&order=published_date.desc.nullslast&limit=200');
     
     if(!listings.length){
       toast('Tutti gli annunci hanno già il ruolo normalizzato!');
