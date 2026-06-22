@@ -207,6 +207,7 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="theirstack-import" accept=".csv" style="display:none;" onchange="importTheirStackCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
+        <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI</button>
         <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
@@ -409,6 +410,64 @@ a.job-link:hover{text-decoration:underline;}
     <textarea id="apify-urls-output" readonly style="width:100%;height:280px;font-size:11px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);resize:vertical;"></textarea>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-apify-urls')">Chiudi</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL THEIRSTACK SEARCH -->
+<div class="modal-overlay" id="modal-theirstack-search">
+  <div class="modal" style="width:620px;">
+    <div class="modal-title">🔎 Cerca annunci su TheirStack</div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <div class="form-label">Titolo ruolo (parole chiave)</div>
+        <input type="text" id="ts-keywords" placeholder="es. Medical Science Liaison, Regulatory Affairs...">
+      </div>
+      <div class="form-group">
+        <div class="form-label">Paese</div>
+        <select id="ts-country">
+          <option value="Italy" selected>Italia</option>
+          <option value="Germany">Germania</option>
+          <option value="France">Francia</option>
+          <option value="Spain">Spagna</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Pubblicati negli ultimi</div>
+        <select id="ts-days">
+          <option value="7">7 giorni</option>
+          <option value="15">15 giorni</option>
+          <option value="30" selected>30 giorni</option>
+          <option value="90">90 giorni</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Numero risultati</div>
+        <select id="ts-limit">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Settore azienda</div>
+        <select id="ts-industry">
+          <option value="">Tutti</option>
+          <option value="Pharmaceutical Manufacturing">Farmaceutico</option>
+          <option value="Biotechnology Research">Biotech</option>
+          <option value="Medical Equipment Manufacturing">Dispositivi Medici</option>
+          <option value="Cosmetics">Cosmetica</option>
+        </select>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:16px;font-size:12px;color:var(--text2);">
+      ℹ️ Ogni ricerca consuma crediti API TheirStack. Piano free: 200 crediti totali.
+    </div>
+    <div id="ts-results-info" style="margin-top:12px;font-size:12px;color:var(--text2);min-height:20px;"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-theirstack-search')">Annulla</button>
+      <button class="btn btn-primary" id="btn-ts-search" onclick="searchTheirStack()">🔎 Cerca e importa</button>
     </div>
   </div>
 </div>
@@ -1737,6 +1796,134 @@ async function processRows(rows){
   if(errors)msg+=`, ${errors} errori`;
   toast(msg,errors>0&&ok===0?'error':'success');
   loadCompanies();
+}
+
+/* ── THEIRSTACK API SEARCH ── */
+const TS_API_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXIiOjEsImp0aSI6IjBmYjQ0M2RjLWU3MmEtNGRiMy1iODc3LTE0NDE3NGVjMTQ5OSIsImNyZWF0ZWRfYnkiOjE4MjA1MCwicGVybWlzc2lvbnMiOltdLCJhdWQiOiJhcGkiLCJpYXQiOjE3ODIxMTQwMjcsInN1YiI6IjE4MTI3NCIsIm5hbWUiOiJMc19qb2JfaW50ZWxsaWdlbmNlIiwiZW1haWwiOiJtYXVyby5jYXJ2aXNpZ2xpYUBtY3BoYXJtYWNvbnN1bHRpbmcuaXQifQ.8HeluJfBty6skJMVeLw3o4IMPLqwoRo3U_GvQaQ4sO0';
+
+async function searchTheirStack(){
+  const keywords=document.getElementById('ts-keywords').value.trim();
+  const country=document.getElementById('ts-country').value;
+  const days=parseInt(document.getElementById('ts-days').value);
+  const limit=parseInt(document.getElementById('ts-limit').value);
+  const industry=document.getElementById('ts-industry').value;
+
+  if(!keywords){toast('Inserisci almeno una parola chiave','error');return;}
+
+  const btn=document.getElementById('btn-ts-search');
+  const info=document.getElementById('ts-results-info');
+  btn.textContent='⏳ Ricerca in corso...';
+  btn.disabled=true;
+  info.textContent='Chiamata API TheirStack...';
+
+  // Build date filter
+  const dateFrom=new Date();
+  dateFrom.setDate(dateFrom.getDate()-days);
+  const dateFromStr=dateFrom.toISOString().split('T')[0];
+
+  // Build request body
+  const body={
+    job_title_or:[keywords],
+    job_country_code_or:['IT'],
+    posted_at_gte:dateFromStr,
+    limit:limit,
+    page:0
+  };
+  if(industry)body.company_industry_or=[industry];
+
+  try{
+    const resp=await fetch('https://api.theirstack.com/v1/jobs/search',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+TS_API_KEY
+      },
+      body:JSON.stringify(body)
+    });
+
+    if(!resp.ok){
+      const err=await resp.text();
+      throw new Error(`TheirStack API error ${resp.status}: ${err.substring(0,200)}`);
+    }
+
+    const data=await resp.json();
+    const jobs=data.data||data.jobs||data||[];
+
+    info.textContent=`Trovati ${jobs.length} annunci. Importazione in corso...`;
+
+    // Import jobs using same mapping as CSV import
+    let ok=0,skip=0,errors=0;
+    for(const job of jobs){
+      const url=job.url||job.job_url||'';
+      const title=job.job_title||job.title||'';
+      const company=job.company?.name||job.company_name||'';
+      if(!url||!title)continue;
+
+      // Map salary
+      let ral_min=null,ral_max=null;
+      if(job.salary_string){
+        const nums=job.salary_string.replace(/,/g,'.').match(/[\d]+\.?\d*/g);
+        if(nums){
+          const vals=nums.map(n=>{const f=parseFloat(n);return job.salary_string.toLowerCase().includes('k')?Math.round(f*1000):Math.round(f);}).filter(n=>n>1000&&n<1000000);
+          if(vals.length>=2){ral_min=Math.min(...vals);ral_max=Math.max(...vals);}
+          else if(vals.length===1)ral_min=vals[0];
+        }
+      }
+
+      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('entry')||l.includes('junior'))return'Junior';if(l.includes('mid'))return'Mid';if(l.includes('senior')||l.includes('lead'))return'Senior';if(l.includes('director'))return'Director';if(l.includes('executive')||l.includes('chief'))return'C-level';return'Mid';};
+      const mapArea=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('regulatory'))return'Regulatory';if(l.includes('medical')||l.includes('msl'))return'Medical';if(l.includes('sales')||l.includes('account'))return'Sales';if(l.includes('marketing'))return'Marketing';if(l.includes('clinical'))return'Clinical';if(l.includes('quality'))return'Quality';if(l.includes('research')||l.includes('scientist'))return'R&D';return'altro';};
+      const mapSector=v=>{if(!v)return'Farmaceutico';const l=v.toLowerCase();if(l.includes('biotech'))return'Biotech';if(l.includes('medical equipment')||l.includes('device'))return'Dispositivi Medici';if(l.includes('cosmetic'))return'Cosmetica';if(l.includes('cro')||l.includes('clinical research'))return'CRO / Clinical Research';return'Farmaceutico';};
+
+      const record={
+        job_title:title,
+        company_name:company,
+        entity_type:'life_sciences',
+        sector:mapSector(job.company?.industry||''),
+        functional_area:mapArea(title),
+        seniority:mapSeniority(job.seniority||''),
+        ral_min,ral_max,
+        contract_type:job.employment_status==='full_time'?'TI':job.employment_status==='contract'?'TD':null,
+        location:(job.job_location||'').replace(/, ?Italy$/i,'').trim()||null,
+        source:'TheirStack',
+        url:url,
+        published_date:job.posted_at||job.date_posted||null,
+        is_remote:job.remote===true?true:false,
+        job_description:(job.description||'').substring(0,4000)||null,
+        company_employees:job.company?.employee_count||null,
+        company_revenue_usd:job.company?.revenue_usd||null,
+        company_industry:job.company?.industry||null,
+        company_url:job.company?.url||null,
+        company_linkedin_url:job.company?.linkedin_url||null,
+        hiring_manager_name:job.hiring_manager?.full_name||null,
+        hiring_manager_role:job.hiring_manager?.role||null,
+        hiring_manager_linkedin:job.hiring_manager?.linkedin_url||null,
+      };
+
+      try{
+        await api('job_listings','POST',record);ok++;
+      }catch(e){
+        const m=e.message||'';
+        if(m.includes('duplicate')||m.includes('23505'))skip++;
+        else errors++;
+      }
+    }
+
+    let msg=`TheirStack: ${ok} nuovi annunci`;
+    if(skip)msg+=`, ${skip} già presenti`;
+    if(errors)msg+=`, ${errors} errori`;
+    info.textContent=msg;
+    toast(msg,'success');
+    closeModal('modal-theirstack-search');
+    loadListings();
+    initApp();
+
+  }catch(e){
+    info.textContent='Errore: '+e.message;
+    toast('Errore TheirStack: '+e.message,'error');
+  }
+
+  btn.textContent='🔎 Cerca e importa';
+  btn.disabled=false;
 }
 
 // Lightweight init — load only counts
