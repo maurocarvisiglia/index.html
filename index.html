@@ -275,8 +275,10 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <input type="file" id="theirstack-import" accept=".csv" style="display:none;" onchange="importTheirStackCSV(event)">
+        <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
-        <button class="btn btn-secondary" onclick="openModal('modal-vocations')" style="border-color:#7C3AED;color:#7C3AED;">🟣 Importa Vocations</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;">🟣 CSV Vocations</button>
+        <button class="btn btn-secondary" onclick="openModal('modal-vocations')" style="border-color:#7C3AED;color:#7C3AED;opacity:.7;">🟣 API Vocations</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
@@ -1171,6 +1173,105 @@ async function checkVocationsUsage(){
     toast('Errore: '+e.message,'error');
     vocLog('Errore verifica crediti: '+e.message,'var(--danger)');
   }
+}
+
+/* ── IMPORT CSV VOCATIONS (mensile) ── */
+async function importVocationsCSV(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  event.target.value='';
+
+  const text=await file.text();
+  const lines=text.split('\n');
+  const sep=';';
+  const headers=lines[0].split(sep).map(h=>h.trim().replace(/^\uFEFF/,''));
+
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    if(!lines[i].trim())continue;
+    const vals=lines[i].split(sep);
+    const row={};
+    headers.forEach((h,j)=>row[h]=(vals[j]||'').trim());
+    rows.push(row);
+  }
+  if(!rows.length){toast('Nessun dato nel CSV','error');return;}
+  toast(`Vocations CSV: ${rows.length} annunci rilevati. Importazione...`);
+
+  // Parser RAL: "€37K" → 37000, "€135K" → 135000
+  const parseRAL=str=>{
+    if(!str||!str.trim())return null;
+    const s=str.replace(/[€\s]/g,'').toUpperCase();
+    if(s.includes('K')){const n=parseFloat(s.replace('K',''))*1000;return n>=10000&&n<=500000?Math.round(n):null;}
+    const n=parseInt(s.replace(/\./g,''));
+    return n&&n>=10000&&n<=500000?n:null;
+  };
+
+  const contractMap={permanent:'TI',contract:'TD',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Freelance'};
+  const sectorMap={'Farmaceutico':'pharma_rx','Chimico e Farmaceutico':'pharma_rx','Chimico':'cdmo','Medicale':'medical_devices','Biomedico':'biotech','Biotecnologico':'biotech','Cosmetico':'cosmetics','Nutraceutico':'nutraceutical','Veterinario':'veterinary'};
+
+  let ok=0,skip=0,rejected=0,errors=0;
+
+  for(const row of rows){
+    const title=(row['Nome posizione']||'').trim();
+    const company=(row['Nome azienda']||row['Ragione sociale']||'').trim();
+    const url=(row['URL']||'').trim();
+    const city=(row['Città']||'').trim();
+    const region=(row['Regioni']||'').trim();
+    const location=city?`${city}, ${region}`:region;
+
+    // Data: "20/06/2026" → "2026-06-20"
+    let published_date=null;
+    const rd=(row['Data creazione']||'').trim();
+    if(rd){const p=rd.split('/');if(p.length===3)published_date=`${p[2]}-${p[1]}-${p[0]}`;}
+
+    // RAL — dato REALE da Vocations, non stimato
+    const ral=parseRAL(row['Stipendio annuo']||'');
+
+    const settoreRaw=(row['Settori']||'').split(',')[0].trim();
+    const sector_v2=sectorMap[settoreRaw]||'pharma_rx';
+    const contractRaw=(row['Contratto']||'').toLowerCase().trim();
+    const contract_type=contractMap[contractRaw]||'altro';
+    const employees=parseInt(row['Dipendenti']||'0')||null;
+
+    // Costruisce job_description da competenze, profilo e benefit
+    const desc=[
+      row['Competenze']?`Competenze richieste: ${row['Competenze']}`:'',
+      row['Target']?`Profilo ricercato: ${row['Target']}`:'',
+      row['Benefit']?`Benefit: ${row['Benefit']}`:''
+    ].filter(Boolean).join('\n').substring(0,3000)||null;
+
+    const record={
+      job_title:title,
+      company_name:company,
+      url:url||null,
+      source:'Vocations',
+      published_date,
+      location:location||null,
+      contract_type,
+      sector_v2,
+      ral_min:ral,
+      ral_max:ral,
+      company_employees:employees,
+      company_url:(row['URL azienda']||'').trim()||null,
+      job_description:desc,
+      entity_type:'life_sciences',
+    };
+
+    const qv=validateListing(record);
+    if(!qv.valid){rejected++;continue;}
+
+    try{
+      const result=await upsertListing(record);
+      if(result==='inserted')ok++;
+      else skip++;
+    }catch(e){errors++;}
+  }
+
+  const{msg,type}=qualitySummary(ok,skip,rejected,0,errors,'Vocations CSV');
+  toast(msg,type);
+  loadListings();
+  refreshPendingBadges();
+  loadDashboard();
 }
 
 async function importVocations(){
