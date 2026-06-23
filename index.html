@@ -1271,6 +1271,17 @@ async function importVocations(){
 const QUALITY_REQUIRED=['job_title','company_name','url','published_date'];
 const QUALITY_RECOMMENDED=['location','job_description'];
 
+function sanitizeRAL(ral_min, ral_max, salary_text){
+  // Se non c'è salary_text ma ci sono valori RAL → l'AI ha inventato, scarta
+  if((ral_min||ral_max) && !salary_text) return {ral_min:null, ral_max:null};
+  // Valori fuori range plausibile (< 10k o > 500k) → scarta
+  if(ral_min && (ral_min < 10000 || ral_min > 500000)) return {ral_min:null, ral_max:null};
+  if(ral_max && (ral_max < 10000 || ral_max > 500000)) return {ral_min:null, ral_max:null};
+  // min > max → scarta
+  if(ral_min && ral_max && ral_min > ral_max) return {ral_min:null, ral_max:null};
+  return {ral_min: ral_min||null, ral_max: ral_max||null};
+}
+
 function validateListing(record){
   const errors=[];
   const warnings=[];
@@ -3035,24 +3046,36 @@ REGOLE ESTRAZIONE RAL — LEGGI CON ATTENZIONE:
 Cerca nel testo TUTTE queste pattern e convertile in euro annui lordi:
 
 PATTERN DA CERCARE:
-1. Parole chiave: "RAL", "R.A.L.", "retribuzione annua lorda", "stipendio", "salary", "compensation", "package", "remunerazione", "inquadramento economico", "offriamo", "range retributivo", "fascia retributiva"
-2. Numeri a 5-6 cifre: qualsiasi numero tra 20000 e 200000 vicino a parole salariali
-3. Formato K: "40K", "40k", "40.000", "40,000", "€40k", "40K€", "KEUR", "40-50K", "tra 40 e 50K"
-4. Formato mensile: "€3.500/mese", "3500 mensili", "3.500 al mese" → moltiplica x13 (RAL)
-5. Range espliciti: "40.000 - 50.000", "tra 45K e 55K", "dai 40K ai 60K", "40-50k€"
-6. Con benefit: "RAL 50K + MBO", "45K + auto", "50.000 + variabile" → prendi solo la parte fissa
+⚠️ REGOLA ASSOLUTA SUL DATO RAL — LEGGILA CON ATTENZIONE:
+Il dato RAL deve essere COPIATO dal testo, MAI inventato, MAI stimato, MAI dedotto.
+Se il testo non contiene un numero salariale esplicito → ral_min e ral_max DEVONO essere null.
+NON usare il titolo, il settore, la seniority o il ruolo per dedurre la RAL.
+NON stimare "circa", "probabilmente", "tipicamente".
+Un null corretto vale infinitamente più di un numero inventato.
 
-CONVERSIONI:
-- "50K" o "50k" → 50000
-- "€3.500 mensili" → 3500 x 13 = 45500
-- "40-50K" → ral_min: 40000, ral_max: 50000  
-- "circa 45K" → ral_min: 43000, ral_max: 47000
+TROVA RAL SOLO SE NEL TESTO C'È UN NUMERO ESPLICITO vicino a queste parole chiave:
+- "RAL", "R.A.L.", "retribuzione annua lorda", "stipendio", "salary", "compensazione", "remunerazione", "offriamo", "range retributivo", "fascia retributiva", "package"
+- Numeri a 5-6 cifre (es. 57000, 95000) vicino a contesto salariale
+- Formato K esplicito: "40K", "57k", "€57k", "57K€", "57.000€", "57-95K", "tra 57 e 95K"
+- Formato mensile ESPLICITO: "€3.500/mese", "3500 mensili" → moltiplica x13
+
+COME CONVERTIRE (solo se trovi il numero nel testo):
+- "57K" → 57000
+- "95K" → 95000
+- "57-95K" → ral_min: 57000, ral_max: 95000
 - "fino a 60K" → ral_min: null, ral_max: 60000
-- "da 40K" → ral_min: 40000, ral_max: null
-- "50.000 euro" → 50000
+- "da 57K" → ral_min: 57000, ral_max: null
+- "RAL 50K + MBO" → ral_min: 50000, ral_max: 50000 (solo parte fissa)
+- "€3.500 mensili" → ral_min: 45500, ral_max: 45500
 
-SE NON TROVI RAL: ral_min e ral_max devono essere null (non inventare valori)
-salary_text: copia ESATTAMENTE il testo originale dove hai trovato il dato salariale
+VIETATO ASSOLUTAMENTE:
+- NON scrivere valori RAL se non ci sono numeri espliciti nel testo
+- NON usare "circa", "tipicamente", "mediamente per questo ruolo"
+- NON dedurre la RAL dal titolo, settore, seniority o esperienza richiesta
+- NON mettere valori come 40000-50000 se nel testo c'è scritto 57000-95000
+- NON arrotondare o modificare i numeri trovati (57000 rimane 57000, non 55000)
+
+salary_text: copia ESATTAMENTE il testo originale dove appare il dato salariale, null se assente
 
 REGOLE SENIORITY:
 - Cerca: "anni di esperienza", "years of experience", livello indicato nel titolo
@@ -3093,8 +3116,15 @@ JSON richiesto:
     const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
 
     const patch={ai_analyzed:true,classified_at:new Date().toISOString(),classification_source:'groq_v2'};
-    if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
-    if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
+    // Sanity check RAL — se non c'è salary_text, l'AI ha inventato, scarta
+    const{ral_min:sRalMin,ral_max:sRalMax}=sanitizeRAL(
+      result.ral_min?parseInt(result.ral_min):null,
+      result.ral_max?parseInt(result.ral_max):null,
+      result.salary_text
+    );
+    if(sRalMin)patch.ral_min=sRalMin;
+    if(sRalMax)patch.ral_max=sRalMax;
+    if(result.salary_text)patch.salary_text=result.salary_text;
     if(result.job_description)patch.job_description=result.job_description;
     if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
@@ -3170,20 +3200,21 @@ Titolo annuncio: ${title}
 TESTO PAGINA:
 ${pageText}
 
-OBIETTIVO PRINCIPALE: trovare il range retributivo (RAL).
+⚠️ REGOLA ASSOLUTA: La RAL deve essere COPIATA dal testo, MAI inventata o stimata.
+Se non trovi un numero salariale esplicito nel testo → ral_min e ral_max devono essere null.
+NON dedurre la RAL dal titolo, ruolo, settore o seniority.
 
-CERCA NEL TESTO QUESTI PATTERN RAL:
-- Parole: "RAL", "R.A.L.", "retribuzione", "stipendio", "salary", "compensation", "remunerazione", "offriamo", "range retributivo", "fascia"
-- Numeri 5-6 cifre: qualsiasi numero tra 20000-200000 vicino a contesto salariale
-- Formato K: "40K", "40k", "40.000€", "40-50K", "tra 40 e 50k", "KEUR", "k€"
-- Mensile: "€3.500/mese" → moltiplica x13
-- Range: "40.000-50.000", "dai 40K ai 60K", "40-50k€"
-- Con benefit: "50K + MBO", "45K + auto" → solo parte fissa
+TROVA RAL SOLO SE C'È UN NUMERO ESPLICITO vicino a: "RAL", "stipendio", "salary", "retribuzione", "offriamo", "compensazione", "fascia retributiva"
+- Formato K: "57K", "57k", "€57k", "57-95K", "tra 57 e 95K"
+- Numeri 5-6 cifre: es. 57000, 95000 in contesto salariale
+- Mensile ESPLICITO: "€3.500/mese" → x13 = 45500
+- Con benefit: "57K + MBO" → solo 57000
 
-CONVERSIONI: "50K"→50000, "3500 mensili"→45500, "40-50K"→min:40000 max:50000
+CONVERSIONI (solo se il numero è nel testo):
+"57-95K" → min:57000 max:95000 | "fino a 60K" → min:null max:60000 | "da 57K" → min:57000 max:null
 
 Rispondi SOLO con questo JSON:
-{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto sullo stipendio, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|manager|senior_manager|head_of|director|vp|c_level>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
+{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|manager|senior_manager|head_of|director|vp|c_level>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
 :
 `Classifica questo annuncio Life Sciences solo dal titolo.
 Titolo: ${title}
@@ -3199,8 +3230,13 @@ Rispondi SOLO con JSON:
     const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
 
     const patch={ai_analyzed:true};
-    if(result.ral_min)patch.ral_min=parseInt(result.ral_min);
-    if(result.ral_max)patch.ral_max=parseInt(result.ral_max);
+    const{ral_min:sRal2Min,ral_max:sRal2Max}=sanitizeRAL(
+      result.ral_min?parseInt(result.ral_min):null,
+      result.ral_max?parseInt(result.ral_max):null,
+      result.salary_text
+    );
+    if(sRal2Min)patch.ral_min=sRal2Min;
+    if(sRal2Max)patch.ral_max=sRal2Max;
     if(result.job_description)patch.job_description=result.job_description;
     if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
