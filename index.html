@@ -1223,14 +1223,7 @@ async function importVocations(){
               source_id:pos.positionID,
             };
 
-            // Upsert per evitare duplicati (usa url come chiave)
-            if(url){
-              const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id`);
-              if(existing.length){totalSkipped++;continue;}
-            }
-
-            await api('job_listings','POST',record);
-            totalNew++;
+            await upsertListing(record);
             totalImported++;
 
           }catch(e){
@@ -1238,7 +1231,8 @@ async function importVocations(){
           }
         }
 
-        vocLog(`Salvati: ${totalNew} nuovi, ${totalSkipped} già presenti`,'var(--success)');
+        const dupes=positions.length-totalImported+totalSkipped;
+        vocLog(`Salvati: ${totalImported} nuovi, ${dupes} già presenti`,'var(--success)');
       }
 
       // Se non ci sono più pagine, fermati
@@ -1263,6 +1257,54 @@ async function importVocations(){
 }
 
 
+
+/* ── DEDUPLICAZIONE ── */
+async function calcHash(str){
+  // Calcola MD5-like hash usando SubtleCrypto
+  const enc=new TextEncoder();
+  const buf=await crypto.subtle.digest('SHA-256',enc.encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('').substring(0,32);
+}
+
+function buildDedupKey(jobTitle, companyName, publishedDate){
+  return (
+    (jobTitle||'').toLowerCase().trim() + '|' +
+    (companyName||'').toLowerCase().trim() + '|' +
+    (publishedDate||'')
+  );
+}
+
+async function upsertListing(record){
+  // Calcola hash di deduplicazione
+  const key=buildDedupKey(record.job_title, record.company_name, record.published_date);
+  const hash=await calcHash(key);
+  record.dedup_hash=hash;
+
+  try{
+    // Tenta insert
+    await api('job_listings','POST',record);
+    return 'inserted';
+  }catch(e){
+    const msg=e.message||'';
+    if(msg.includes('23505')||msg.includes('duplicate')||msg.includes('unique')){
+      // Duplicato — aggiorna solo i campi mancanti (mai sovrascrivere RAL)
+      const existing=await api(`job_listings?dedup_hash=eq.${hash}&select=id,ral_min,ral_max`);
+      if(existing.length){
+        const patch={};
+        // Aggiorna solo se il campo è vuoto nel record esistente
+        if(!existing[0].ral_min && record.ral_min)patch.ral_min=record.ral_min;
+        if(!existing[0].ral_max && record.ral_max)patch.ral_max=record.ral_max;
+        if(record.job_description)patch.job_description=record.job_description;
+        if(record.source_id)patch.source_id=record.source_id;
+        if(Object.keys(patch).length){
+          await api(`job_listings?id=eq.${existing[0].id}`,'PATCH',patch);
+        }
+      }
+      return 'skipped';
+    }
+    throw e;
+  }
+}
 
 async function callAI(prompt, maxTokens=800){
   const resp=await fetch(GROQ_URL,{
@@ -1983,35 +2025,17 @@ async function importTheirStackCSV(event){
     };
 
     try{
-      await api('job_listings','POST',record);
-      ok++;
+      const result=await upsertListing(record);
+      if(result==='inserted')ok++;
+      else{skip++;}
     }catch(e){
-      const m=e.message||'';
-      if(m.includes('duplicate')||m.includes('23505')){
-        try{
-          const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id,ral_min,ral_max,sector,functional_area,seniority,company_employees,company_revenue_usd,hiring_manager_name,job_description,is_remote`);
-          if(existing.length){
-            const ex=existing[0];
-            const patch={};
-            const fields=['ral_min','ral_max','sector','functional_area','seniority',
-              'company_employees','company_revenue_usd','company_industry','company_url',
-              'company_linkedin_url','hiring_manager_name','hiring_manager_role',
-              'hiring_manager_linkedin','job_description','source_url','is_remote'];
-            fields.forEach(f=>{if((ex[f]===null||ex[f]===undefined||ex[f]==='')&&record[f])patch[f]=record[f];});
-            if(Object.keys(patch).length){await api(`job_listings?id=eq.${ex.id}`,'PATCH',patch);updated++;}
-            else skip++;
-          }
-        }catch(e2){skip++;}
-      }else{
-        console.error('TheirStack import error:',m,'record:',JSON.stringify(record).substring(0,200));
-        errors++;
-      }
+      console.error('TheirStack import error:',e.message);
+      errors++;
     }
   }
 
   let msg=`TheirStack: ${ok} nuovi annunci`;
-  if(updated)msg+=`, ${updated} aggiornati`;
-  if(skip)msg+=`, ${skip} già completi`;
+  if(skip)msg+=`, ${skip} già presenti (deduplicati)`;
   if(errors)msg+=`, ${errors} errori`;
   toast(msg,errors>0&&ok===0?'error':'success');
   loadListings();
@@ -2109,33 +2133,10 @@ async function importApifyCSV(event){
     };
 
     try{
-      // Try insert first
-      await api('job_listings','POST',record);
-      ok++;
-    }catch(e){
-      const m=e.message||'';
-      if(m.includes('duplicate')||m.includes('23505')){
-        // Already exists — check if we should update missing fields only
-        try{
-          const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id,ral_min,ral_max,sector,functional_area,seniority`);
-          if(existing.length){
-            const ex=existing[0];
-            // Build patch with only fields that are currently null/empty
-            const patch={};
-            if(!ex.ral_min&&ral_min)patch.ral_min=ral_min;
-            if(!ex.ral_max&&ral_max)patch.ral_max=ral_max;
-            if(!ex.functional_area&&record.functional_area)patch.functional_area=record.functional_area;
-            if(!ex.seniority&&record.seniority)patch.seniority=record.seniority;
-            if(Object.keys(patch).length){
-              await api(`job_listings?id=eq.${ex.id}`,'PATCH',patch);
-              updated++;
-            }else{
-              skip++;
-            }
-          }
-        }catch(e2){skip++;}
-      }else{errors++;}
-    }
+      const result=await upsertListing(record);
+      if(result==='inserted')ok++;
+      else skip++;
+    }catch(e){errors++;}
   }
 
   let msg=`Importati ${ok} nuovi annunci`;
