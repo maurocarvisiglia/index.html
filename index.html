@@ -723,6 +723,86 @@ a.job-link:hover{text-decoration:underline;}
         <div class="stat-card"><div class="stat-label">Ultimi 12 mesi</div><div class="stat-value" id="ri-kpi-365d">—</div><div class="stat-sub">nuovi annunci</div></div>
       </div>
 
+      <!-- CONFRONTO PERIODI -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">🔄 Confronto Periodi</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+        <!-- Selezione modalità confronto -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+          <button onclick="setCompareMode('week',this)" class="compare-btn active" data-mode="week"
+            style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--accent);color:var(--accent);background:var(--surface2);cursor:pointer;">
+            Settimana vs settimana precedente
+          </button>
+          <button onclick="setCompareMode('month',this)" class="compare-btn"
+            style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border);color:var(--text2);background:var(--surface2);cursor:pointer;">
+            Mese vs mese precedente
+          </button>
+          <button onclick="setCompareMode('30d',this)" class="compare-btn"
+            style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border);color:var(--text2);background:var(--surface2);cursor:pointer;">
+            Ultimi 30gg vs 30gg prima
+          </button>
+          <button onclick="setCompareMode('quarter',this)" class="compare-btn"
+            style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border);color:var(--text2);background:var(--surface2);cursor:pointer;">
+            Trimestre vs trimestre precedente
+          </button>
+          <button onclick="setCompareMode('custom',this)" class="compare-btn"
+            style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid var(--border);color:var(--text2);background:var(--surface2);cursor:pointer;">
+            📅 Periodo personalizzato
+          </button>
+        </div>
+
+        <!-- Range personalizzato (nascosto di default) -->
+        <div id="compare-custom-range" style="display:none;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;">
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Periodo A (più recente)</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="date" id="compare-a-from" style="font-size:12px;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+              <span style="color:var(--text2);">→</span>
+              <input type="date" id="compare-a-to" style="font-size:12px;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Periodo B (confronto)</div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="date" id="compare-b-from" style="font-size:12px;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+              <span style="color:var(--text2);">→</span>
+              <input type="date" id="compare-b-to" style="font-size:12px;padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+            </div>
+          </div>
+          <button onclick="runComparison()" style="padding:6px 16px;border-radius:8px;font-size:12px;font-weight:600;background:var(--accent);color:white;border:none;cursor:pointer;margin-top:16px;">
+            Confronta
+          </button>
+        </div>
+
+        <!-- Risultati confronto -->
+        <div id="compare-results" style="display:none;">
+          <!-- Header periodi -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);text-align:center;"></div>
+            <div id="compare-label-a" style="font-size:12px;font-weight:700;color:var(--accent);text-align:center;background:var(--surface2);padding:8px;border-radius:8px;">Periodo A</div>
+            <div id="compare-label-b" style="font-size:12px;font-weight:700;color:var(--text2);text-align:center;background:var(--surface2);padding:8px;border-radius:8px;">Periodo B</div>
+          </div>
+
+          <!-- KPI confronto -->
+          <div id="compare-kpi-rows"></div>
+
+          <!-- Grafici confronto -->
+          <div class="chart-grid" style="margin-top:20px;">
+            <div class="chart-card">
+              <div class="chart-card-title">Annunci per settimana — Periodo A 🔵 vs B ⬜</div>
+              <div id="compare-chart-trend"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Top aziende — variazione</div>
+              <div id="compare-chart-companies"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="compare-empty" style="text-align:center;padding:20px;color:var(--text2);font-size:13px;">
+          Seleziona un periodo di confronto
+        </div>
+      </div>
+
       <!-- Charts row 1 -->
       <div class="chart-grid" style="margin-bottom:24px;">
         <div class="chart-card">
@@ -3251,9 +3331,224 @@ async function delListing(id){
   }catch(e){toast('Errore','error');}
 }
 
-/* ══════════════════════════════════════════════
-   COMPLIANCE D.Lgs. 96/2026
-   ══════════════════════════════════════════════ */
+/* ── CONFRONTO PERIODI — Role Intelligence ── */
+let _compareMode='week';
+let _riListingsCache=[];
+
+function setCompareMode(mode, btn){
+  _compareMode=mode;
+  // Aggiorna stile bottoni
+  document.querySelectorAll('.compare-btn').forEach(b=>{
+    b.style.borderColor='var(--border)';
+    b.style.color='var(--text2)';
+  });
+  btn.style.borderColor='var(--accent)';
+  btn.style.color='var(--accent)';
+
+  const customRange=document.getElementById('compare-custom-range');
+  if(mode==='custom'){
+    customRange.style.display='flex';
+    // Imposta date di default: ultima settimana
+    const today=new Date();
+    const fmt=d=>d.toISOString().split('T')[0];
+    document.getElementById('compare-a-from').value=fmt(new Date(today-7*864e5));
+    document.getElementById('compare-a-to').value=fmt(today);
+    document.getElementById('compare-b-from').value=fmt(new Date(today-14*864e5));
+    document.getElementById('compare-b-to').value=fmt(new Date(today-7*864e5));
+  }else{
+    customRange.style.display='none';
+    runComparison();
+  }
+}
+
+function getCompareDates(){
+  const now=new Date();
+  const fmt=d=>d.toISOString().split('T')[0];
+  
+  if(_compareMode==='custom'){
+    return{
+      aFrom:document.getElementById('compare-a-from').value,
+      aTo:document.getElementById('compare-a-to').value,
+      bFrom:document.getElementById('compare-b-from').value,
+      bTo:document.getElementById('compare-b-to').value,
+      labelA:'Periodo A',
+      labelB:'Periodo B'
+    };
+  }
+
+  if(_compareMode==='week'){
+    const monday=d=>{const dt=new Date(d);const day=dt.getDay();const diff=dt.getDate()-day+(day===0?-6:1);return new Date(dt.setDate(diff));};
+    const thisMonday=monday(now);
+    const lastMonday=new Date(thisMonday-7*864e5);
+    const sunday=d=>new Date(new Date(d).setDate(new Date(d).getDate()+6));
+    return{
+      aFrom:fmt(thisMonday), aTo:fmt(now),
+      bFrom:fmt(lastMonday), bTo:fmt(sunday(lastMonday)),
+      labelA:`Settimana corrente (${fmt(thisMonday)})`,
+      labelB:`Settimana precedente (${fmt(lastMonday)})`
+    };
+  }
+
+  if(_compareMode==='month'){
+    const thisFirst=new Date(now.getFullYear(),now.getMonth(),1);
+    const lastFirst=new Date(now.getFullYear(),now.getMonth()-1,1);
+    const lastLast=new Date(now.getFullYear(),now.getMonth(),0);
+    return{
+      aFrom:fmt(thisFirst), aTo:fmt(now),
+      bFrom:fmt(lastFirst), bTo:fmt(lastLast),
+      labelA:`${now.toLocaleString('it-IT',{month:'long',year:'numeric'})}`,
+      labelB:`${lastFirst.toLocaleString('it-IT',{month:'long',year:'numeric'})}`
+    };
+  }
+
+  if(_compareMode==='30d'){
+    return{
+      aFrom:fmt(new Date(now-30*864e5)), aTo:fmt(now),
+      bFrom:fmt(new Date(now-60*864e5)), bTo:fmt(new Date(now-30*864e5)),
+      labelA:'Ultimi 30 giorni',
+      labelB:'30 giorni prima'
+    };
+  }
+
+  if(_compareMode==='quarter'){
+    const q=Math.floor(now.getMonth()/3);
+    const qStart=new Date(now.getFullYear(),q*3,1);
+    const prevQStart=new Date(now.getFullYear(),q*3-3,1);
+    const prevQEnd=new Date(now.getFullYear(),q*3,0);
+    return{
+      aFrom:fmt(qStart), aTo:fmt(now),
+      bFrom:fmt(prevQStart), bTo:fmt(prevQEnd),
+      labelA:`Q${q+1} ${now.getFullYear()}`,
+      labelB:`Q${q===0?4:q} ${q===0?now.getFullYear()-1:now.getFullYear()}`
+    };
+  }
+}
+
+function filterByPeriod(listings, from, to){
+  const f=new Date(from);
+  const t=new Date(to);
+  t.setHours(23,59,59);
+  return listings.filter(l=>{
+    if(!l.published_date)return false;
+    const d=new Date(l.published_date);
+    return d>=f&&d<=t;
+  });
+}
+
+function deltaArrow(a, b){
+  if(!b)return'';
+  const pct=Math.round((a-b)/b*100);
+  const sign=pct>=0?'+':'';
+  const color=pct>0?'var(--success)':pct<0?'var(--danger)':'var(--text2)';
+  const arrow=pct>0?'▲':pct<0?'▼':'—';
+  return `<span style="font-size:12px;font-weight:700;color:${color};margin-left:8px;">${arrow} ${sign}${pct}%</span>`;
+}
+
+function kpiRow(label, valA, valB, fmt='n'){
+  const fmtVal=v=>fmt==='eur'?`€${v?(v/1000).toFixed(0)+'k':'—'}`:v??'—';
+  const delta=valB?deltaArrow(valA,valB):'';
+  return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center;">
+    <div style="font-size:12px;color:var(--text2);">${label}</div>
+    <div style="text-align:center;font-size:18px;font-weight:700;color:var(--accent);">${fmtVal(valA)}${delta}</div>
+    <div style="text-align:center;font-size:18px;font-weight:700;color:var(--text2);">${fmtVal(valB)}</div>
+  </div>`;
+}
+
+async function runComparison(){
+  if(!_riListingsCache.length){
+    document.getElementById('compare-empty').textContent='Carica prima un ruolo per confrontare i periodi';
+    return;
+  }
+
+  const dates=getCompareDates();
+  if(!dates)return;
+
+  const listA=filterByPeriod(_riListingsCache,dates.aFrom,dates.aTo);
+  const listB=filterByPeriod(_riListingsCache,dates.bFrom,dates.bTo);
+
+  document.getElementById('compare-label-a').textContent=dates.labelA;
+  document.getElementById('compare-label-b').textContent=dates.labelB;
+  document.getElementById('compare-empty').style.display='none';
+  document.getElementById('compare-results').style.display='block';
+
+  // KPI rows
+  const withRalA=listA.filter(l=>l.ral_min||l.ral_max);
+  const withRalB=listB.filter(l=>l.ral_min||l.ral_max);
+  const avgRalA=withRalA.length?Math.round(withRalA.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRalA.length):null;
+  const avgRalB=withRalB.length?Math.round(withRalB.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRalB.length):null;
+  const coA=new Set(listA.map(l=>l.company_name).filter(Boolean)).size;
+  const coB=new Set(listB.map(l=>l.company_name).filter(Boolean)).size;
+
+  document.getElementById('compare-kpi-rows').innerHTML=
+    kpiRow('Annunci pubblicati',listA.length,listB.length)+
+    kpiRow('Aziende coinvolte',coA,coB)+
+    kpiRow('Annunci con RAL',withRalA.length,withRalB.length)+
+    kpiRow('RAL media',avgRalA,avgRalB,'eur');
+
+  // Chart trend settimanale — mostra distribuzione per settimana nei due periodi
+  const weekBuckets=(list,from,to)=>{
+    const buckets={};
+    const f=new Date(from);
+    const t=new Date(to);
+    let cur=new Date(f);
+    while(cur<=t){
+      const key=cur.toISOString().split('T')[0];
+      buckets[key]=0;
+      cur=new Date(cur.getTime()+864e5);
+    }
+    list.forEach(l=>{
+      if(l.published_date&&buckets.hasOwnProperty(l.published_date)){
+        buckets[l.published_date]++;
+      }
+    });
+    return buckets;
+  };
+
+  const buckA=weekBuckets(listA,dates.aFrom,dates.aTo);
+  const buckB=weekBuckets(listB,dates.bFrom,dates.bTo);
+  const maxBar=Math.max(...Object.values(buckA),...Object.values(buckB),1);
+  const trendEl=document.getElementById('compare-chart-trend');
+  const daysA=Object.entries(buckA).slice(0,14);
+  const daysB=Object.entries(buckB).slice(0,14);
+  const len=Math.max(daysA.length,daysB.length);
+  trendEl.innerHTML=Array.from({length:len},(_,i)=>{
+    const [dateA,nA]=daysA[i]||['',0];
+    const [dateB,nB]=daysB[i]||['',0];
+    return `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;">
+      <div style="width:60px;font-size:10px;color:var(--text2);">${dateA.slice(5)||''}</div>
+      <div style="flex:1;height:14px;background:var(--surface2);border-radius:3px;overflow:hidden;">
+        <div style="height:50%;background:var(--accent);opacity:.8;width:${(nA/maxBar*100).toFixed(0)}%;border-radius:2px;"></div>
+        <div style="height:50%;background:var(--text2);opacity:.5;width:${(nB/maxBar*100).toFixed(0)}%;border-radius:2px;"></div>
+      </div>
+      <div style="width:40px;font-size:10px;color:var(--accent);">${nA} | ${nB}</div>
+    </div>`;
+  }).join('');
+
+  // Chart top aziende con variazione
+  const coCountA={};listA.forEach(l=>{if(l.company_name)coCountA[l.company_name]=(coCountA[l.company_name]||0)+1;});
+  const coCountB={};listB.forEach(l=>{if(l.company_name)coCountB[l.company_name]=(coCountB[l.company_name]||0)+1;});
+  const allCo=[...new Set([...Object.keys(coCountA),...Object.keys(coCountB)])];
+  const coSorted=allCo.map(c=>({name:c,a:coCountA[c]||0,b:coCountB[c]||0})).sort((x,y)=>y.a-x.a).slice(0,8);
+  const maxCo=Math.max(...coSorted.map(c=>Math.max(c.a,c.b)),1);
+  document.getElementById('compare-chart-companies').innerHTML=coSorted.map(c=>{
+    const delta=c.b?c.a-c.b:c.a;
+    const color=delta>0?'var(--success)':delta<0?'var(--danger)':'var(--text2)';
+    const arrow=delta>0?'▲':delta<0?'▼':'—';
+    return `<div class="bar-row">
+      <div class="bar-label" style="width:120px;font-size:11px;">${c.name.substring(0,15)}</div>
+      <div class="bar-track" style="position:relative;">
+        <div style="position:absolute;top:0;left:0;height:50%;width:${(c.a/maxCo*100).toFixed(0)}%;background:var(--accent);opacity:.8;border-radius:2px 0 0 2px;"></div>
+        <div style="position:absolute;bottom:0;left:0;height:50%;width:${(c.b/maxCo*100).toFixed(0)}%;background:var(--text2);opacity:.4;border-radius:2px 0 0 2px;"></div>
+      </div>
+      <div style="width:70px;font-size:11px;text-align:right;">
+        <span style="color:var(--accent)">${c.a}</span> / <span style="color:var(--text2)">${c.b}</span>
+        <span style="color:${color};font-size:10px;margin-left:4px;">${arrow}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+
 async function loadCompliance(){
   try{
     const data=await api('job_listings?select=id,job_title,company_name,sector_v2,sector,functional_area_v2,functional_area,ral_min,ral_max,published_date,url,location');
@@ -3481,6 +3776,10 @@ async function loadRoleIntelligence(){
 
     const lastUpdate=benchmarks[0]?.updated_at?`Aggiornato: ${new Date(benchmarks[0].updated_at).toLocaleDateString('it-IT')}`:'';
     document.getElementById('ri-updated').textContent=lastUpdate;
+    // Salva in cache per confronto periodi
+    _riListingsCache=listings;
+    // Avvia confronto con modalità corrente
+    runComparison();
     // Mostra pulsante PDF
     const pdfBtn=document.getElementById('btn-ri-pdf');
     if(pdfBtn)pdfBtn.style.display='inline-flex';
