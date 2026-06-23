@@ -1704,6 +1704,10 @@ function renderInsights(data, now){
 
 let _taxonomyCache=null;
 let _aliasCache=null;
+let _sortField='published_date';
+let _sortDir='desc';
+let _selectedIds=new Set();
+let _compareMode='week';
 
 async function loadTaxonomy(){
   if(_taxonomyCache&&_aliasCache)return;
@@ -3202,7 +3206,6 @@ async function delListing(id){
 }
 
 /* ── CONFRONTO PERIODI — Role Intelligence ── */
-let _compareMode='week';
 let _riListingsCache=[];
 
 function setCompareMode(mode, btn){
