@@ -280,6 +280,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="autoAnalyzeDescriptions()" id="btn-auto-analyze" style="border-color:var(--success);color:var(--success);">⚡ Auto-analisi descrizioni <span id="badge-auto" style="background:var(--success);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);">🧹 Pulizia</button>
         <button class="btn btn-danger" id="btn-delete-selected" onclick="deleteSelected()">🗑 Elimina selezionati</button>
@@ -2352,14 +2353,17 @@ function cancelRal(id, min, max){
 
 async function refreshPendingBadges(){
   try{
-    const[unclassified, unnormalized]=await Promise.all([
+    const[unclassified, unnormalized, withDescNoAnalysis]=await Promise.all([
       fetch(`${SB_URL}/rest/v1/job_listings?sector_v2=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0)),
-      fetch(`${SB_URL}/rest/v1/job_listings?canonical_role=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0))
+      fetch(`${SB_URL}/rest/v1/job_listings?canonical_role=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0)),
+      fetch(`${SB_URL}/rest/v1/job_listings?job_description=not.is.null&sector_v2=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0))
     ]);
     const b1=document.getElementById('badge-unclassified');
     const b2=document.getElementById('badge-unnormalized');
+    const b3=document.getElementById('badge-auto');
     if(b1){b1.textContent=unclassified;b1.style.display=unclassified>0?'inline':'none';}
     if(b2){b2.textContent=unnormalized;b2.style.display=unnormalized>0?'inline':'none';}
+    if(b3){b3.textContent=withDescNoAnalysis;b3.style.display=withDescNoAnalysis>0?'inline':'none';}
   }catch(e){}
 }
 
@@ -2854,7 +2858,113 @@ let _sortField = 'created_at';
 let _sortDir = 'desc';
 let _selectedIds = new Set();
 
-/* ── NORMALIZZA TUTTI I RUOLI ── */
+/* ── AUTO-ANALISI DESCRIZIONI ESISTENTI ── */
+async function autoAnalyzeDescriptions(){
+  const btn=document.getElementById('btn-auto-analyze');
+  btn.textContent='⏳ Verifica...';
+  btn.disabled=true;
+
+  // Carica annunci con job_description MA senza sector_v2 o functional_area_v2
+  const toAnalyze=await api(
+    'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max' +
+    '&job_description=not.is.null' +
+    '&or=(sector_v2.is.null,functional_area_v2.is.null)' +
+    '&order=published_date.desc.nullslast&limit=200'
+  );
+
+  if(!toAnalyze.length){
+    toast('✅ Tutti gli annunci con descrizione sono già stati analizzati!');
+    btn.textContent='⚡ Auto-analisi descrizioni';
+    btn.disabled=false;
+    return;
+  }
+
+  if(!confirm(`Trovati ${toAnalyze.length} annunci con descrizione da analizzare.\nProcedo automaticamente con AI?\n\nVerranno estratti: settore, area, seniority, RAL (se presente nel testo).`)){
+    btn.textContent='⚡ Auto-analisi descrizioni';
+    btn.disabled=false;
+    return;
+  }
+
+  let ok=0, failed=0, ralFound=0;
+
+  for(const listing of toAnalyze){
+    try{
+      btn.textContent=`⏳ ${ok+failed}/${toAnalyze.length}...`;
+
+      const prompt=`Sei un esperto HR nel settore Life Sciences italiano.
+Analizza questa descrizione di annuncio. Rispondi SOLO con JSON valido.
+
+Titolo: ${listing.job_title}
+Azienda: ${listing.company_name||'N/D'}
+Descrizione: ${(listing.job_description||'').substring(0,2000)}
+
+⚠️ REGOLA ASSOLUTA RAL: restituisci ral_min e ral_max SOLO se nel testo c'è un numero esplicito.
+MAI inventare o stimare. salary_text deve contenere il testo originale esatto, null se assente.
+
+JSON:
+{"ral_min":null,"ral_max":null,"salary_text":null,
+"sector_v2":"<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
+"functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
+"sub_area":"<codice sottoarea>",
+"seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|expert|lead|manager|senior_manager|head_of|director|senior_director|vp|general_manager|country_manager|c_level>",
+"field_hq":"<Field Based|Hybrid|Headquarters>",
+"therapeutic_area":"<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
+"company_type":"<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>",
+"location":"<città italiana>",
+"contract_type":"<TI|TD|Freelance|Stage|altro>"}`;
+
+      const rawText=await callAI(prompt,500);
+      const clean=rawText.replace(/```json|```/g,'').trim();
+      const result=JSON.parse(clean);
+
+      const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
+      const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
+      const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','principal','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
+      const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
+
+      const patch={ai_analyzed:true,classified_at:new Date().toISOString(),classification_source:'groq_v2_auto'};
+
+      // RAL — solo se salary_text presente
+      patch.ral_min=null;
+      patch.ral_max=null;
+      if(result.salary_text&&result.salary_text!=='null'&&result.salary_text!==null){
+        const rMin=result.ral_min?parseInt(result.ral_min):null;
+        const rMax=result.ral_max?parseInt(result.ral_max):null;
+        if(rMin&&rMin>=10000&&rMin<=500000)patch.ral_min=rMin;
+        if(rMax&&rMax>=10000&&rMax<=500000)patch.ral_max=rMax;
+        if(patch.ral_min&&patch.ral_max&&patch.ral_min>patch.ral_max){patch.ral_min=null;patch.ral_max=null;}
+        if(patch.ral_min||patch.ral_max)ralFound++;
+      }
+
+      if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
+      if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
+      if(result.sub_area)patch.sub_area=result.sub_area;
+      if(result.seniority_v2&&_vsen2.includes(result.seniority_v2))patch.seniority_v2=result.seniority_v2;
+      if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
+      if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
+      if(result.company_type)patch.company_type=result.company_type;
+      if(result.location&&!listing.location)patch.location=result.location;
+      if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
+
+      await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
+      ok++;
+
+    }catch(e){
+      console.error('Auto-analyze error:',listing.job_title,e.message);
+      failed++;
+    }
+    await new Promise(r=>setTimeout(r,250)); // rate limit Groq
+  }
+
+  btn.textContent='⚡ Auto-analisi descrizioni';
+  btn.disabled=false;
+  toast(`✅ Analizzati ${ok} annunci — ${ralFound} RAL trovate${failed?`, ${failed} errori`:''}`, 'success');
+  loadListings();
+  refreshPendingBadges();
+  loadDashboard();
+}
+
+
 async function normalizeAllRoles(){
   const btn=document.getElementById('btn-normalize');
 
