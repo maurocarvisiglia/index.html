@@ -297,13 +297,56 @@ a.job-link:hover{text-decoration:underline;}
       <div class="filter-group"><div class="filter-label">Tipo entità</div>
         <select id="f-entity" onchange="loadListings()"><option value="">Tutti</option><option value="life_sciences">Life Sciences</option><option value="headhunter">Head Hunter</option></select></div>
       <div class="filter-group"><div class="filter-label">Area funzionale</div>
-        <select id="f-area" onchange="loadListings()"><option value="">Tutte</option><option>Sales</option><option>Marketing</option><option>Regulatory Affairs</option><option>Medical Affairs</option><option>MSL</option><option>Quality Assurance</option><option>Quality Control</option><option>Produzione</option><option>Engineering</option><option>Clinical Operations</option><option>Market Access</option><option>Pharmacovigilance</option><option>R&D</option><option>HR</option><option>Finance</option><option>Supply Chain</option><option>Business Development</option><option>IT</option><option>Operations</option><option>altro</option></select></div>
+        <select id="f-area" onchange="loadListings()"><option value="">Tutte</option>
+          <option value="commercial">Commercial / Sales</option>
+          <option value="medical_affairs">Medical Affairs</option>
+          <option value="marketing">Marketing</option>
+          <option value="market_access">Market Access</option>
+          <option value="regulatory_affairs">Regulatory Affairs</option>
+          <option value="quality">Quality</option>
+          <option value="clinical_operations">Clinical Operations</option>
+          <option value="drug_safety">Drug Safety / PV</option>
+          <option value="rd">R&D</option>
+          <option value="manufacturing">Manufacturing</option>
+          <option value="supply_chain">Supply Chain</option>
+          <option value="finance">Finance</option>
+          <option value="hr">HR</option>
+          <option value="it">IT</option>
+          <option value="business_development">Business Development</option>
+          <option value="general_management">General Management</option>
+        </select></div>
       <div class="filter-group"><div class="filter-label">Seniority</div>
-        <select id="f-seniority" onchange="loadListings()"><option value="">Tutte</option><option>Junior</option><option>Middle</option><option>Senior</option><option>Lead</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
+        <select id="f-seniority" onchange="loadListings()"><option value="">Tutte</option>
+          <option value="internship">Internship / Stage</option>
+          <option value="entry_level">Entry Level</option>
+          <option value="associate">Associate / Junior</option>
+          <option value="specialist">Specialist</option>
+          <option value="senior_specialist">Senior Specialist</option>
+          <option value="manager">Manager</option>
+          <option value="senior_manager">Senior Manager</option>
+          <option value="head_of">Head of</option>
+          <option value="director">Director</option>
+          <option value="vp">VP</option>
+          <option value="c_level">C-Level</option>
+        </select></div>
       <div class="filter-group"><div class="filter-label">Fonte</div>
         <select id="f-source" onchange="loadListings()"><option value="">Tutte</option><option>LinkedIn</option><option>Indeed</option><option>Glassdoor</option><option>Sito aziendale</option><option>altro</option></select></div>
       <div class="filter-group"><div class="filter-label">Settore</div>
-        <select id="f-sector" onchange="loadListings()"><option value="">Tutti</option><option>Farmaceutico</option><option>Dispositivi Medici</option><option>Biotech</option><option>Cosmetica</option><option>Nutraceutica</option><option>Retail Farmacia</option><option>CRO / Clinical Research</option><option>CDMO / CMO</option><option>altro</option></select></div>
+        <select id="f-sector" onchange="loadListings()"><option value="">Tutti</option>
+          <option value="pharma_rx">Pharma RX</option>
+          <option value="consumer_health">Consumer Health</option>
+          <option value="otc">OTC</option>
+          <option value="biotech">Biotech</option>
+          <option value="medical_devices">Medical Devices</option>
+          <option value="diagnostics">Diagnostics</option>
+          <option value="cro">CRO</option>
+          <option value="cdmo">CDMO / CMO</option>
+          <option value="nutraceutical">Nutraceutical</option>
+          <option value="cosmetics">Cosmetics</option>
+          <option value="veterinary">Veterinary</option>
+          <option value="digital_health">Digital Health</option>
+          <option value="healthcare_services">Healthcare Services</option>
+        </select></div>
       <div class="filter-group"><div class="filter-label">Cerca</div>
         <input type="text" id="f-search" placeholder="Titolo, azienda..." oninput="loadListings()" style="width:180px;"></div>
     </div>
@@ -3218,10 +3261,10 @@ async function loadListings(){
   const search=document.getElementById('f-search').value.toLowerCase();
   let q=`job_listings?select=*&order=${_sortField}.${_sortDir}`;
   if(entity)q+=`&entity_type=eq.${entity}`;
-  if(area)q+=`&functional_area=eq.${encodeURIComponent(area)}`;
-  if(seniority)q+=`&seniority=eq.${seniority}`;
+  if(area)q+=`&or=(functional_area_v2.eq.${encodeURIComponent(area)},functional_area.eq.${encodeURIComponent(area)})`;
+  if(seniority)q+=`&or=(seniority_v2.eq.${encodeURIComponent(seniority)},seniority.eq.${encodeURIComponent(seniority)})`;
   if(source)q+=`&source=eq.${encodeURIComponent(source)}`;
-  if(sector)q+=`&sector=eq.${encodeURIComponent(sector)}`;
+  if(sector)q+=`&or=(sector_v2.eq.${encodeURIComponent(sector)},sector.eq.${encodeURIComponent(sector)})`;
   try{
     let data=await api(q);
     if(search)data=data.filter(l=>(l.job_title||'').toLowerCase().includes(search)||(l.company_name||'').toLowerCase().includes(search));
