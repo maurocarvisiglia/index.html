@@ -276,6 +276,7 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
         <input type="file" id="theirstack-import" accept=".csv" style="display:none;" onchange="importTheirStackCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
+        <button class="btn btn-secondary" onclick="openModal('modal-vocations')" style="border-color:#7C3AED;color:#7C3AED;">🟣 Importa Vocations</button>
         <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
         <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
@@ -896,6 +897,83 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 </div>
 
+<!-- MODAL VOCATIONS -->
+<div class="modal-overlay" id="modal-vocations">
+  <div class="modal" style="width:680px;">
+    <div class="modal-title">🟣 Importa da Vocations</div>
+    <div style="background:linear-gradient(135deg,#4C1D95,#7C3AED);border-radius:12px;padding:16px 20px;margin-bottom:20px;color:white;">
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px;">Vocations API — Importazione settimanale</div>
+      <div style="font-size:12px;opacity:.85;">Cerca posizioni Life Sciences in Italia e importale nel database. Ogni ricerca consuma 1 credito.</div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label>API Key Vocations</label>
+        <input type="password" id="voc-api-key" placeholder="Bearer token (verrà salvata localmente)" style="font-family:monospace;">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">Inserisci la chiave una volta — viene salvata nel browser</div>
+      </div>
+      <div class="form-group">
+        <label>Settori Life Sciences</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;" id="voc-sectors">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="pharmaceutical" checked> Pharmaceutical</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="biomedical" checked> Biomedical</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="medical" checked> Medical</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="healthHygiene" checked> Health & Hygiene</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="chemical"> Chemical (CDMO)</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="technologyScienceData"> Tech & Data</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="consumerGoods"> Consumer Goods</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Regioni</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;" id="voc-regions">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Lombardia" checked> Lombardia</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Lazio" checked> Lazio</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Piemonte" checked> Piemonte</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Veneto" checked> Veneto</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Emilia-Romagna" checked> Emilia-Romagna</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Toscana"> Toscana</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Campania"> Campania</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Puglia"> Puglia</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" value="Sicilia"> Sicilia</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tipo contratto</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" id="voc-contract-perm" value="permanent" checked> Indeterminato</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" id="voc-contract-temp" value="temporary"> Determinato</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;"><input type="checkbox" id="voc-contract-appr" value="apprenticeship"> Apprendistato</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Solo annunci con RAL indicata</label>
+        <select id="voc-salary">
+          <option value="">Tutti gli annunci</option>
+          <option value="yes">Solo con RAL indicata</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Pagine da importare (max 128 annunci/pagina)</label>
+        <select id="voc-pages">
+          <option value="1">1 pagina (~128 annunci) — 1 credito</option>
+          <option value="3" selected>3 pagine (~384 annunci) — 3 crediti</option>
+          <option value="5">5 pagine (~640 annunci) — 5 crediti</option>
+          <option value="10">10 pagine (~1280 annunci) — 10 crediti</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="voc-log" style="display:none;background:var(--surface2);border-radius:8px;padding:12px 16px;font-size:12px;font-family:monospace;max-height:200px;overflow-y:auto;margin-top:12px;color:var(--text2);"></div>
+
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-vocations')">Annulla</button>
+      <button class="btn btn-secondary" onclick="checkVocationsUsage()" style="border-color:#7C3AED;color:#7C3AED;">📊 Verifica crediti</button>
+      <button class="btn btn-primary" id="btn-voc-import" onclick="importVocations()" style="background:#7C3AED;border-color:#7C3AED;">🟣 Avvia importazione</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL THEIRSTACK SEARCH -->
 <div class="modal-overlay" id="modal-theirstack-search">
   <div class="modal" style="width:620px;">
@@ -961,6 +1039,230 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const GROQ_API_KEY='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';
 const GROQ_URL='https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL='llama-3.1-8b-instant';
+
+// ── VOCATIONS ──
+const VOC_BASE='https://vocations.io/api/v1';
+
+function getVocKey(){
+  const el=document.getElementById('voc-api-key');
+  if(el?.value?.trim())localStorage.setItem('voc_api_key',el.value.trim());
+  return localStorage.getItem('voc_api_key')||'';
+}
+
+function vocLog(msg,color='var(--text2)'){
+  const log=document.getElementById('voc-log');
+  if(!log)return;
+  log.style.display='block';
+  log.innerHTML+=`<div style="color:${color}">[${new Date().toLocaleTimeString('it-IT')}] ${msg}</div>`;
+  log.scrollTop=log.scrollHeight;
+}
+
+async function vocFetch(endpoint, body){
+  const key=getVocKey();
+  if(!key)throw new Error('API key Vocations mancante');
+  const resp=await fetch(VOC_BASE+endpoint,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify(body)
+  });
+  if(!resp.ok){
+    const err=await resp.json().catch(()=>({message:'Errore '+resp.status}));
+    throw new Error(err.message||'Errore '+resp.status);
+  }
+  return resp.json();
+}
+
+async function checkVocationsUsage(){
+  const key=getVocKey();
+  if(!key){toast('Inserisci prima la API key Vocations','error');return;}
+  try{
+    const resp=await fetch(VOC_BASE+'/usage',{
+      headers:{'Authorization':'Bearer '+key}
+    });
+    if(!resp.ok)throw new Error('Errore '+resp.status);
+    const data=await resp.json();
+    vocLog(`Crediti usati: ${data.usedCredits}/${data.maxCredits}`,'var(--success)');
+    vocLog(`Ricerche usate: ${data.usedSearches}/${data.maxSearches}`,'var(--success)');
+    const reset=new Date(data.lastResetAt*1000).toLocaleDateString('it-IT');
+    vocLog(`Ultimo reset: ${reset}`);
+    toast(`Crediti: ${data.usedCredits}/${data.maxCredits} — Ricerche: ${data.usedSearches}/${data.maxSearches}`,'success');
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+    vocLog('Errore verifica crediti: '+e.message,'var(--danger)');
+  }
+}
+
+async function importVocations(){
+  const key=getVocKey();
+  if(!key){toast('Inserisci prima la API key Vocations','error');document.getElementById('voc-api-key')?.focus();return;}
+
+  // Raccoglie settori selezionati
+  const sectors=[...document.querySelectorAll('#voc-sectors input:checked')].map(el=>el.value);
+  if(!sectors.length){toast('Seleziona almeno un settore','error');return;}
+
+  // Raccoglie regioni selezionate
+  const regions=[...document.querySelectorAll('#voc-regions input:checked')].map(el=>el.value);
+  if(!regions.length){toast('Seleziona almeno una regione','error');return;}
+
+  // Contratti
+  const contracts=[...document.querySelectorAll('[id^="voc-contract"]:checked')].map(el=>el.value);
+
+  const maxPages=parseInt(document.getElementById('voc-pages').value)||3;
+  const salaryFilter=document.getElementById('voc-salary').value;
+
+  const btn=document.getElementById('btn-voc-import');
+  btn.textContent='⏳ Importazione...';
+  btn.disabled=true;
+
+  const log=document.getElementById('voc-log');
+  if(log)log.innerHTML='';
+
+  vocLog(`Avvio importazione — ${sectors.length} settori, ${regions.length} regioni, ${maxPages} pagine`,'var(--accent2)');
+
+  let totalImported=0;
+  let totalSkipped=0;
+  let totalNew=0;
+
+  try{
+    // Costruisce filtro posizioni
+    const positionFilter={
+      sources:['vocations','linkedIn','indeed'],
+      regions,
+      nations:['Italia'],
+    };
+    if(contracts.length)positionFilter.contract=contracts;
+    if(salaryFilter==='yes')positionFilter.yearlySalary=[{min:1}];
+
+    const companyFilter={sectors};
+
+    // Ciclo su tutte le pagine
+    for(let page=0;page<maxPages;page++){
+      vocLog(`Pagina ${page+1}/${maxPages} — ricerca posizioni...`);
+
+      // Step 1: cerca IDs posizioni
+      let searchResult;
+      try{
+        searchResult=await vocFetch('/positions',{
+          page,
+          pageSize:128,
+          position:positionFilter,
+          company:companyFilter,
+          includeNoMatch:false
+        });
+      }catch(e){
+        vocLog(`Errore ricerca pagina ${page+1}: ${e.message}`,'var(--danger)');
+        break;
+      }
+
+      const positionIDs=searchResult.positionIDs||[];
+      vocLog(`Trovati ${positionIDs.length} annunci (totale: ${searchResult.totalPages} pagine)`);
+
+      if(!positionIDs.length)break;
+
+      // Step 2: enrich a batch da 128
+      const batches=[];
+      for(let i=0;i<positionIDs.length;i+=128)batches.push(positionIDs.slice(i,i+128));
+
+      for(const batch of batches){
+        vocLog(`Arricchimento ${batch.length} posizioni...`);
+        let enrichResult;
+        try{
+          enrichResult=await vocFetch('/positions/enrich',{positionIDs:batch});
+        }catch(e){
+          vocLog(`Errore enrich: ${e.message}`,'var(--danger)');
+          continue;
+        }
+
+        const positions=enrichResult.positions||[];
+        const companies=enrichResult.companies||[];
+
+        // Mappa companyID → ragioneSociale
+        const coMap={};
+        companies.forEach(c=>{coMap[c.companyID]=c.ragioneSociale||c.iva||'';});
+
+        // Step 3: salva su Supabase
+        for(const pos of positions){
+          try{
+            // Mappa campi Vocations → job_listings
+            const companyName=pos.companyName||coMap[pos.companyID]||'';
+            const url=pos.urls?.[0]||'';
+            const city=pos.cities?.[0]||'';
+            const region=pos.regions?.[0]||'';
+            const location=city?`${city}, ${region}`:region;
+            const publishedDate=pos.createdAt?new Date(pos.createdAt*1000).toISOString().split('T')[0]:null;
+
+            // Mappa contratto
+            const contractMap={permanent:'TI',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Freelance'};
+            const contractType=contractMap[pos.contract]||'altro';
+
+            // Mappa smart working
+            const remoteMap={yes:true,hybrid:true,no:false};
+            const isRemote=remoteMap[pos.smartWorking]||false;
+
+            // Mappa experience → seniority
+            const expMap={'0':'internship','0-1':'entry_level','1-3':'associate','3-5':'specialist','5-10':'senior_specialist','10+':'manager'};
+            const seniority=expMap[pos.experience]||null;
+
+            const record={
+              job_title:pos.name||'N/D',
+              company_name:companyName,
+              url,
+              source:'Vocations',
+              published_date:publishedDate,
+              location,
+              contract_type:contractType,
+              is_remote:isRemote,
+              job_description:pos.description?pos.description.substring(0,4000):null,
+              entity_type:'life_sciences',
+              // RAL — yearlySalary è già annuo lordo
+              ral_min:pos.yearlySalary||null,
+              ral_max:pos.yearlySalary||null,
+              // Seniority
+              seniority_v2:seniority,
+              // Source ID per deduplicazione
+              source_id:pos.positionID,
+            };
+
+            // Upsert per evitare duplicati (usa url come chiave)
+            if(url){
+              const existing=await api(`job_listings?url=eq.${encodeURIComponent(url)}&select=id`);
+              if(existing.length){totalSkipped++;continue;}
+            }
+
+            await api('job_listings','POST',record);
+            totalNew++;
+            totalImported++;
+
+          }catch(e){
+            vocLog(`Errore salvataggio: ${e.message}`,'var(--danger)');
+          }
+        }
+
+        vocLog(`Salvati: ${totalNew} nuovi, ${totalSkipped} già presenti`,'var(--success)');
+      }
+
+      // Se non ci sono più pagine, fermati
+      if(page+1>=searchResult.totalPages)break;
+
+      // Rate limit — aspetta 2 secondi tra pagine
+      await new Promise(r=>setTimeout(r,2000));
+    }
+
+    vocLog(`✅ Importazione completata: ${totalNew} nuovi annunci importati, ${totalSkipped} già presenti`,'var(--success)');
+    toast(`✅ Vocations: ${totalNew} nuovi annunci importati`,'success');
+    loadListings();
+    refreshPendingBadges();
+
+  }catch(e){
+    vocLog(`Errore: ${e.message}`,'var(--danger)');
+    toast('Errore importazione: '+e.message,'error');
+  }
+
+  btn.textContent='🟣 Avvia importazione';
+  btn.disabled=false;
+}
+
+
 
 async function callAI(prompt, maxTokens=800){
   const resp=await fetch(GROQ_URL,{
