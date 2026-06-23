@@ -2691,6 +2691,29 @@ JSON:
   loadDashboard();
 }
 
+/* ── PULIZIA ANNUNCI ── */
+async function cleanupListings(){
+  const [noCompany, emptyCompany] = await Promise.all([
+    fetch(`${SB_URL}/rest/v1/job_listings?company_name=is.null&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0)),
+    fetch(`${SB_URL}/rest/v1/job_listings?company_name=eq.&select=id`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}).then(r=>parseInt(r.headers.get('Content-Range')?.split('/')[1]||0)),
+  ]);
+  const total=noCompany+emptyCompany;
+  if(!total){toast('✅ Nessun annuncio da pulire!');return;}
+  if(!confirm(`Trovati:\n• ${noCompany} annunci senza azienda (NULL)\n• ${emptyCompany} con azienda vuota\n\nElimino tutti?`))return;
+  if(noCompany>0)await api('job_listings?company_name=is.null','DELETE');
+  if(emptyCompany>0)await api('job_listings?company_name=eq.','DELETE');
+  toast(`🧹 Eliminati ${total} annunci senza azienda`, 'success');
+  loadListings();
+  refreshPendingBadges();
+}
+
+/* ── ELIMINA TUTTE LE AZIENDE ── */
+async function deleteAllCompanies(){
+  if(!confirm('Eliminare TUTTE le aziende dal database? Questa operazione non è reversibile.'))return;
+  await api('companies?id=not.is.null','DELETE');
+  toast('Tutte le aziende eliminate','success');
+  loadCompanies();
+}
 
 async function normalizeAllRoles(){
   const btn=document.getElementById('btn-normalize');
