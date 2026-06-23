@@ -1223,8 +1223,17 @@ async function importVocations(){
               source_id:pos.positionID,
             };
 
-            await upsertListing(record);
-            totalImported++;
+            // Validazione qualità
+            const qv=validateListing(record);
+            if(!qv.valid){
+              vocLog(`⚠️ Scartato "${record.job_title}" — campi mancanti: ${qv.errors.join(', ')}`, 'var(--danger)');
+              totalSkipped++;
+              continue;
+            }
+
+            const result=await upsertListing(record);
+            if(result==='inserted')totalImported++;
+            else totalSkipped++;
 
           }catch(e){
             vocLog(`Errore salvataggio: ${e.message}`,'var(--danger)');
@@ -1258,7 +1267,56 @@ async function importVocations(){
 
 
 
-/* ── DEDUPLICAZIONE ── */
+/* ── VALIDAZIONE QUALITÀ ANNUNCI ── */
+const QUALITY_REQUIRED=['job_title','company_name','url','published_date'];
+const QUALITY_RECOMMENDED=['location','job_description'];
+
+function validateListing(record){
+  const errors=[];
+  const warnings=[];
+
+  // Campi obbligatori
+  for(const f of QUALITY_REQUIRED){
+    if(!record[f]||String(record[f]).trim()==='')errors.push(f);
+  }
+
+  // Campi consigliati
+  for(const f of QUALITY_RECOMMENDED){
+    if(!record[f]||String(record[f]).trim()==='')warnings.push(f);
+  }
+
+  // Validità data
+  if(record.published_date){
+    const d=new Date(record.published_date);
+    if(isNaN(d.getTime())||d.getFullYear()<2020||d.getFullYear()>2030){
+      errors.push('published_date (data non valida: '+record.published_date+')');
+    }
+  }
+
+  // Titolo minimo
+  if(record.job_title&&record.job_title.trim().length<3){
+    errors.push('job_title (troppo corto)');
+  }
+
+  // Azienda minima
+  if(record.company_name&&record.company_name.trim().length<2){
+    errors.push('company_name (troppo corta)');
+  }
+
+  return{valid:errors.length===0, errors, warnings};
+}
+
+function qualitySummary(ok, skip, rejected, warnings, errors, source){
+  let msg=`${source}: ${ok} importati`;
+  if(skip)msg+=`, ${skip} già presenti`;
+  if(rejected)msg+=`, ${rejected} scartati (dati insufficienti)`;
+  if(warnings)msg+=`, ${warnings} con avvisi`;
+  if(errors&&errors>0&&ok===0)return{msg,type:'error'};
+  if(rejected>0)return{msg,type:'warning'};
+  return{msg,type:'success'};
+}
+
+
 async function calcHash(str){
   // Calcola MD5-like hash usando SubtleCrypto
   const enc=new TextEncoder();
@@ -1986,13 +2044,12 @@ async function importTheirStackCSV(event){
     return[null,null];
   };
 
-  let ok=0,skip=0,updated=0,errors=0;
+  let ok=0,skip=0,rejected=0,warn=0,errors=0;
 
   for(const row of rows){
     const url=(row['url']||'').trim();
     const title=(row['job_title']||'').trim();
     const company=(row['company_name']||'').trim();
-    if(!url||!title||!company){errors++;continue;}
 
     const[ral_min,ral_max]=parseSalary(row['salary']||'');
     const[ral_min2,ral_max2]=parseSalary(row['salary_string']||'');
@@ -2009,7 +2066,7 @@ async function importTheirStackCSV(event){
       contract_type:mapContract(row['employment_status']||''),
       location:(row['job_location']||'').replace(/, ?Italy$/i,'').trim()||null,
       source:'TheirStack',
-      url:url,
+      url:url||null,
       source_url:(row['source_url']||'').trim()||null,
       published_date:(row['posted_date']||'').trim()||null,
       is_remote:row['is_remote']==='True'||row['is_remote']==='true'||row['is_remote']===true?true:false,
@@ -2024,6 +2081,11 @@ async function importTheirStackCSV(event){
       hiring_manager_linkedin:(row['hiring_manager_linkedin_url']||'').trim()||null,
     };
 
+    // ── Validazione qualità ──
+    const qv=validateListing(record);
+    if(!qv.valid){rejected++;continue;}
+    if(qv.warnings.length)warn++;
+
     try{
       const result=await upsertListing(record);
       if(result==='inserted')ok++;
@@ -2034,10 +2096,8 @@ async function importTheirStackCSV(event){
     }
   }
 
-  let msg=`TheirStack: ${ok} nuovi annunci`;
-  if(skip)msg+=`, ${skip} già presenti (deduplicati)`;
-  if(errors)msg+=`, ${errors} errori`;
-  toast(msg,errors>0&&ok===0?'error':'success');
+  const{msg:msg_ts,type:type_ts}=qualitySummary(ok,skip,rejected,warn,errors,'TheirStack');
+  toast(msg_ts,type_ts);
   loadListings();
   initApp();
 }
@@ -2109,12 +2169,11 @@ async function importApifyCSV(event){
     return vals.length>=2?[Math.round(vals[0]),Math.round(vals[1])]:[Math.round(vals[0]),null];
   };
 
-  let ok=0,skip=0,updated=0,errors=0;
+  let ok=0,skip=0,rejected=0,warn=0,errors=0;
   for(const row of rows){
     const url=(row['link']||row['applyUrl']||'').trim();
     const title=(row['title']||'').trim();
     const company=(row['companyName']||'').trim();
-    if(!url||!title||!company){errors++;continue;}
 
     const[ral_min,ral_max]=parseSalary(row['salary']||'');
 
@@ -2128,9 +2187,14 @@ async function importApifyCSV(event){
       contract_type:mapContract(row['employmentType']||''),
       location:(row['location']||'').trim()||null,
       source:'LinkedIn',
-      url:url,
+      url:url||null,
       published_date:(row['postedAt']||'').trim()||null,
     };
+
+    // Validazione qualità
+    const qv=validateListing(record);
+    if(!qv.valid){rejected++;continue;}
+    if(qv.warnings.length)warn++;
 
     try{
       const result=await upsertListing(record);
@@ -2139,11 +2203,8 @@ async function importApifyCSV(event){
     }catch(e){errors++;}
   }
 
-  let msg=`Importati ${ok} nuovi annunci`;
-  if(updated)msg+=`, ${updated} aggiornati (campi mancanti)`;
-  if(skip)msg+=`, ${skip} già completi`;
-  if(errors)msg+=`, ${errors} errori`;
-  toast(msg,errors>0&&ok===0?'error':'success');
+  const{msg:msg_ap,type:type_ap}=qualitySummary(ok,skip,rejected,warn,errors,'LinkedIn/Apify');
+  toast(msg_ap,type_ap);
   loadListings();
   loadDashboard();
 }
