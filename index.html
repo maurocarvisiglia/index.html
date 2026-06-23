@@ -276,14 +276,8 @@ a.job-link:hover{text-decoration:underline;}
     <div class="section-header">
       <div class="section-title">Annunci di lavoro</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="file" id="apify-import" accept=".csv" style="display:none;" onchange="importApifyCSV(event)">
-        <input type="file" id="theirstack-import" accept=".csv" style="display:none;" onchange="importTheirStackCSV(event)">
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
-        <button class="btn btn-secondary" onclick="document.getElementById('apify-import').click()">⬆ CSV Apify</button>
         <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;">🟣 CSV Vocations</button>
-        <button class="btn btn-secondary" onclick="openModal('modal-vocations')" style="border-color:#7C3AED;color:#7C3AED;opacity:.7;">🟣 API Vocations</button>
-        <button class="btn btn-secondary" onclick="document.getElementById('theirstack-import').click()" style="border-color:var(--accent);color:var(--accent);">⬆ CSV TheirStack</button>
-        <button class="btn btn-secondary" onclick="openModal('modal-theirstack-search')" style="border-color:var(--accent2);color:var(--accent2);">🔎 Cerca TheirStack</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="autoAnalyzeDescriptions()" id="btn-auto-analyze" style="border-color:var(--success);color:var(--success);">⚡ Auto-analisi descrizioni <span id="badge-auto" style="background:var(--success);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
@@ -361,9 +355,6 @@ a.job-link:hover{text-decoration:underline;}
     <div class="section-header">
       <div class="section-title">Aziende monitorate</div>
       <div style="display:flex;gap:8px;">
-        <input type="file" id="excel-import" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importExcel(event)">
-        <button class="btn btn-secondary" onclick="document.getElementById('excel-import').click()">⬆ Importa Excel</button>
-        <button class="btn btn-secondary" onclick="generateApifyURLs()">🔗 Genera URL Apify</button>
         <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
         <button class="btn btn-primary" onclick="openModal('modal-company')">+ Aggiungi azienda</button>
       </div>
@@ -700,6 +691,12 @@ a.job-link:hover{text-decoration:underline;}
           <option value="drug_safety">Drug Safety / PV</option>
           <option value="rd">R&D</option>
           <option value="manufacturing">Manufacturing</option>
+          <option value="supply_chain">Supply Chain</option>
+          <option value="finance">Finance</option>
+          <option value="hr">HR</option>
+          <option value="it">IT</option>
+          <option value="business_development">Business Development</option>
+          <option value="general_management">General Management</option>
         </select>
       </div>
       <div class="filter-group">
@@ -953,78 +950,6 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 </div>
 
-<!-- MODAL GENERA URL APIFY -->
-<div class="modal-overlay" id="modal-apify-urls">
-  <div class="modal" style="width:800px;max-width:95vw;">
-    <div class="modal-title">🔗 URL per Apify LinkedIn Scraper</div>
-    <div style="margin-bottom:16px;">
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-        <div class="filter-group">
-          <div class="filter-label">Tipo aziende</div>
-          <select id="apify-filter-type" onchange="refreshApifyURLs()">
-            <option value="">Tutte</option>
-            <option value="life_sciences">Life Sciences</option>
-            <option value="headhunter">Head Hunter</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <div class="filter-label">Aziende per batch</div>
-          <select id="apify-batch-size" onchange="refreshApifyURLs()">
-            <option value="50">50</option>
-            <option value="100" selected>100</option>
-            <option value="200">200</option>
-            <option value="500">500</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <div class="filter-label">Batch</div>
-          <select id="apify-batch-num" onchange="refreshApifyURLs()">
-            <option value="1">1</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <div class="filter-label">Giorni pubblicazione</div>
-          <select id="apify-days" onchange="refreshApifyURLs()">
-            <option value="604800">7 giorni</option>
-            <option value="1296000">15 giorni</option>
-            <option value="2592000" selected>30 giorni</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <div class="filter-label">Salta già processate da</div>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input type="checkbox" id="apify-skip-scraped" onchange="refreshApifyURLs()" style="width:auto;padding:0;">
-            <select id="apify-skip-days" onchange="refreshApifyURLs()" style="width:90px;">
-              <option value="7">7 gg</option>
-              <option value="14">14 gg</option>
-              <option value="30" selected>30 gg</option>
-              <option value="60">60 gg</option>
-            </select>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;">Istruzioni</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.8;">
-        1. Copia gli URL → vai su Apify → LinkedIn Jobs Scraper → <strong style="color:var(--text)">Bulk edit</strong><br>
-        2. Incolla gli URL, imposta "Number of jobs" → <strong style="color:var(--text)">500</strong> → Start<br>
-        3. Quando Apify finisce → clicca <strong style="color:var(--accent)">✓ Segna come processate</strong> qui sotto
-      </div>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-      <div id="apify-url-count" style="font-size:12px;color:var(--text2);"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="markBatchAsScraped()" style="padding:6px 16px;font-size:12px;border-color:var(--success);color:var(--success);">✓ Segna come processate</button>
-        <button class="btn btn-primary" onclick="copyApifyURLs()" style="padding:6px 16px;font-size:12px;">📋 Copia URL</button>
-      </div>
-    </div>
-    <textarea id="apify-urls-output" readonly style="width:100%;height:280px;font-size:11px;font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;color:var(--text);resize:vertical;"></textarea>
-    <div class="form-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-apify-urls')">Chiudi</button>
-    </div>
-  </div>
-</div>
 
 <!-- MODAL VOCATIONS -->
 <div class="modal-overlay" id="modal-vocations">
@@ -1103,61 +1028,6 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 </div>
 
-<!-- MODAL THEIRSTACK SEARCH -->
-<div class="modal-overlay" id="modal-theirstack-search">
-  <div class="modal" style="width:620px;">
-    <div class="modal-title">🔎 Cerca annunci su TheirStack</div>
-    <div class="form-grid">
-      <div class="form-group full">
-        <div class="form-label">Titolo ruolo (parole chiave)</div>
-        <input type="text" id="ts-keywords" placeholder="es. Medical Science Liaison, Regulatory Affairs...">
-      </div>
-      <div class="form-group">
-        <div class="form-label">Paese</div>
-        <select id="ts-country">
-          <option value="Italy" selected>Italia</option>
-          <option value="Germany">Germania</option>
-          <option value="France">Francia</option>
-          <option value="Spain">Spagna</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <div class="form-label">Pubblicati negli ultimi</div>
-        <select id="ts-days">
-          <option value="7">7 giorni</option>
-          <option value="15">15 giorni</option>
-          <option value="30" selected>30 giorni</option>
-          <option value="90">90 giorni</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <div class="form-label">Numero risultati</div>
-        <select id="ts-limit">
-          <option value="10">10</option>
-          <option value="25" selected>25 (max piano free)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <div class="form-label">Settore azienda</div>
-        <select id="ts-industry">
-          <option value="">Tutti</option>
-          <option value="Pharmaceutical Manufacturing">Farmaceutico</option>
-          <option value="Biotechnology Research">Biotech</option>
-          <option value="Medical Equipment Manufacturing">Dispositivi Medici</option>
-          <option value="Cosmetics">Cosmetica</option>
-        </select>
-      </div>
-    </div>
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:16px;font-size:12px;color:var(--text2);">
-      ℹ️ Ogni ricerca consuma crediti API TheirStack. Piano free: 200 crediti totali.
-    </div>
-    <div id="ts-results-info" style="margin-top:12px;font-size:12px;color:var(--text2);min-height:20px;"></div>
-    <div class="form-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-theirstack-search')">Annulla</button>
-      <button class="btn btn-primary" id="btn-ts-search" onclick="searchTheirStack()">🔎 Cerca e importa</button>
-    </div>
-  </div>
-</div>
 
 <div class="toast" id="toast"></div>
 
@@ -2054,16 +1924,16 @@ async function analyzeRuolo(){
     }
 
     document.getElementById('ruolo-table').innerHTML=`<table><thead><tr>
-      <th>Ruolo</th><th>Ruolo canonico</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>TA</th><th>Field/HQ</th><th>RAL</th><th>Sede</th><th>Data</th>
+      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Area</th><th>Seniority</th><th>TA</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th>
     </tr></thead><tbody>${data.slice(0,100).map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
-      <td style="font-size:11px;color:var(--accent2)">${l.canonical_role||l.sub_area||'—'}</td>
-      <td style="font-size:12px">${l.company_name||'—'}</td>
+      <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+      <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
       <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
-      <td style="font-size:11px">${l.field_hq||'—'}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+      <td style="font-size:11px">${l.contract_type||'—'}</td>
       <td style="font-size:11px">${l.location||'—'}</td>
       <td style="font-size:11px">${l.published_date||'—'}</td>
     </tr>`).join('')}</tbody></table>${data.length>100?`<div style="padding:12px 24px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);">Mostrati i primi 100 di ${data.length}</div>`:''}`;
@@ -2108,7 +1978,7 @@ async function loadDashboard(){
     const sectorFilter=document.getElementById('dash-sector-v2')?.value||'';
 
     // Load all listings with essential fields
-    let q='job_listings?select=id,job_title,company_name,sector,sector_v2,functional_area,functional_area_v2,sub_area,seniority,seniority_v2,therapeutic_area,field_hq,company_type,ral_min,ral_max,published_date,classified_at,location,role_family,canonical_role';
+    let q='job_listings?select=id,job_title,company_name,ragione_sociale,sector,sector_v2,functional_area,functional_area_v2,sub_area,seniority,seniority_v2,therapeutic_area,field_hq,company_type,ral_min,ral_max,published_date,classified_at,location,role_family,canonical_role,benefits,contract_type';
     const listings=await api(q);
 
     // Apply sector filter
@@ -2292,262 +2162,6 @@ function renderRal(id,listings){
 
 /* ── LISTINGS ── */
 /* ── IMPORT THEIRSTACK CSV ── */
-async function importTheirStackCSV(event){
-  const file=event.target.files[0];if(!file)return;
-  event.target.value='';
-
-  if(!window.Papa){
-    await new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
-      s.onload=res;s.onerror=rej;document.head.appendChild(s);
-    });
-  }
-
-  const text=await file.text();
-  const result=Papa.parse(text,{header:true,skipEmptyLines:true,transformHeader:h=>h.replace(/^\uFEFF/,'').replace(/^"|"$/g,'').trim()});
-  const rows=result.data;
-  if(!rows.length){toast('Nessun dato nel CSV','error');return;}
-
-  toast(`Importazione ${rows.length} annunci TheirStack...`,'success');
-
-  // Mappatura seniority TheirStack → nostro sistema
-  const mapSeniority=v=>{
-    if(!v)return null;
-    const l=v.toLowerCase();
-    if(l.includes('intern')||l.includes('entry')||l.includes('junior'))return'Junior';
-    if(l.includes('mid'))return'Mid';
-    if(l.includes('senior')||l.includes('lead')||l.includes('principal'))return'Senior';
-    if(l.includes('manager')||l.includes('director')&&!l.includes('associate'))return'Manager';
-    if(l.includes('director')||l.includes('vp')||l.includes('vice'))return'Director';
-    if(l.includes('c_level')||l.includes('executive')||l.includes('chief'))return'C-level';
-    return'altro';
-  };
-
-  // Mappatura settore da company_industry
-  const mapSector=v=>{
-    if(!v)return null;
-    const l=v.toLowerCase();
-    if(l.includes('biotech')||l.includes('biotechnology'))return'Biotech';
-    if(l.includes('pharma')||l.includes('pharmaceutical'))return'Farmaceutico';
-    if(l.includes('medical equipment')||l.includes('medical device')||l.includes('dispositiv'))return'Dispositivi Medici';
-    if(l.includes('cosmetic')||l.includes('cosmet'))return'Cosmetica';
-    if(l.includes('cro')||l.includes('clinical research')||l.includes('research service'))return'CRO / Clinical Research';
-    if(l.includes('hospital')||l.includes('health care'))return'Farmaceutico';
-    if(l.includes('nutraceut'))return'Nutraceutica';
-    return'Farmaceutico'; // default per LS
-  };
-
-  // Mappatura area funzionale dal titolo
-  const mapArea=v=>{
-    if(!v)return null;
-    const l=v.toLowerCase();
-    if(l.includes('regulatory')||l.includes('ra '))return'Regulatory';
-    if(l.includes('medical science')||l.includes('msl')||l.includes('medical affair'))return'Medical';
-    if(l.includes('sales')||l.includes('account')||l.includes('commercial'))return'Sales';
-    if(l.includes('marketing')||l.includes('market access'))return'Marketing';
-    if(l.includes('market access'))return'Market Access';
-    if(l.includes('clinical')||l.includes('cra ')||l.includes('trial'))return'Clinical';
-    if(l.includes('quality')||l.includes('qa ')||l.includes('qc '))return'Quality';
-    if(l.includes('research')||l.includes('r&d')||l.includes('scientist'))return'R&D';
-    if(l.includes('hr')||l.includes('human resource')||l.includes('talent'))return'HR';
-    if(l.includes('finance')||l.includes('control'))return'Finance';
-    if(l.includes('operation')||l.includes('supply')||l.includes('manufactur'))return'Operations';
-    return'altro';
-  };
-
-  // Mappatura contratto
-  const mapContract=v=>{
-    if(!v)return null;
-    const l=v.toLowerCase();
-    if(l.includes('full_time')||l.includes('full-time')||l.includes('permanent'))return'TI';
-    if(l.includes('contract')||l.includes('temporary'))return'TD';
-    if(l.includes('intern')||l.includes('stage'))return'Stage';
-    if(l.includes('freelance')||l.includes('contractor'))return'Freelance';
-    return null;
-  };
-
-  // Parse salary — es. "99.5k € - 134.6k € per year"
-  const parseSalary=v=>{
-    if(!v||!v.trim())return[null,null];
-    // cerca numeri con k o senza
-    const nums=v.replace(/,/g,'.').match(/[\d]+\.?\d*/g);
-    if(!nums)return[null,null];
-    const vals=nums.map(n=>{
-      const f=parseFloat(n);
-      // se il numero è piccolo potrebbe essere in k
-      return v.toLowerCase().includes('k')?Math.round(f*1000):Math.round(f);
-    }).filter(n=>n>1000&&n<1000000);
-    if(vals.length>=2)return[Math.min(...vals),Math.max(...vals)];
-    if(vals.length===1)return[vals[0],null];
-    return[null,null];
-  };
-
-  let ok=0,skip=0,rejected=0,warn=0,errors=0;
-
-  for(const row of rows){
-    const url=(row['url']||'').trim();
-    const title=(row['job_title']||'').trim();
-    const company=(row['company_name']||'').trim();
-
-    const[ral_min,ral_max]=parseSalary(row['salary']||'');
-    const[ral_min2,ral_max2]=parseSalary(row['salary_string']||'');
-
-    const record={
-      job_title:title,
-      company_name:company,
-      entity_type:'life_sciences',
-      sector:mapSector(row['company_industry']||''),
-      functional_area:mapArea(title),
-      seniority:mapSeniority(row['seniority']||''),
-      ral_min:ral_min||ral_min2||null,
-      ral_max:ral_max||ral_max2||null,
-      contract_type:mapContract(row['employment_status']||''),
-      location:(row['job_location']||'').replace(/, ?Italy$/i,'').trim()||null,
-      source:'TheirStack',
-      url:url||null,
-      source_url:(row['source_url']||'').trim()||null,
-      published_date:(row['posted_date']||'').trim()||null,
-      is_remote:row['is_remote']==='True'||row['is_remote']==='true'||row['is_remote']===true?true:false,
-      job_description:(row['job_description']||'').trim().substring(0,4000)||null,
-      company_employees:row['company_employee_count']&&row['company_employee_count'].trim()?parseInt(row['company_employee_count'])||null:null,
-      company_revenue_usd:row['company_revenue_usd']&&row['company_revenue_usd'].trim()&&!isNaN(parseFloat(row['company_revenue_usd']))?Math.round(parseFloat(row['company_revenue_usd'])):null,
-      company_industry:(row['company_industry']||'').trim()||null,
-      company_url:(row['company_url']||'').trim()||null,
-      company_linkedin_url:(row['company_linkedin_url']||'').trim()||null,
-      hiring_manager_name:(row['hiring_manager_full_name']||'').trim()||null,
-      hiring_manager_role:(row['hiring_manager_role']||'').trim()||null,
-      hiring_manager_linkedin:(row['hiring_manager_linkedin_url']||'').trim()||null,
-    };
-
-    // ── Validazione qualità ──
-    const qv=validateListing(record);
-    if(!qv.valid){rejected++;continue;}
-    if(qv.warnings.length)warn++;
-
-    try{
-      const result=await upsertListing(record);
-      if(result==='inserted')ok++;
-      else{skip++;}
-    }catch(e){
-      console.error('TheirStack import error:',e.message);
-      errors++;
-    }
-  }
-
-  const{msg:msg_ts,type:type_ts}=qualitySummary(ok,skip,rejected,warn,errors,'TheirStack');
-  toast(msg_ts,type_ts);
-  loadListings();
-  initApp();
-}
-
-async function importApifyCSV(event){
-  const file=event.target.files[0];if(!file)return;
-  event.target.value='';
-
-  // Load PapaParse for CSV parsing
-  if(!window.Papa){
-    await new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js';
-      s.onload=res;s.onerror=rej;document.head.appendChild(s);
-    });
-  }
-
-  const text=await file.text();
-  const result=Papa.parse(text,{header:true,skipEmptyLines:true});
-  const rows=result.data;
-
-  if(!rows.length){toast('Nessun dato nel CSV','error');return;}
-  toast(`Importazione ${rows.length} annunci in corso...`,'success');
-
-  // Mapping functions
-  const mapSeniority=v=>{
-    if(!v)return'Mid';
-    const l=v.toLowerCase();
-    if(l.includes('entry'))return'Junior';
-    if(l.includes('associate'))return'Junior';
-    if(l.includes('mid-senior')||l.includes('senior'))return'Senior';
-    if(l.includes('director'))return'Director';
-    if(l.includes('executive'))return'C-level';
-    return'Mid';
-  };
-
-  const mapArea=v=>{
-    if(!v)return'altro';
-    const l=v.toLowerCase();
-    if(l.includes('research')||l.includes('science')||l.includes('engineering'))return'R&D';
-    if(l.includes('health care')||l.includes('medical'))return'Medical';
-    if(l.includes('quality'))return'Quality';
-    if(l.includes('manufactur')||l.includes('production')||l.includes('supply'))return'Operations';
-    if(l.includes('marketing'))return'Marketing';
-    if(l.includes('finance')||l.includes('account'))return'Finance';
-    if(l.includes('regulatory'))return'Regulatory';
-    if(l.includes('sales'))return'Sales';
-    return'altro';
-  };
-
-  const mapContract=v=>{
-    if(!v)return null;
-    const l=v.toLowerCase();
-    if(l.includes('full'))return'TI';
-    if(l.includes('contract')||l.includes('temporary'))return'TD';
-    if(l.includes('intern'))return'Stage';
-    return'altro';
-  };
-
-  const parseSalary=v=>{
-    if(!v)return[null,null];
-    const nums=v.replace(/,/g,'').match(/[\d]+\.?\d*/g);
-    if(!nums)return[null,null];
-    const isHourly=v.toLowerCase().includes('/hr');
-    const vals=nums.map(n=>parseFloat(n));
-    if(isHourly){
-      return vals.length>=2?[Math.round(vals[0]*1720),Math.round(vals[1]*1720)]:[Math.round(vals[0]*1720),null];
-    }
-    return vals.length>=2?[Math.round(vals[0]),Math.round(vals[1])]:[Math.round(vals[0]),null];
-  };
-
-  let ok=0,skip=0,rejected=0,warn=0,errors=0;
-  for(const row of rows){
-    const url=(row['link']||row['applyUrl']||'').trim();
-    const title=(row['title']||'').trim();
-    const company=(row['companyName']||'').trim();
-
-    const[ral_min,ral_max]=parseSalary(row['salary']||'');
-
-    const record={
-      job_title:title,
-      company_name:company,
-      entity_type:'life_sciences',
-      functional_area:mapArea(row['jobFunction']||''),
-      seniority:mapSeniority(row['seniorityLevel']||''),
-      ral_min,ral_max,
-      contract_type:mapContract(row['employmentType']||''),
-      location:(row['location']||'').trim()||null,
-      source:'LinkedIn',
-      url:url||null,
-      published_date:(row['postedAt']||'').trim()||null,
-    };
-
-    // Validazione qualità
-    const qv=validateListing(record);
-    if(!qv.valid){rejected++;continue;}
-    if(qv.warnings.length)warn++;
-
-    try{
-      const result=await upsertListing(record);
-      if(result==='inserted')ok++;
-      else skip++;
-    }catch(e){errors++;}
-  }
-
-  const{msg:msg_ap,type:type_ap}=qualitySummary(ok,skip,rejected,warn,errors,'LinkedIn/Apify');
-  toast(msg_ap,type_ap);
-  loadListings();
-  loadDashboard();
-}
-
 function ralCell(l){
   const val=l.ral_min||l.ral_max
     ?`<span class="ral-range ral-clickable" onclick="editRal('${l.id}',${l.ral_min||0},${l.ral_max||0})">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'} ✎</span>`
@@ -2972,140 +2586,6 @@ const LS_SITES = [
   }
 ];
 
-async function debugScrape(){
-  const btn=document.getElementById('btn-debug');
-  btn.textContent='⏳ Caricando...';
-  btn.disabled=true;
-  try{
-    const url='https://informatori.it/annunci-di-lavoro/';
-    const resp=await fetch(PROXY+encodeURIComponent(url));
-    if(!resp.ok)throw new Error('HTTP '+resp.status);
-    const html=await resp.text();
-    
-    // Parse e mostra le classi dei div principali
-    const parser=new DOMParser();
-    const doc=parser.parseFromString(html,'text/html');
-    
-    // Trova tutti i tag con classi che potrebbero contenere annunci
-    const candidates=[];
-    doc.querySelectorAll('div[class],article[class],section[class],li[class]').forEach(el=>{
-      const cls=el.className;
-      const text=el.textContent.trim().substring(0,80);
-      if(text.length>20) candidates.push(`<${el.tagName.toLowerCase()} class="${cls}">\n  ${text}...`);
-    });
-    
-    // Mostra i primi 30
-    const output=candidates.slice(0,30).join('\n\n');
-    
-    // Apri modale con output
-    const modal=document.createElement('div');
-    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:999;display:flex;align-items:center;justify-content:center;';
-    modal.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:80vw;max-height:80vh;overflow:auto;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <strong style="color:var(--accent)">Struttura HTML — informatori.it</strong>
-        <button onclick="this.closest('div[style]').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:20px;">✕</button>
-      </div>
-      <pre style="font-size:11px;color:var(--text2);white-space:pre-wrap;font-family:monospace;">${output||'Nessun elemento trovato — il proxy potrebbe essere bloccato'}</pre>
-    </div>`;
-    document.body.appendChild(modal);
-  }catch(e){
-    toast('Errore: '+e.message,'error');
-  }
-  btn.textContent='🐛 Debug HTML';
-  btn.disabled=false;
-}
-
-async function scrapeLS(){
-  const btn = document.getElementById('btn-scrape');
-  btn.textContent = '⏳ Scraping...';
-  btn.disabled = true;
-
-  // Load cheerio-like parser via DOMParser (native browser)
-  let totalOk = 0, totalSkip = 0, totalErr = 0;
-
-  for(const site of LS_SITES){
-    try{
-      btn.textContent = `⏳ Scraping ${site.name}...`;
-      
-      const resp = await fetch(PROXY + encodeURIComponent(site.url));
-      if(!resp.ok) throw new Error('HTTP ' + resp.status);
-      const html = await resp.text();
-
-      // Parse HTML with DOMParser
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-
-      // Simple jQuery-like helper
-      const $ = (sel, ctx) => {
-        const root = ctx || doc;
-        const nodeList = typeof root.querySelectorAll === 'function' 
-          ? root.querySelectorAll(sel) 
-          : [];
-        const arr = Array.from(nodeList);
-        arr.first = () => arr[0] ? wrapEl(arr[0]) : {text:()=>'', attr:()=>''};
-        arr.each = (fn) => arr.forEach((el,i) => fn(i, wrapEl(el)));
-        arr.length = nodeList.length;
-        return arr;
-      };
-
-      const wrapEl = (el) => ({
-        find: (sel) => $(sel, el),
-        text: () => el.textContent?.trim() || '',
-        attr: (a) => el.getAttribute(a) || '',
-        first: () => wrapEl(el)
-      });
-
-      // Use site-specific parser
-      const jobs = site.parse($);
-      
-      // Save to Supabase
-      for(const job of jobs.slice(0, 100)){
-        if(!job.url || !job.title) continue;
-        const record = {
-          job_title: job.title,
-          company_name: job.company || site.name,
-          entity_type: 'life_sciences',
-          sector: site.sector,
-          location: job.location || null,
-          source: site.name,
-          url: job.url,
-          published_date: job.date || null,
-        };
-        try{
-          await api('job_listings', 'POST', record);
-          totalOk++;
-        }catch(e){
-          const m = e.message || '';
-          if(m.includes('duplicate') || m.includes('23505')) totalSkip++;
-          else totalErr++;
-        }
-      }
-
-      toast(`${site.name}: ${jobs.length} annunci trovati`, 'success');
-      await new Promise(r => setTimeout(r, 1000));
-
-    }catch(e){
-      toast(`Errore ${site.name}: ${e.message}`, 'error');
-    }
-  }
-
-  btn.textContent = '🔍 Scrapa siti LS';
-  btn.disabled = false;
-  
-  let msg = `Scraping completato: ${totalOk} nuovi annunci`;
-  if(totalSkip) msg += `, ${totalSkip} già presenti`;
-  if(totalErr) msg += `, ${totalErr} errori`;
-  toast(msg, 'success');
-  loadListings();
-  initApp();
-}
-
-let _listingsData = [];
-let _sortField = 'created_at';
-let _sortDir = 'desc';
-let _selectedIds = new Set();
-
-/* ── AUTO-ANALISI DESCRIZIONI ESISTENTI ── */
 async function autoAnalyzeDescriptions(){
   const btn=document.getElementById('btn-auto-analyze');
   btn.textContent='⏳ Verifica...';
@@ -3373,16 +2853,14 @@ function renderListingsTable(data){
   body.innerHTML=`<table><thead><tr>
     <th style="width:36px;"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" style="width:auto;cursor:pointer;"></th>
     <th ${thStyle} onclick="sortListings('job_title')">Ruolo${arrow('job_title')}</th>
-    <th ${thStyle} onclick="sortListings('company_name')">Azienda${arrow('company_name')}</th>
-    <th>Tipo</th>
+    <th ${thStyle} onclick="sortListings('ragione_sociale')">Azienda${arrow('ragione_sociale')}</th>
     <th ${thStyle} onclick="sortListings('sector_v2')">Settore${arrow('sector_v2')}</th>
-    <th ${thStyle} onclick="sortListings('functional_area')">Area${arrow('functional_area')}</th>
-    <th ${thStyle} onclick="sortListings('seniority')">Seniority${arrow('seniority')}</th>
+    <th ${thStyle} onclick="sortListings('functional_area_v2')">Area${arrow('functional_area_v2')}</th>
+    <th ${thStyle} onclick="sortListings('seniority_v2')">Seniority${arrow('seniority_v2')}</th>
     <th>Benefit</th>
     <th ${thStyle} onclick="sortListings('ral_min')">RAL${arrow('ral_min')}</th>
     <th ${thStyle} onclick="sortListings('contract_type')">Contratto${arrow('contract_type')}</th>
     <th ${thStyle} onclick="sortListings('location')">Sede${arrow('location')}</th>
-    <th ${thStyle} onclick="sortListings('source')">Fonte${arrow('source')}</th>
     <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
     <th></th>
   </tr></thead><tbody>${data.map(l=>{
@@ -3401,7 +2879,6 @@ function renderListingsTable(data){
     <td><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
     <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span title="Analizzato con AI" style="font-size:10px;">🤖</span>':''}</td>
     <td style="font-size:12px;">${aziendaDisplay}</td>
-    <td><span class="badge ${l.entity_type==='life_sciences'?'badge-ls':'badge-hh'}">${l.entity_type==='life_sciences'?'LS':'HH'}</span></td>
     <td><span style="font-size:11px;color:var(--text2)">${settoreDisplay}</span></td>
     <td style="font-size:11px;">${l.functional_area_v2||l.functional_area||'—'}</td>
     <td style="font-size:11px;">${l.seniority_v2||l.seniority||'—'}</td>
@@ -3409,7 +2886,6 @@ function renderListingsTable(data){
     <td id="ral-cell-${l.id}">${ralCell(l)}</td>
     <td style="font-size:11px;">${l.contract_type||'—'}</td>
     <td style="font-size:11px;">${l.location||'—'}</td>
-    <td style="font-size:11px;">${l.source||'—'}</td>
     <td style="font-size:11px;">${l.published_date||'—'}</td>
     <td style="white-space:nowrap;">
       <button onclick="pasteDescription('${l.id}','${(l.job_title||'').replace(/'/g,"\\'").replace(/"/g,'\\"')}',this)" title="Incolla descrizione annuncio" style="background:none;border:none;cursor:pointer;font-size:13px;">📋</button>
@@ -4031,12 +3507,14 @@ async function loadCompliance(){
     // Tabella annunci conformi
     document.getElementById('comp-listings-count').textContent=`${withRal.length} annunci`;
     document.getElementById('comp-listings-body').innerHTML=`<table><thead><tr>
-      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>RAL</th><th>Sede</th><th>Data</th>
+      <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Area</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th>
     </tr></thead><tbody>${withRal.slice(0,50).map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
-      <td style="font-size:12px">${l.company_name||'—'}</td>
+      <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+      <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
       <td><span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span></td>
+      <td style="font-size:11px">${l.contract_type||'—'}</td>
       <td style="font-size:11px">${l.location||'—'}</td>
       <td style="font-size:11px">${l.published_date||'—'}</td>
     </tr>`).join('')}</tbody></table>
@@ -4256,14 +3734,15 @@ async function loadRoleIntelligence(){
     document.getElementById('ri-listings-count').textContent=`${listings.length} annunci`;
     document.getElementById('ri-listings-table').innerHTML=listings.length?`
       <table><thead><tr>
-        <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>TA</th><th>RAL</th><th>Sede</th><th>Data</th>
+        <th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th>
       </tr></thead><tbody>${listings.slice(0,50).map(l=>`<tr>
         <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
-        <td style="font-size:12px">${l.company_name||'—'}</td>
+        <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
         <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+        <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
         <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
-        <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
         <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+        <td style="font-size:11px">${l.contract_type||'—'}</td>
         <td style="font-size:11px">${l.location||'—'}</td>
         <td style="font-size:11px">${l.published_date||'—'}</td>
       </tr>`).join('')}</tbody></table>
@@ -4529,20 +4008,15 @@ async function loadCompanyDetail(company){
     }
 
     body.innerHTML=`<table><thead><tr>
-      <th>Ruolo</th><th>Sub-area</th><th>Seniority</th><th>TA</th><th>RAL</th><th>Field/HQ</th><th>Hiring Manager</th><th>Fonte</th><th>Data</th><th></th>
+      <th>Ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th><th></th>
     </tr></thead><tbody>${listings.map(l=>{
-      const hmStr=l.hiring_manager_name?l.hiring_manager_linkedin?
-        `<a href="${l.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:11px;">${l.hiring_manager_name} ↗</a>`:
-        `<span style="font-size:11px;">${l.hiring_manager_name}</span>`:'—';
       return `<tr>
         <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
-        <td style="font-size:11px;color:var(--accent2)">${l.sub_area||l.functional_area||'—'}</td>
+        <td style="font-size:11px;color:var(--accent2)">${l.functional_area_v2||l.functional_area||l.sub_area||'—'}</td>
         <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
-        <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
         <td id="ral-cell-${l.id}">${ralCell(l)}</td>
-        <td style="font-size:11px">${l.field_hq||'—'}</td>
-        <td>${hmStr}</td>
-        <td style="font-size:11px">${l.source||'—'}</td>
+        <td style="font-size:11px">${l.contract_type||'—'}</td>
+        <td style="font-size:11px">${l.location||'—'}</td>
         <td style="font-size:11px">${l.published_date||'—'}</td>
         <td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td>
       </tr>`;
@@ -4626,98 +4100,6 @@ async function saveCompany(){
 let _apifyAllCompanies = [];
 let _currentBatchIds = []; // IDs of companies in current batch
 
-function refreshApifyURLs(){
-  const typeFilter = document.getElementById('apify-filter-type').value;
-  const batchSize = parseInt(document.getElementById('apify-batch-size').value);
-  const days = document.getElementById('apify-days').value;
-  const skipScraped = document.getElementById('apify-skip-scraped').checked;
-  const skipDays = parseInt(document.getElementById('apify-skip-days').value)||30;
-
-  // Filter companies
-  let filtered = _apifyAllCompanies.filter(c => c.is_active);
-  if(typeFilter) filtered = filtered.filter(c => c.entity_type === typeFilter);
-
-  // Sort: never scraped first, then oldest scraped first
-  filtered.sort((a,b)=>{
-    if(!a.last_scraped_at && !b.last_scraped_at) return a.name.localeCompare(b.name);
-    if(!a.last_scraped_at) return -1;
-    if(!b.last_scraped_at) return 1;
-    return new Date(a.last_scraped_at) - new Date(b.last_scraped_at);
-  });
-
-  // Optionally skip recently scraped
-  if(skipScraped){
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - skipDays);
-    filtered = filtered.filter(c => !c.last_scraped_at || new Date(c.last_scraped_at) < cutoff);
-  }
-
-  // Stats
-  const neverScraped = filtered.filter(c=>!c.last_scraped_at).length;
-  const oldScraped = filtered.filter(c=>c.last_scraped_at).length;
-
-  // Update batch num options
-  const totalBatches = Math.ceil(filtered.length / batchSize);
-  const batchNumEl = document.getElementById('apify-batch-num');
-  const currentBatch = parseInt(batchNumEl.value) || 1;
-  batchNumEl.innerHTML = Array.from({length:Math.max(totalBatches,1)}, (_,i) => 
-    `<option value="${i+1}" ${i+1===currentBatch?'selected':''}>${i+1} (az. ${i*batchSize+1}-${Math.min((i+1)*batchSize, filtered.length)})</option>`
-  ).join('');
-
-  const batchNum = parseInt(batchNumEl.value) || 1;
-  const start = (batchNum - 1) * batchSize;
-  const batch = filtered.slice(start, start + batchSize);
-
-  // Store IDs for "mark as scraped"
-  _currentBatchIds = batch.map(c=>c.id);
-
-  // Generate URLs
-  const urls = batch.map(c => {
-    const name = encodeURIComponent(c.name);
-    const scraped = c.last_scraped_at ? ` • ultimo: ${new Date(c.last_scraped_at).toLocaleDateString('it-IT')}` : ' • mai processata';
-    return `https://www.linkedin.com/jobs/search/?keywords=${name}&location=Italia&geoId=103350119&f_TPR=r${days}`;
-  });
-
-  document.getElementById('apify-url-count').textContent = 
-    `${urls.length} URL — batch ${batchNum}/${totalBatches} — ${neverScraped} mai processate, ${oldScraped} da aggiornare`;
-  document.getElementById('apify-urls-output').value = urls.join('\n');
-}
-
-async function markBatchAsScraped(){
-  if(!_currentBatchIds.length){toast('Nessun batch generato','error');return;}
-  if(!confirm(`Segno ${_currentBatchIds.length} aziende come processate oggi?`))return;
-  const now=new Date().toISOString();
-  let ok=0;
-  for(const id of _currentBatchIds){
-    try{await api(`companies?id=eq.${id}`,'PATCH',{last_scraped_at:now});ok++;}catch(e){}
-  }
-  toast(`${ok} aziende segnate come processate`);
-  // Reload companies and refresh URLs
-  _apifyAllCompanies = await loadAllCompanies();
-  refreshApifyURLs();
-}
-
-function copyApifyURLs(){
-  const ta = document.getElementById('apify-urls-output');
-  ta.select();
-  document.execCommand('copy');
-  toast('URL copiati negli appunti!');
-}
-
-async function generateApifyURLs(){
-  openModal('modal-apify-urls');
-  document.getElementById('apify-urls-output').value = 'Caricamento aziende...';
-  _apifyAllCompanies = await loadAllCompanies();
-  refreshApifyURLs();
-}
-
-async function deleteAllCompanies(){
-  if(!confirm('⚠️ Sei sicuro? Elimina TUTTE le aziende. Azione irreversibile.'))return;
-  if(!confirm('Conferma definitiva: eliminare tutto il database aziende?'))return;
-  try{await api('companies?id=neq.00000000-0000-0000-0000-000000000000','DELETE');toast('Database eliminato');loadCompanies();}
-  catch(e){toast('Errore: '+e.message,'error');}
-}
-
 async function toggleCo(id,cur){
   try{await api('companies?id=eq.'+id,'PATCH',{is_active:!cur});toast('Aggiornato');loadCompanies();}
   catch(e){toast('Errore','error');}
@@ -4733,179 +4115,6 @@ async function delCo(id){
 function exportPDF(){window.print();}
 
 /* ── IMPORT EXCEL ── */
-async function importExcel(event){
-  const file=event.target.files[0];if(!file)return;
-  const ext=file.name.split('.').pop().toLowerCase();
-  if(ext==='csv'){
-    const text=await file.text();
-    const rows=text.split('\n').map(r=>r.split(',').map(c=>c.trim().replace(/^"|"$/g,'')));
-    await processRows(rows);event.target.value='';return;
-  }
-  if(!window.XLSX){
-    toast('Caricamento libreria Excel...','success');
-    await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
-  }
-  const buffer=await file.arrayBuffer();
-  const wb=XLSX.read(buffer,{type:'array'});
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-  await processRows(rows);event.target.value='';
-}
-
-async function processRows(rows){
-  const firstCell=(rows[0]&&rows[0][0]?rows[0][0]:'').toString().toLowerCase();
-  const dataRows=firstCell.includes('nome')||firstCell.includes('name')||firstCell.includes('azienda')?rows.slice(1):rows;
-  const valid=dataRows.filter(r=>r[0]&&r[0].toString().trim()!='');
-  if(!valid.length){toast('Nessuna riga valida trovata','error');return;}
-  let ok=0,skip=0,errors=0;
-  for(const r of valid){
-    const name=(r[0]||'').toString().trim();
-    const typeRaw=(r[1]||'').toString().trim().toLowerCase();
-    const entity=typeRaw.includes('head')||typeRaw==='hh'||typeRaw==='headhunter'?'headhunter':'life_sciences';
-    const body={name,entity_type:entity,website:(r[2]||'').toString().trim()||null,linkedin_url:(r[3]||'').toString().trim()||null,indeed_url:(r[4]||'').toString().trim()||null,glassdoor_url:(r[5]||'').toString().trim()||null};
-    try{await api('companies','POST',body);ok++;}
-    catch(e){const m=e.message||'';if(m.includes('duplicate')||m.includes('unique'))skip++;else errors++;}
-  }
-  let msg=`Importate ${ok} aziende`;
-  if(skip)msg+=`, ${skip} già presenti`;
-  if(errors)msg+=`, ${errors} errori`;
-  toast(msg,errors>0&&ok===0?'error':'success');
-  loadCompanies();
-}
-
-/* ── THEIRSTACK API SEARCH ── */
-const TS_API_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXIiOjEsImp0aSI6IjBmYjQ0M2RjLWU3MmEtNGRiMy1iODc3LTE0NDE3NGVjMTQ5OSIsImNyZWF0ZWRfYnkiOjE4MjA1MCwicGVybWlzc2lvbnMiOltdLCJhdWQiOiJhcGkiLCJpYXQiOjE3ODIxMTQwMjcsInN1YiI6IjE4MTI3NCIsIm5hbWUiOiJMc19qb2JfaW50ZWxsaWdlbmNlIiwiZW1haWwiOiJtYXVyby5jYXJ2aXNpZ2xpYUBtY3BoYXJtYWNvbnN1bHRpbmcuaXQifQ.8HeluJfBty6skJMVeLw3o4IMPLqwoRo3U_GvQaQ4sO0';
-
-async function searchTheirStack(){
-  const keywords=document.getElementById('ts-keywords').value.trim();
-  const country=document.getElementById('ts-country').value;
-  const days=parseInt(document.getElementById('ts-days').value);
-  const limit=Math.min(parseInt(document.getElementById('ts-limit').value),25);
-  const industry=document.getElementById('ts-industry').value;
-
-  if(!keywords){toast('Inserisci almeno una parola chiave','error');return;}
-
-  const btn=document.getElementById('btn-ts-search');
-  const info=document.getElementById('ts-results-info');
-  btn.textContent='⏳ Ricerca in corso...';
-  btn.disabled=true;
-  info.textContent='Chiamata API TheirStack...';
-
-  // Build date filter
-  const dateFrom=new Date();
-  dateFrom.setDate(dateFrom.getDate()-days);
-  const dateFromStr=dateFrom.toISOString().split('T')[0];
-
-  // Build request body
-  const body={
-    job_title_or:keywords.split(',').map(k=>k.trim()).filter(k=>k),
-    job_country_code_or:['IT'],
-    posted_at_max_age_days:days,
-    limit:limit,
-    page:0,
-    order_by:[{desc:true,field:'date_posted'}]
-  };
-  if(industry)body.industry_or=[industry];
-
-  try{
-    const resp=await fetch('https://api.theirstack.com/v1/jobs/search',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+TS_API_KEY
-      },
-      body:JSON.stringify(body)
-    });
-
-    if(!resp.ok){
-      const err=await resp.text();
-      throw new Error(`TheirStack API error ${resp.status}: ${err.substring(0,200)}`);
-    }
-
-    const data=await resp.json();
-    const jobs=data.data||[];
-    info.textContent=`Trovati ${jobs.length} annunci. Importazione in corso...`;
-
-    let ok=0,skip=0,errors=0;
-    for(const job of jobs){
-      const url=(job.url||job.source_url||'').trim();
-      const title=(job.job_title||'').trim();
-      const co=job.company_object||{};
-      const company=(co.name||job.company||'').trim();
-      if(!url||!title)continue;
-
-      // Salary — API returns min_annual_salary / max_annual_salary in local currency
-      let ral_min=job.min_annual_salary||null;
-      let ral_max=job.max_annual_salary||null;
-      // If USD values available and local not, use USD
-      if(!ral_min&&job.min_annual_salary_usd)ral_min=Math.round(job.min_annual_salary_usd);
-      if(!ral_max&&job.max_annual_salary_usd)ral_max=Math.round(job.max_annual_salary_usd);
-
-      // Hiring manager from hiring_team array
-      const hm=job.hiring_team&&job.hiring_team.length?job.hiring_team[0]:null;
-
-      // Location
-      const loc=(job.long_location||job.location||'').replace(/, ?Italy$/i,'').replace(/, ?IT$/i,'').trim();
-
-      const mapSeniority=v=>{if(!v)return null;const l=v.toLowerCase();if(l==='junior'||l.includes('entry')||l.includes('intern'))return'Junior';if(l==='mid_level'||l==='mid')return'Middle';if(l==='staff'||l==='lead')return'Lead';if(l==='senior')return'Senior';if(l.includes('manager'))return'Manager';if(l==='director'||l.includes('director'))return'Director';if(l==='c_level'||l.includes('executive')||l.includes('chief'))return'C-level';return'Middle';};
-      const mapArea=v=>{if(!v)return null;const l=v.toLowerCase();if(l.includes('regulatory'))return'Regulatory';if(l.includes('medical')||l.includes('msl'))return'Medical';if(l.includes('sales')||l.includes('account'))return'Sales';if(l.includes('marketing'))return'Marketing';if(l.includes('market access'))return'Market Access';if(l.includes('clinical'))return'Clinical';if(l.includes('quality'))return'Quality';if(l.includes('research')||l.includes('scientist'))return'R&D';if(l.includes('hr')||l.includes('talent'))return'HR';return'altro';};
-      const mapSector=v=>{if(!v)return'Farmaceutico';const l=v.toLowerCase();if(l.includes('biotech'))return'Biotech';if(l.includes('medical equipment')||l.includes('medical device'))return'Dispositivi Medici';if(l.includes('cosmetic'))return'Cosmetica';if(l.includes('cro')||l.includes('clinical research'))return'CRO / Clinical Research';if(l.includes('nutraceut'))return'Nutraceutica';return'Farmaceutico';};
-
-      const record={
-        job_title:title,
-        company_name:company,
-        entity_type:'life_sciences',
-        sector:mapSector(co.industry||''),
-        functional_area:mapArea(title),
-        seniority:mapSeniority(job.seniority||''),
-        ral_min:ral_min||null,
-        ral_max:ral_max||null,
-        contract_type:(job.employment_statuses||[]).includes('full_time')?'TI':(job.employment_statuses||[]).includes('contract')?'TD':null,
-        location:loc||null,
-        source:'TheirStack',
-        url:url,
-        source_url:(job.source_url||'').trim()||null,
-        published_date:(job.date_posted||'').trim()||null,
-        is_remote:job.remote===true?true:false,
-        job_description:(job.description||'').substring(0,4000)||null,
-        company_employees:co.employee_count||null,
-        company_revenue_usd:co.annual_revenue_usd?Math.round(co.annual_revenue_usd):null,
-        company_industry:co.industry||null,
-        company_url:co.domain||co.url||null,
-        company_linkedin_url:co.linkedin_url||null,
-        hiring_manager_name:hm?hm.full_name||null:null,
-        hiring_manager_role:hm?hm.role||null:null,
-        hiring_manager_linkedin:hm?hm.linkedin_url||null:null,
-      };
-
-      try{
-        await api('job_listings','POST',record);ok++;
-      }catch(e){
-        const m=e.message||'';
-        if(m.includes('duplicate')||m.includes('23505'))skip++;
-        else errors++;
-      }
-    }
-
-    let msg=`TheirStack: ${ok} nuovi annunci`;
-    if(skip)msg+=`, ${skip} già presenti`;
-    if(errors)msg+=`, ${errors} errori`;
-    info.textContent=msg;
-    toast(msg,'success');
-    closeModal('modal-theirstack-search');
-    loadListings();
-    initApp();
-
-  }catch(e){
-    info.textContent='Errore: '+e.message;
-    toast('Errore TheirStack: '+e.message,'error');
-  }
-
-  btn.textContent='🔎 Cerca e importa';
-  btn.disabled=false;
-}
-
-// Lightweight init — load only counts
 async function initApp(){
   try{
     const listings=await api('job_listings?select=id,ral_min,ral_max');
