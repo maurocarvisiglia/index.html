@@ -1293,6 +1293,39 @@ async function importVocationsCSV(event){
     const collar=(row['Collar']||'').trim()||null;
     const categorie_protette=(row['Categorie protette']||'').trim()||null;
 
+    // Inferenza area funzionale dal titolo
+    const tl=title.toLowerCase();
+    let functional_area_v2=null;
+    if(/\bisf\b|informatore scientifico|sales rep|area manager|kam\b|key account|territory|district manager/.test(tl))functional_area_v2='commercial';
+    else if(/medical advisor|msl\b|medical science|medical manager|medical affairs/.test(tl))functional_area_v2='medical_affairs';
+    else if(/regulatory|registrazione|dossier reg/.test(tl))functional_area_v2='regulatory_affairs';
+    else if(/quality assurance|\bqa\b|quality manager|quality director/.test(tl))functional_area_v2='quality';
+    else if(/quality control|\bqc\b|analista qc/.test(tl))functional_area_v2='quality';
+    else if(/market access|pricing|reimburs/.test(tl))functional_area_v2='market_access';
+    else if(/pharmacovigilance|drug safety|\bpv\b|farmacovigilanza/.test(tl))functional_area_v2='drug_safety';
+    else if(/clinical research|\bcra\b|clinical operations|trial manager/.test(tl))functional_area_v2='clinical_operations';
+    else if(/marketing|brand manager|product manager/.test(tl))functional_area_v2='marketing';
+    else if(/produzione|production|manufacturing|operatore|operator/.test(tl))functional_area_v2='manufacturing';
+    else if(/supply chain|logistic|warehouse|magazzino|planning/.test(tl))functional_area_v2='supply_chain';
+    else if(/ricerca|research|\br&d\b|scientist|formul/.test(tl))functional_area_v2='rd';
+    else if(/\bhr\b|human resource|talent|recruiter|people/.test(tl))functional_area_v2='hr';
+    else if(/finance|controller|budget|accounting|contabil/.test(tl))functional_area_v2='finance';
+    else if(/\bit\b|software|digital|data engineer|system/.test(tl))functional_area_v2='it';
+    else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
+
+    // Inferenza seniority dal titolo
+    let seniority_v2=null;
+    if(/\bstage\b|\bintern\b|\btirocinio\b/.test(tl))seniority_v2='internship';
+    else if(/\bjunior\b|\bentry\b|\bneolaure/.test(tl))seniority_v2='entry_level';
+    else if(/\bsenior\b|\bsr\.\b|\bsr\b/.test(tl))seniority_v2='senior_specialist';
+    else if(/\bmanager\b|\bresponsabile\b/.test(tl))seniority_v2='manager';
+    else if(/\bdirector\b|\bdirettore\b/.test(tl))seniority_v2='director';
+    else if(/\bhead\b|\bhead of\b/.test(tl))seniority_v2='head_of';
+    else if(/\bvp\b|\bvice president\b/.test(tl))seniority_v2='vp';
+    else if(/\bspecialist\b|\besperto\b|\bexpert\b/.test(tl))seniority_v2='specialist';
+    else if(/\bassociate\b/.test(tl))seniority_v2='associate';
+    else seniority_v2='specialist'; // default
+
     // Azienda
     const employees=parseInt(row['Dipendenti']||'0')||null;
     const posizioni_aperte=parseInt(row['Posizioni aperte']||'0')||null;
@@ -1322,6 +1355,8 @@ async function importVocationsCSV(event){
       collar,
       categorie_protette,
       sector_v2,
+      functional_area_v2:functional_area_v2||null,
+      seniority_v2:seniority_v2||null,
       ral_min:ral,
       ral_max:ral,
       company_employees:employees,
