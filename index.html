@@ -1393,7 +1393,8 @@ a.job-link:hover{text-decoration:underline;}
       <div class="form-group"><div class="form-label">Seniority</div><select id="l-seniority"><option value="">— seleziona —</option><option>Junior</option><option>Middle</option><option>Senior</option><option>Lead</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">RAL minima (€)</div><input type="number" id="l-ral-min" placeholder="es. 35000"></div>
       <div class="form-group"><div class="form-label">RAL massima (€)</div><input type="number" id="l-ral-max" placeholder="es. 45000"></div>
-      <div class="form-group"><div class="form-label">Tipo contratto</div><select id="l-contract"><option value="">— seleziona —</option><option>TI</option><option>TD</option><option>Freelance</option><option>Stage</option><option>altro</option></select></div>
+      <div class="form-group"><div class="form-label">Fisso mensile (€)</div><input type="number" id="l-fixed-monthly" placeholder="es. 1500" style="display:none;"></div>
+      <div class="form-group"><div class="form-label">Tipo contratto</div><select id="l-contract" onchange="onContractChange(this.value)"><option value="">— seleziona —</option><option>TI</option><option>TD</option><option>Freelance</option><option>Stage</option><option value="Agenzia">Agenzia</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">Sede</div><input type="text" id="l-location" placeholder="es. Milano"></div>
       <div class="form-group"><div class="form-label">Fonte</div><select id="l-source"><option value="">— seleziona —</option><option>LinkedIn</option><option>Indeed</option><option>Glassdoor</option><option>Sito aziendale</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">Data pubblicazione</div><input type="date" id="l-date"></div>
@@ -4856,19 +4857,44 @@ function renderListingsTable(data){
   </tr>`;}).join('')}</tbody></table>`;
 }
 
+function onContractChange(val){
+  const isAgenzia = val === 'Agenzia';
+  const fixedEl = document.getElementById('l-fixed-monthly');
+  const ralMin = document.getElementById('l-ral-min');
+  const ralMax = document.getElementById('l-ral-max');
+  if(isAgenzia){
+    fixedEl.style.display = '';
+    ralMin.style.opacity = '0.4';
+    ralMax.style.opacity = '0.4';
+    ralMin.placeholder = 'N/A per agenti';
+    ralMax.placeholder = 'N/A per agenti';
+  } else {
+    fixedEl.style.display = 'none';
+    fixedEl.value = '';
+    ralMin.style.opacity = '';
+    ralMax.style.opacity = '';
+    ralMin.placeholder = 'es. 35000';
+    ralMax.placeholder = 'es. 45000';
+  }
+}
+
 async function saveListing(){
   const url=document.getElementById('l-url').value.trim();
   const title=document.getElementById('l-title').value.trim();
   const company=document.getElementById('l-company').value.trim();
   const entity=document.getElementById('l-entity').value;
+  const contractVal=document.getElementById('l-contract').value||null;
+  const isAgenzia = contractVal === 'Agenzia';
   if(!url||!title||!company){toast('Compila i campi obbligatori (*)','error');return;}
   const body={job_title:title,company_name:company,entity_type:entity,
     sector:document.getElementById('l-sector').value||null,
     functional_area:document.getElementById('l-area').value||null,
     seniority:document.getElementById('l-seniority').value||null,
-    ral_min:document.getElementById('l-ral-min').value?parseInt(document.getElementById('l-ral-min').value):null,
-    ral_max:document.getElementById('l-ral-max').value?parseInt(document.getElementById('l-ral-max').value):null,
-    contract_type:document.getElementById('l-contract').value||null,
+    ral_min:!isAgenzia&&document.getElementById('l-ral-min').value?parseInt(document.getElementById('l-ral-min').value):null,
+    ral_max:!isAgenzia&&document.getElementById('l-ral-max').value?parseInt(document.getElementById('l-ral-max').value):null,
+    fixed_monthly:isAgenzia&&document.getElementById('l-fixed-monthly').value?parseInt(document.getElementById('l-fixed-monthly').value):null,
+    contract_type:contractVal,
+    contract_category:isAgenzia?'agent':'employee',
     location:document.getElementById('l-location').value||null,
     source:document.getElementById('l-source').value||null,
     published_date:document.getElementById('l-date').value||null,
@@ -4876,10 +4902,10 @@ async function saveListing(){
   try{
     await api('job_listings','POST',body);
     toast('Annuncio salvato!');closeModal('modal-listing');
-    // refresh current context
+    onContractChange(''); // reset UI
     if(currentCompany)loadCompanyDetail(currentCompany);
     else loadListings();
-    ['l-title','l-company','l-url','l-location','l-ral-min','l-ral-max','l-date'].forEach(id=>document.getElementById(id).value='');
+    ['l-title','l-company','l-url','l-location','l-ral-min','l-ral-max','l-fixed-monthly','l-date'].forEach(id=>document.getElementById(id).value='');
     ['l-area','l-seniority','l-contract','l-source','l-sector'].forEach(id=>document.getElementById(id).value='');
   }catch(e){toast('Errore: URL già presente o dati non validi','error');}
 }
