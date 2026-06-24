@@ -1273,6 +1273,68 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
+      <!-- TREND STORICO RAL NEL TEMPO -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">📈 Trend RAL nel tempo</div>
+      <div class="chart-card" style="margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div class="chart-card-title" style="margin-bottom:0;">Evoluzione storica RAL mensile</div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="setRalTrendPeriod(6,this)" class="qb-btn active" style="font-size:11px;padding:4px 12px;">6 mesi</button>
+            <button onclick="setRalTrendPeriod(12,this)" class="qb-btn" style="font-size:11px;padding:4px 12px;">12 mesi</button>
+            <button onclick="setRalTrendPeriod(24,this)" class="qb-btn" style="font-size:11px;padding:4px 12px;">24 mesi</button>
+          </div>
+        </div>
+        <div id="ri-ral-trend" style="min-height:120px;"></div>
+        <div style="display:flex;gap:24px;margin-top:12px;font-size:11px;color:var(--text2);">
+          <span>🟢 RAL media mensile</span>
+          <span>📊 Volume annunci</span>
+          <span id="ri-ral-trend-summary"></span>
+        </div>
+      </div>
+
+      <!-- ROLE COMPARISON -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">🔄 Confronto automatico ruoli simili</div>
+      <div id="ri-role-comparison" style="margin-bottom:24px;">
+        <div style="padding:24px;text-align:center;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:12px;">
+          Seleziona un ruolo per vedere il confronto automatico con figure simili
+        </div>
+      </div>
+
+      <!-- PREDICTIVE INTELLIGENCE -->
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">🔮 Predictive Intelligence</div>
+      <div style="background:linear-gradient(135deg,rgba(124,156,255,.06),rgba(167,139,250,.06));border:1px solid rgba(124,156,255,.2);border-radius:16px;padding:20px 24px;margin-bottom:24px;" id="ri-predictive">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;">Forecast domanda — <span id="ri-pred-role">—</span></div>
+            <div style="font-size:12px;color:var(--text2);">Previsione basata su trend storici e velocità di crescita</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">CONFIDENCE</div>
+            <div style="font-size:18px;font-weight:800;" id="ri-pred-confidence">—</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;">
+          <div style="background:var(--surface);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:8px;">Forecast 30gg</div>
+            <div style="font-size:24px;font-weight:800;" id="ri-pred-30">—</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px;" id="ri-pred-30-trend">—</div>
+          </div>
+          <div style="background:var(--surface);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:8px;">Forecast 90gg</div>
+            <div style="font-size:24px;font-weight:800;" id="ri-pred-90">—</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px;" id="ri-pred-90-trend">—</div>
+          </div>
+          <div style="background:var(--surface);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:8px;">Salary Trend</div>
+            <div style="font-size:24px;font-weight:800;" id="ri-pred-sal">—</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:4px;" id="ri-pred-sal-trend">—</div>
+          </div>
+        </div>
+        <div class="ai-summary-text" id="ri-pred-text" style="font-size:12px;color:var(--text2);line-height:1.6;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
+          —
+        </div>
+      </div>
+
       <!-- Recent listings -->
       <div class="table-wrap">
         <div class="table-header">
@@ -2387,6 +2449,365 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 /* ── DASHBOARD v2 ── */
+/* ══════════════════════════════════════════════
+   TREND RAL NEL TEMPO
+   ══════════════════════════════════════════════ */
+
+let _riTrendMonths = 6;
+let _riTrendListings = [];
+
+function setRalTrendPeriod(months, btn){
+  _riTrendMonths = months;
+  document.querySelectorAll('#ri-ral-trend').forEach(()=>{});
+  // Aggiorna stile bottoni
+  const parent = btn.parentElement;
+  parent.querySelectorAll('.qb-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRalTrend(_riTrendListings, months);
+}
+
+function renderRalTrend(listings, months){
+  _riTrendListings = listings;
+  const el = document.getElementById('ri-ral-trend');
+  if(!el) return;
+
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+
+  // Raggruppa per mese
+  const byMonth = {};
+  for(let i = 0; i < months; i++){
+    const d = new Date(now.getFullYear(), now.getMonth() - (months-1) + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    byMonth[key] = {count:0, rals:[], label: d.toLocaleDateString('it-IT',{month:'short',year:'2-digit'})};
+  }
+
+  listings.forEach(l => {
+    if(!l.published_date) return;
+    const d = new Date(l.published_date);
+    if(d < cutoff) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(!byMonth[key]) return;
+    byMonth[key].count++;
+    if(l.ral_min || l.ral_max){
+      byMonth[key].rals.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    }
+  });
+
+  const data = Object.entries(byMonth).map(([key, v]) => ({
+    key, label: v.label, count: v.count,
+    avgRal: v.rals.length ? Math.round(v.rals.reduce((a,b)=>a+b)/v.rals.length) : null,
+    ralCount: v.rals.length
+  }));
+
+  const maxCount = Math.max(...data.map(d=>d.count), 1);
+  const maxRal = Math.max(...data.map(d=>d.avgRal||0), 1);
+  const minRal = Math.min(...data.filter(d=>d.avgRal).map(d=>d.avgRal), maxRal);
+  const ralRange = maxRal - minRal || 1;
+
+  // SVG chart
+  const w = 800, h = 140, padL = 50, padR = 20, padT = 20, padB = 30;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const barW = Math.max(4, innerW / data.length - 4);
+
+  let bars = '';
+  let ralLine = '';
+  let ralDots = '';
+  let labels = '';
+  let ralLabels = '';
+
+  data.forEach((d, i) => {
+    const x = padL + (i / data.length) * innerW + (innerW / data.length) / 2;
+    const barH = (d.count / maxCount) * innerH;
+    const barY = padT + innerH - barH;
+
+    // Bar volume
+    bars += `<rect x="${x - barW/2}" y="${barY}" width="${barW}" height="${barH}" 
+      fill="var(--accent2)" opacity="0.3" rx="2"/>`;
+
+    // RAL line
+    if(d.avgRal){
+      const y = padT + innerH - ((d.avgRal - minRal) / ralRange) * innerH;
+      if(ralLine) ralLine += ` L${x},${y}`;
+      else ralLine = `M${x},${y}`;
+      ralDots += `<circle cx="${x}" cy="${y}" r="4" fill="var(--success)" stroke="var(--bg)" stroke-width="2"/>`;
+      ralLabels += `<text x="${x}" y="${y - 8}" text-anchor="middle" font-size="9" fill="var(--success)">€${(d.avgRal/1000).toFixed(0)}k</text>`;
+    }
+
+    // Labels
+    labels += `<text x="${x}" y="${h - 5}" text-anchor="middle" font-size="9" fill="var(--text2)">${d.label}</text>`;
+    if(d.count > 0){
+      labels += `<text x="${x}" y="${barY - 3}" text-anchor="middle" font-size="8" fill="var(--accent2)">${d.count}</text>`;
+    }
+  });
+
+  // Asse Y RAL
+  const yAxisLabels = [minRal, (minRal+maxRal)/2, maxRal].map((v,i) => {
+    const y = padT + innerH - (i * innerH / 2);
+    return `<text x="${padL - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="var(--text2)">€${(v/1000).toFixed(0)}k</text>`;
+  }).join('');
+
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:160px;">
+    ${bars}
+    ${ralLine ? `<path d="${ralLine}" stroke="var(--success)" stroke-width="2" fill="none" stroke-linejoin="round"/>` : ''}
+    ${ralDots}
+    ${ralLabels}
+    ${labels}
+    ${yAxisLabels}
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>
+    <line x1="${padL}" y1="${padT+innerH}" x2="${w-padR}" y2="${padT+innerH}" stroke="var(--border)" stroke-width="1"/>
+  </svg>`;
+
+  // Summary trend
+  const withRal = data.filter(d => d.avgRal);
+  if(withRal.length >= 2){
+    const first = withRal[0].avgRal;
+    const last = withRal[withRal.length-1].avgRal;
+    const pct = Math.round((last-first)/first*100);
+    const sumEl = document.getElementById('ri-ral-trend-summary');
+    if(sumEl) sumEl.textContent = `Variazione RAL ${months} mesi: ${pct>0?'+':''}${pct}%`;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   ROLE COMPARISON
+   ══════════════════════════════════════════════ */
+
+// Mappa ruoli → figure simili
+const ROLE_PEERS = {
+  'medical advisor': ['Medical Science Liaison','Medical Manager','Medical Director','Pharmacovigilance Specialist'],
+  'medical science liaison': ['Medical Advisor','Medical Manager','Medical Director'],
+  'msl': ['Medical Advisor','Medical Manager','Medical Director'],
+  'regulatory affairs specialist': ['Regulatory Affairs Manager','Quality Assurance Specialist','Pharmacovigilance Specialist'],
+  'regulatory affairs manager': ['Regulatory Affairs Specialist','Quality Assurance Manager','Market Access Manager'],
+  'quality assurance specialist': ['Quality Control Analyst','Regulatory Affairs Specialist','Validation Specialist'],
+  'quality assurance manager': ['Quality Assurance Specialist','Regulatory Affairs Manager','Production Manager'],
+  'product manager': ['Brand Manager','Marketing Manager','Market Access Manager'],
+  'brand manager': ['Product Manager','Marketing Manager','Key Account Manager'],
+  'key account manager': ['Area Manager','Product Specialist','National Sales Manager'],
+  'informatore scientifico del farmaco': ['Product Specialist','Key Account Manager','Area Manager'],
+  'market access manager': ['Medical Advisor','Regulatory Affairs Manager','Product Manager'],
+  'pharmacovigilance specialist': ['Medical Advisor','Clinical Research Associate','Regulatory Affairs Specialist'],
+  'clinical research associate': ['Pharmacovigilance Specialist','Clinical Operations Manager','Medical Science Liaison'],
+  'supply chain manager': ['Procurement Specialist','Production Manager','Financial Controller'],
+  'production manager': ['Manufacturing Science & Technology Specialist','Quality Assurance Manager','Supply Chain Manager'],
+};
+
+function getPeers(roleName){
+  const lower = (roleName||'').toLowerCase();
+  for(const [key, peers] of Object.entries(ROLE_PEERS)){
+    if(lower.includes(key)) return peers;
+  }
+  return [];
+}
+
+async function renderRoleComparison(roleName, currentListings){
+  const el = document.getElementById('ri-role-comparison');
+  if(!el) return;
+
+  const peers = getPeers(roleName);
+  if(!peers.length){
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:12px;font-size:13px;">Nessun ruolo simile mappato per "${roleName}"</div>`;
+    return;
+  }
+
+  el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);">⏳ Caricamento confronto...</div>';
+
+  // Calcola stats ruolo corrente
+  const currentWithRal = currentListings.filter(l=>l.ral_min||l.ral_max);
+  const currentAvg = currentWithRal.length ? Math.round(currentWithRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/currentWithRal.length) : null;
+  const currentD30 = currentListings.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
+
+  // Carica dati peers in parallelo
+  const peerData = await Promise.all(peers.map(async peer => {
+    try{
+      const data = await api(`job_listings?select=ral_min,ral_max,published_date,seniority_v2&canonical_role=ilike.*${encodeURIComponent(peer)}*&limit=300`);
+      const withRal = data.filter(l=>l.ral_min||l.ral_max);
+      const avg = withRal.length ? Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length) : null;
+      const d30 = data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
+      const sorted = withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const p50 = sorted.length ? sorted[Math.floor(sorted.length*0.5)] : null;
+      const p75 = sorted.length ? sorted[Math.floor(sorted.length*0.75)] : null;
+      return {name:peer, total:data.length, avg, p50, p75, d30, ralCount:withRal.length};
+    }catch(e){ return {name:peer, total:0, avg:null, p50:null, p75:null, d30:0, ralCount:0}; }
+  }));
+
+  // Calcola anche stats correnti complete
+  const currentSorted = currentWithRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const currentP50 = currentSorted.length ? currentSorted[Math.floor(currentSorted.length*0.5)] : null;
+  const currentP75 = currentSorted.length ? currentSorted[Math.floor(currentSorted.length*0.75)] : null;
+
+  const allRows = [
+    {name: roleName, total: currentListings.length, avg: currentAvg, p50: currentP50, p75: currentP75, d30: currentD30, ralCount: currentWithRal.length, isCurrent: true},
+    ...peerData
+  ];
+
+  const maxTotal = Math.max(...allRows.map(r=>r.total), 1);
+  const maxAvg = Math.max(...allRows.map(r=>r.avg||0), 1);
+
+  const fmt = v => v ? `€${(v/1000).toFixed(0)}k` : '—';
+  const diff = (a, base) => {
+    if(!a || !base) return '';
+    const p = Math.round((a-base)/base*100);
+    return `<span style="font-size:10px;color:${p>0?'var(--success)':p<0?'var(--danger)':'var(--text2)'};margin-left:4px;">${p>0?'+':''}${p}%</span>`;
+  };
+
+  el.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:var(--surface2);border-bottom:1px solid var(--border);">
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);">Figura</th>
+            <th style="padding:12px 16px;text-align:center;font-size:11px;font-weight:700;color:var(--text2);">Annunci</th>
+            <th style="padding:12px 16px;text-align:center;font-size:11px;font-weight:700;color:var(--text2);">Ultimi 30gg</th>
+            <th style="padding:12px 16px;text-align:center;font-size:11px;font-weight:700;color:var(--text2);">RAL Media</th>
+            <th style="padding:12px 16px;text-align:center;font-size:11px;font-weight:700;color:var(--text2);">Mediana</th>
+            <th style="padding:12px 16px;text-align:center;font-size:11px;font-weight:700;color:var(--text2);">P75</th>
+            <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);">Volume mercato</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allRows.map(r => `
+          <tr style="border-bottom:1px solid var(--border);${r.isCurrent?'background:rgba(124,156,255,.06);':''}" 
+              ${!r.isCurrent?`onclick="selectRole('${r.name}','')" style="cursor:pointer;border-bottom:1px solid var(--border);"`:''}>
+            <td style="padding:12px 16px;">
+              <div style="font-size:13px;font-weight:${r.isCurrent?'800':'600'};color:${r.isCurrent?'var(--accent2)':'var(--text)'};">${r.name}</div>
+              ${r.isCurrent?'<div style="font-size:10px;color:var(--accent2);margin-top:2px;">● Ruolo corrente</div>':''}
+            </td>
+            <td style="padding:12px 16px;text-align:center;font-size:13px;font-weight:700;">${r.total}</td>
+            <td style="padding:12px 16px;text-align:center;font-size:13px;">${r.d30}</td>
+            <td style="padding:12px 16px;text-align:center;font-size:13px;color:var(--success);">
+              ${fmt(r.avg)}${!r.isCurrent?diff(r.avg,currentAvg):''}
+            </td>
+            <td style="padding:12px 16px;text-align:center;font-size:13px;">${fmt(r.p50)}</td>
+            <td style="padding:12px 16px;text-align:center;font-size:13px;color:var(--accent2);">${fmt(r.p75)}</td>
+            <td style="padding:12px 16px;">
+              <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;">
+                <div style="height:100%;width:${Math.round(r.total/maxTotal*100)}%;background:${r.isCurrent?'var(--accent2)':'var(--text2)'};opacity:${r.isCurrent?1:.5};border-radius:4px;"></div>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="padding:10px 16px;font-size:11px;color:var(--text2);border-top:1px solid var(--border);">
+        Clicca su un ruolo per analizzarlo in dettaglio · % = differenza rispetto al ruolo corrente
+      </div>
+    </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   PREDICTIVE INTELLIGENCE
+   ══════════════════════════════════════════════ */
+
+function calcPredictive(listings, roleName){
+  const now = Date.now();
+
+  // Raggruppa per mese (ultimi 6 mesi)
+  const months = [];
+  for(let i=5; i>=0; i--){
+    const d = new Date();
+    d.setMonth(d.getMonth()-i);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    months.push(key);
+  }
+
+  const monthly = {};
+  months.forEach(m => monthly[m] = {count:0, rals:[]});
+
+  listings.forEach(l => {
+    if(!l.published_date) return;
+    const d = new Date(l.published_date);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(monthly[key]){
+      monthly[key].count++;
+      if(l.ral_min||l.ral_max) monthly[key].rals.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    }
+  });
+
+  const counts = months.map(m => monthly[m].count);
+  const rals = months.map(m => monthly[m].rals.length ? Math.round(monthly[m].rals.reduce((a,b)=>a+b)/monthly[m].rals.length) : null).filter(Boolean);
+
+  // Regressione lineare semplice sui conteggi mensili
+  const n = counts.length;
+  const xMean = (n-1)/2;
+  const yMean = counts.reduce((a,b)=>a+b,0)/n;
+  let num=0, den=0;
+  counts.forEach((y,x) => { num += (x-xMean)*(y-yMean); den += (x-xMean)**2; });
+  const slope = den ? num/den : 0;
+
+  // Forecast
+  const forecast30 = Math.max(0, Math.round(counts[n-1] + slope));
+  const forecast90 = Math.max(0, Math.round(counts[n-1] + slope*3));
+
+  // Salary trend
+  const salSlope = rals.length >= 2 ? (rals[rals.length-1] - rals[0]) / rals.length : 0;
+  const salForecast = rals.length ? Math.round(rals[rals.length-1] + salSlope) : null;
+
+  // Confidence basata su volatilità dati
+  const variance = counts.reduce((acc,v) => acc + (v-yMean)**2, 0) / n;
+  const cv = yMean > 0 ? Math.sqrt(variance)/yMean : 1;
+  const confidence = Math.max(20, Math.min(95, Math.round((1-cv)*100)));
+
+  // Trend label
+  const trendLabel = slope > 0.5 ? '📈 In crescita' : slope < -0.5 ? '📉 In calo' : '➡️ Stabile';
+  const salTrendLabel = salSlope > 500 ? '📈 RAL in aumento' : salSlope < -500 ? '📉 RAL in calo' : '➡️ RAL stabile';
+
+  return { forecast30, forecast90, slope, salForecast, salSlope, confidence, trendLabel, salTrendLabel, counts, rals, months };
+}
+
+async function renderPredictive(listings, roleName){
+  const pred = calcPredictive(listings, roleName);
+
+  const el = document.getElementById('ri-pred-role');
+  if(el) el.textContent = roleName;
+
+  const conf = document.getElementById('ri-pred-confidence');
+  if(conf){
+    conf.textContent = `${pred.confidence}%`;
+    conf.style.color = pred.confidence > 70 ? 'var(--success)' : pred.confidence > 40 ? 'var(--accent)' : 'var(--text2)';
+  }
+
+  const el30 = document.getElementById('ri-pred-30');
+  const el30t = document.getElementById('ri-pred-30-trend');
+  if(el30) el30.textContent = `~${pred.forecast30}`;
+  if(el30t){ el30t.textContent = pred.trendLabel; el30t.style.color = pred.slope>0?'var(--success)':pred.slope<0?'var(--danger)':'var(--text2)'; }
+
+  const el90 = document.getElementById('ri-pred-90');
+  const el90t = document.getElementById('ri-pred-90-trend');
+  if(el90) el90.textContent = `~${pred.forecast90}`;
+  if(el90t){ el90t.textContent = pred.trendLabel; el90t.style.color = pred.slope>0?'var(--success)':pred.slope<0?'var(--danger)':'var(--text2)'; }
+
+  const elSal = document.getElementById('ri-pred-sal');
+  const elSalt = document.getElementById('ri-pred-sal-trend');
+  if(elSal) elSal.textContent = pred.salForecast ? `€${(pred.salForecast/1000).toFixed(0)}k` : '—';
+  if(elSalt){ elSalt.textContent = pred.salTrendLabel; elSalt.style.color = pred.salSlope>500?'var(--success)':pred.salSlope<-500?'var(--danger)':'var(--text2)'; }
+
+  // AI Predictive text
+  const textEl = document.getElementById('ri-pred-text');
+  if(textEl){
+    textEl.textContent = '⏳ Generazione forecast AI...';
+    const prompt = `Sei un analista di mercato del lavoro Life Sciences. Genera un breve forecast professionale in italiano (2 frasi max) per la figura "${roleName}".
+
+Dati:
+- Trend ultimi 6 mesi: ${pred.counts.join(', ')} annunci/mese
+- Pendenza regressione: ${pred.slope.toFixed(2)} (positivo=crescita)
+- Forecast 30gg: ~${pred.forecast30} annunci
+- Forecast 90gg: ~${pred.forecast90} annunci
+- Trend RAL: ${pred.salTrendLabel}
+- Confidence: ${pred.confidence}%
+
+Scrivi solo 1-2 frasi professionali e concrete sul forecast. Nessun JSON, solo testo.`;
+
+    try{
+      const text = await callAI(prompt, 200);
+      textEl.textContent = text.replace(/```/g,'').trim();
+    }catch(e){
+      textEl.textContent = `Forecast basato su trend degli ultimi 6 mesi. ${pred.trendLabel} con ${pred.confidence}% di confidence.`;
+    }
+  }
+}
+
 /* ══════════════════════════════════════════════
    ANALISI RUOLO — AI SUMMARY + CONFRONTO RUOLI
    ══════════════════════════════════════════════ */
@@ -4962,6 +5383,15 @@ async function loadRoleIntelligence(){
         if(textEl)textEl.textContent=result.summary||'';
         if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
       }).catch(()=>{const el=document.getElementById('ri-ai-text');if(el)el.textContent='AI non disponibile.';});
+
+      // ── TREND RAL NEL TEMPO ──
+      renderRalTrend(listings, _riTrendMonths);
+
+      // ── ROLE COMPARISON ──
+      renderRoleComparison(roleName, listings);
+
+      // ── PREDICTIVE INTELLIGENCE ──
+      renderPredictive(listings, roleName);
     }
 
     // ── RECENT LISTINGS TABLE ──
