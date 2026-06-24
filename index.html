@@ -629,11 +629,16 @@ a.job-link:hover{text-decoration:underline;}
           <option value="life_sciences">Life Sciences</option>
           <option value="headhunter">Head Hunter</option>
         </select>
+        <select id="co-status" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+          <option value="">Tutti gli stati</option>
+          <option value="true">Attive</option>
+          <option value="false">Inattive</option>
+        </select>
         <select id="co-sort" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
-          <option value="name">Nome A-Z</option>
+          <option value="name_asc">Nome A-Z</option>
           <option value="name_desc">Nome Z-A</option>
-          <option value="listings">Più annunci</option>
-          <option value="recent">Più recenti</option>
+          <option value="listings_desc">Più annunci</option>
+          <option value="recent_desc">Più recenti</option>
         </select>
         <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
       </div>
@@ -641,9 +646,9 @@ a.job-link:hover{text-decoration:underline;}
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
-        <div class="table-count" id="co-count">—</div>
+        <div class="table-count" id="companies-count">—</div>
       </div>
-      <div id="co-body"><div class="loading">Caricamento...</div></div>
+      <div id="companies-body"><div class="loading">Caricamento...</div></div>
     </div>
   </div>
 
