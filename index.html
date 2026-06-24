@@ -509,6 +509,233 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 
 
+  <!-- ANNUNCI -->
+  <div class="view" id="view-listings">
+    <div class="section-header">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:22px;font-weight:800;color:var(--text);">Annunci di lavoro</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
+        <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;">🟣 CSV Vocations</button>
+        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="autoAnalyzeDescriptions()" id="btn-auto-analyze" style="border-color:var(--success);color:var(--success);">⚡ Auto-analisi <span id="badge-auto" style="background:var(--success);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);">🧹 Pulizia</button>
+        <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
+        <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
+        <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
+      </div>
+    </div>
+    <div class="filters">
+      <div class="filter-group">
+        <div class="filter-label">Tipo entità</div>
+        <select id="f-entity" onchange="loadListings()">
+          <option value="">Tutti</option>
+          <option value="life_sciences">Life Sciences</option>
+          <option value="headhunter">Head Hunter</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area funzionale</div>
+        <select id="f-area" onchange="loadListings()">
+          <option value="">Tutte</option>
+          <option value="commercial">Commercial / Sales</option>
+          <option value="medical_affairs">Medical Affairs</option>
+          <option value="marketing">Marketing</option>
+          <option value="market_access">Market Access</option>
+          <option value="regulatory_affairs">Regulatory Affairs</option>
+          <option value="quality">Quality</option>
+          <option value="clinical_operations">Clinical Operations</option>
+          <option value="drug_safety">Drug Safety / PV</option>
+          <option value="rd">R&D</option>
+          <option value="manufacturing">Manufacturing</option>
+          <option value="supply_chain">Supply Chain</option>
+          <option value="finance">Finance</option>
+          <option value="hr">HR</option>
+          <option value="it">IT</option>
+          <option value="business_development">Business Development</option>
+          <option value="general_management">General Management</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Seniority</div>
+        <select id="f-seniority" onchange="loadListings()">
+          <option value="">Tutte</option>
+          <option value="internship">Internship / Stage</option>
+          <option value="entry_level">Entry Level</option>
+          <option value="associate">Associate / Junior</option>
+          <option value="specialist">Specialist</option>
+          <option value="senior_specialist">Senior Specialist</option>
+          <option value="manager">Manager</option>
+          <option value="senior_manager">Senior Manager</option>
+          <option value="head_of">Head of</option>
+          <option value="director">Director</option>
+          <option value="vp">VP</option>
+          <option value="c_level">C-Level</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Fonte</div>
+        <select id="f-source" onchange="loadListings()">
+          <option value="">Tutte</option>
+          <option value="Vocations">Vocations</option>
+          <option value="LinkedIn">LinkedIn</option>
+          <option value="TheirStack">TheirStack</option>
+          <option value="Manual">Manuale</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Settore</div>
+        <select id="f-sector" onchange="loadListings()">
+          <option value="">Tutti</option>
+          <option value="pharma_rx">Pharma RX</option>
+          <option value="consumer_health">Consumer Health</option>
+          <option value="otc">OTC</option>
+          <option value="biotech">Biotech</option>
+          <option value="medical_devices">Medical Devices</option>
+          <option value="diagnostics">Diagnostics</option>
+          <option value="cro">CRO</option>
+          <option value="cdmo">CDMO / CMO</option>
+          <option value="nutraceutical">Nutraceutical</option>
+          <option value="cosmetics">Cosmetics</option>
+          <option value="veterinary">Veterinary</option>
+          <option value="digital_health">Digital Health</option>
+          <option value="healthcare_services">Healthcare Services</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Cerca</div>
+        <input type="text" id="f-search" placeholder="Titolo, azienda..." oninput="loadListings()" style="min-width:180px;">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Annunci</div>
+        <div class="table-count" id="listings-count">—</div>
+      </div>
+      <div id="listings-body"><div class="loading">Caricamento...</div></div>
+    </div>
+  </div>
+
+  <!-- AZIENDE -->
+  <div class="view" id="view-companies">
+    <div class="section-header">
+      <div class="section-title">🏢 Aziende</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="co-search" placeholder="Cerca azienda..." oninput="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+        <select id="co-type" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+          <option value="">Tutti i tipi</option>
+          <option value="life_sciences">Life Sciences</option>
+          <option value="headhunter">Head Hunter</option>
+        </select>
+        <select id="co-sort" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+          <option value="name">Nome A-Z</option>
+          <option value="name_desc">Nome Z-A</option>
+          <option value="listings">Più annunci</option>
+          <option value="recent">Più recenti</option>
+        </select>
+        <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Aziende nel database</div>
+        <div class="table-count" id="co-count">—</div>
+      </div>
+      <div id="co-body"><div class="loading">Caricamento...</div></div>
+    </div>
+  </div>
+
+  <!-- COMPANY DETAIL -->
+  <div class="view" id="view-company-detail">
+    <div class="section-header">
+      <div>
+        <button class="btn btn-secondary" onclick="backToCompanies()" style="font-size:12px;margin-bottom:12px;">← Torna alle aziende</button>
+        <div class="company-hero">
+          <div class="company-hero-info">
+            <div class="company-hero-name" id="cd-name">—</div>
+            <div style="display:flex;gap:8px;margin-top:6px;">
+              <span class="badge" id="cd-type-badge">—</span>
+              <span class="badge badge-active" id="cd-status-badge">—</span>
+            </div>
+            <div class="company-hero-links" id="cd-links"></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="generateCompanyAISummary()" id="btn-cd-ai" style="border-color:#a78bfa;color:#a78bfa;">🤖 AI Summary</button>
+        <button class="btn btn-secondary" onclick="linkListingsToCompany()" id="btn-link-listings">🔗 Collega annunci</button>
+        <button class="btn btn-danger" onclick="delCo()">🗑 Elimina</button>
+      </div>
+    </div>
+
+    <div class="company-kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Dipendenti</div><div class="kpi-value" id="cd-kpi-employees">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Fatturato</div><div class="kpi-value" id="cd-kpi-revenue">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Settore</div><div class="kpi-value" id="cd-kpi-sector">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Hiring Manager</div><div class="kpi-value" id="cd-kpi-hm">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
+    </div>
+    <div class="company-kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Field/HQ</div><div class="kpi-value" id="cd-kpi-hq">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Primo annuncio</div><div class="kpi-value" id="cd-kpi-first">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Ultimo annuncio</div><div class="kpi-value" id="cd-kpi-last">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Annunci totali</div><div class="kpi-value" id="cd-kpi-total">—</div></div>
+    </div>
+    <div class="company-kpi-grid">
+      <div class="kpi-card" style="border-color:var(--success)"><div class="kpi-label">Ultimi 30gg</div><div class="kpi-value" id="cd-kpi-30" style="color:var(--success)">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" id="cd-kpi-ral">—</div></div>
+      <div class="kpi-card" style="border-color:var(--accent)"><div class="kpi-label">RAL media</div><div class="kpi-value" id="cd-kpi-ral-avg" style="color:var(--accent)">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Opportunity Score</div><div class="kpi-value" id="cd-kpi-opp">—</div></div>
+    </div>
+
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Aree funzionali</div>
+        <div id="cd-chart-areas"><div class="loading">Caricamento...</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Distribuzione seniority</div>
+        <div id="cd-chart-seniority"><div class="loading">Caricamento...</div></div>
+      </div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Area terapeutica</div>
+        <div id="cd-chart-ta"><div class="loading">Caricamento...</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Benchmark salariale per funzione</div>
+        <div id="cd-chart-ral"><div class="loading">Caricamento...</div></div>
+      </div>
+    </div>
+
+    <!-- OPPORTUNITY SCORE + AI SUMMARY -->
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;margin-bottom:24px;">
+      <div class="score-card" style="text-align:center;">
+        <div class="score-card-label">Company Opportunity Score</div>
+        <div class="score-ring" id="cd-opportunity-score" style="margin:12px auto 8px;width:90px;height:90px;font-size:26px;">—</div>
+        <div style="font-size:11px;color:var(--text2);" id="cd-opportunity-label">—</div>
+        <div class="score-bar" style="margin-top:12px;"><div class="score-bar-fill" id="cd-opportunity-bar" style="width:0%;background:var(--success)"></div></div>
+      </div>
+      <div class="ai-summary-card" style="margin-bottom:0;">
+        <div class="ai-summary-header">🤖 AI Company Intelligence</div>
+        <div class="ai-summary-text" id="cd-ai-text" style="color:var(--text2);font-size:12px;">Clicca "AI Summary" per analizzare questa azienda.</div>
+        <div class="ai-insights-grid" id="cd-ai-insights" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- Annunci table -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Annunci pubblicati</div>
+        <div class="table-count" id="cd-listings-count">—</div>
+      </div>
+      <div id="cd-listings-body"><div class="loading">Caricamento...</div></div>
+    </div>
+  </div>
+
+
   <!-- MARKET SIGNALS -->
   <div class="view" id="view-signals">
     <div class="section-header">
