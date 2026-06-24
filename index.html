@@ -520,6 +520,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;">🟣 CSV Vocations</button>
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="autoAnalyzeDescriptions()" id="btn-auto-analyze" style="border-color:var(--success);color:var(--success);">⚡ Auto-analisi <span id="badge-auto" style="background:var(--success);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Completa automaticamente tutti i dati mancanti">🔮 Completa dati</button>
         <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);">🧹 Pulizia</button>
         <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
@@ -1638,6 +1639,48 @@ async function importVocationsCSV(event){
     else if(/\bit\b|software|digital|data engineer|system/.test(tl))functional_area_v2='it';
     else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
 
+    // Inferenza ROLE FAMILY dal titolo
+    let role_family=null;
+    if(/informatore scientifico|\bisf\b/.test(tl))role_family='ISF';
+    else if(/medical science liaison|\bmsl\b/.test(tl))role_family='MSL';
+    else if(/medical advisor/.test(tl))role_family='Medical Advisor';
+    else if(/medical manager|medical director|medical affairs manager/.test(tl))role_family='Medical Manager';
+    else if(/key account|\bkam\b/.test(tl))role_family='Key Account Manager';
+    else if(/area manager|regional manager|district manager|territory manager/.test(tl))role_family='Area Manager';
+    else if(/product manager/.test(tl))role_family='Product Manager';
+    else if(/brand manager/.test(tl))role_family='Brand Manager';
+    else if(/product specialist/.test(tl))role_family='Product Specialist';
+    else if(/market access/.test(tl))role_family='Market Access';
+    else if(/regulatory affairs/.test(tl))role_family='Regulatory Affairs';
+    else if(/quality assurance|\bqa manager\b/.test(tl))role_family='QA Manager';
+    else if(/quality control|\bqc\b/.test(tl))role_family='QC Analyst';
+    else if(/pharmacovigilance|drug safety/.test(tl))role_family='Pharmacovigilance';
+    else if(/clinical research|\bcra\b/.test(tl))role_family='CRA';
+    else if(/supply chain/.test(tl))role_family='Supply Chain';
+    else if(/production manager|plant manager/.test(tl))role_family='Production Manager';
+    else if(/research scientist|r&d scientist/.test(tl))role_family='Research Scientist';
+    else if(/hr business partner|\bhrbp\b/.test(tl))role_family='HR Business Partner';
+    else if(/financial controller|finance manager/.test(tl))role_family='Finance';
+
+    // Inferenza AREA TERAPEUTICA dal titolo + settori CSV
+    let therapeutic_area=null;
+    const settoriCSV=(row['Settori']||'').toLowerCase();
+    const targetCSV=(row['Target']||'').toLowerCase();
+    const combined=tl+' '+settoriCSV+' '+targetCSV;
+    if(/oncol|tumor|cancer|leucem|linfom/.test(combined))therapeutic_area='oncology';
+    else if(/rare disease|malattia rara|orfan|ultra-rare/.test(combined))therapeutic_area='rare_diseases';
+    else if(/immuno|autoimmun|reumat|psoriasi|crohn/.test(combined))therapeutic_area='immunology';
+    else if(/hematol|ematol|blood disorder/.test(combined))therapeutic_area='hematology';
+    else if(/cardiovasc|cardiac|cardiolog|heart failure/.test(combined))therapeutic_area='cardiovascular';
+    else if(/neurolog|alzheimer|parkinson|sclerosi|epiless/.test(combined))therapeutic_area='neurology';
+    else if(/respirator|asthma|bpco|polmon/.test(combined))therapeutic_area='respiratory';
+    else if(/diabet|insulina|glucos/.test(combined))therapeutic_area='diabetes';
+    else if(/dermatolog|skin|pelle/.test(combined))therapeutic_area='dermatology';
+    else if(/ophthalm|oculist|retina|ocul/.test(combined))therapeutic_area='ophthalmology';
+    else if(/vaccin|immuni|infettivo|infect/.test(combined))therapeutic_area='vaccines';
+    else if(/gastro|epatol|liver|crohn|colite/.test(combined))therapeutic_area='gastroenterology';
+    else if(/oncolog|biotech|farmaceut/.test(settoriCSV))therapeutic_area='not_applicable';
+
     // Inferenza seniority dal titolo
     let seniority_v2=null;
     if(/\bstage\b|\bintern\b|\btirocinio\b/.test(tl))seniority_v2='internship';
@@ -1682,6 +1725,8 @@ async function importVocationsCSV(event){
       sector_v2,
       functional_area_v2:functional_area_v2||null,
       seniority_v2:seniority_v2||null,
+      role_family:role_family||null,
+      therapeutic_area:therapeutic_area||null,
       ral_min:ral,
       ral_max:ral,
       company_employees:employees,
@@ -1742,6 +1787,13 @@ async function importVocationsCSV(event){
   toast(msg,type);
   loadListings();
   refreshPendingBadges();
+
+  // ── POST-IMPORT ENRICHMENT AUTOMATICO ──
+  if(ok>0){
+    toast(`✅ ${ok} annunci importati. Avvio completamento automatico dati...`, 'success');
+    await runPostImportEnrichment(ok);
+  }
+
   loadDashboard();
 }
 
@@ -2811,6 +2863,188 @@ Scrivi solo 1-2 frasi professionali e concrete sul forecast. Nessun JSON, solo t
       textEl.textContent = `Forecast basato su trend degli ultimi 6 mesi. ${pred.trendLabel} con ${pred.confidence}% di confidence.`;
     }
   }
+}
+
+/* ══════════════════════════════════════════════
+   POST-IMPORT ENRICHMENT PIPELINE
+   Completamento automatico di tutti i campi
+   ══════════════════════════════════════════════ */
+
+async function runPostImportEnrichment(newCount){
+  // Mostra progress bar
+  showEnrichmentProgress('Avvio pipeline di completamento dati...', 0);
+
+  try{
+    // ── STEP 1: Normalizza ruoli (canonical_role + role_family) ──
+    showEnrichmentProgress('Step 1/4 — Normalizzazione ruoli...', 10);
+    const unnormalized = await api('job_listings?select=id,job_title,canonical_role&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=500');
+
+    if(unnormalized.length){
+      await loadTaxonomy();
+      let normalized = 0;
+      for(const l of unnormalized){
+        try{
+          const result = await normalizeJobTitle(l.job_title);
+          if(result.canonical_role){
+            await api(`job_listings?id=eq.${l.id}`,'PATCH',{
+              canonical_role: result.canonical_role,
+              role_family: result.role_family||null,
+            });
+            normalized++;
+          }
+        }catch(e){}
+        if(normalized % 10 === 0){
+          showEnrichmentProgress(`Step 1/4 — Normalizzazione ruoli... ${normalized}/${unnormalized.length}`, 10 + Math.round(normalized/unnormalized.length*20));
+          await new Promise(r=>setTimeout(r,100));
+        }
+      }
+      console.log(`Normalizzati ${normalized} ruoli`);
+    }
+
+    // ── STEP 2: Classifica con AI (settore, area, seniority, TA) ──
+    showEnrichmentProgress('Step 2/4 — Classificazione AI...', 32);
+    const toClassify = await api(
+      'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max' +
+      '&source=eq.Vocations' +
+      '&or=(sector_v2.is.null,functional_area_v2.is.null,therapeutic_area.is.null)' +
+      '&order=published_date.desc&limit=200'
+    );
+
+    if(toClassify.length){
+      let classified = 0;
+      for(const listing of toClassify){
+        try{
+          await classifyOneListing(listing);
+          classified++;
+        }catch(e){}
+        if(classified % 5 === 0){
+          showEnrichmentProgress(`Step 2/4 — Classificazione AI... ${classified}/${toClassify.length}`, 32 + Math.round(classified/toClassify.length*35));
+          await new Promise(r=>setTimeout(r,350)); // rate limit Groq
+        }
+      }
+      console.log(`Classificati ${classified} annunci con AI`);
+    }
+
+    // ── STEP 3: Aggiorna salary_benchmarks ──
+    showEnrichmentProgress('Step 3/4 — Ricalcolo benchmark salariali...', 70);
+    // Calcola benchmark aggiornati per i ruoli appena importati
+    await updateSalaryBenchmarks();
+
+    // ── STEP 4: Genera market signals ──
+    showEnrichmentProgress('Step 4/4 — Rilevazione segnali di mercato...', 88);
+    const allData = await api('job_listings?select=*&order=published_date.desc&limit=500');
+    await saveMarketSignalsToSupabase(allData);
+
+    showEnrichmentProgress('✅ Completamento automatico terminato', 100);
+    await new Promise(r=>setTimeout(r,2000));
+    hideEnrichmentProgress();
+
+    toast('🎯 Pipeline completata: ruoli normalizzati, classificazione AI, benchmark aggiornati, segnali rilevati', 'success');
+    loadListings();
+    refreshPendingBadges();
+    loadDashboard();
+
+  }catch(e){
+    console.error('Enrichment pipeline error:', e);
+    hideEnrichmentProgress();
+    toast('Enrichment parziale: '+e.message, 'warning');
+  }
+}
+
+async function updateSalaryBenchmarks(){
+  // Ricalcola benchmark per ruoli recenti via Supabase
+  // Legge annunci con RAL e aggiorna salary_benchmarks
+  try{
+    const withRal = await api('job_listings?select=canonical_role,role_family,functional_area_v2,therapeutic_area,sector_v2,ral_min,ral_max,location,company_type&or=(ral_min.not.is.null,ral_max.not.is.null)&canonical_role=not.is.null');
+    if(!withRal.length) return;
+
+    // Raggruppa per canonical_role
+    const byRole = {};
+    withRal.forEach(l => {
+      const key = l.canonical_role;
+      if(!byRole[key]) byRole[key] = {listings:[], role_family:l.role_family, functional_area_v2:l.functional_area_v2};
+      byRole[key].listings.push(l);
+    });
+
+    // Per ogni ruolo aggiorna/inserisce benchmark
+    for(const [role, data] of Object.entries(byRole)){
+      const vals = data.listings.map(l => l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const p = n => vals[Math.floor(vals.length*n/100)];
+      const avg = Math.round(vals.reduce((a,b)=>a+b)/vals.length);
+
+      const now = Date.now();
+      const total = await api(`job_listings?select=id&canonical_role=eq.${encodeURIComponent(role)}`);
+      const d30 = await api(`job_listings?select=id&canonical_role=eq.${encodeURIComponent(role)}&published_date=gte.${new Date(now-30*864e5).toISOString().split('T')[0]}`);
+      const d90 = await api(`job_listings?select=id&canonical_role=eq.${encodeURIComponent(role)}&published_date=gte.${new Date(now-90*864e5).toISOString().split('T')[0]}`);
+      const companies = new Set(data.listings.map(l=>l.company_name).filter(Boolean)).size;
+
+      const benchmarkData = {
+        canonical_role: role,
+        role_family: data.role_family||null,
+        functional_area_v2: data.functional_area_v2||null,
+        therapeutic_area: 'not_applicable',
+        region: 'N/D',
+        company_type: 'N/D',
+        sector_v2: 'N/D',
+        sample_size: vals.length,
+        sample_with_ral: vals.length,
+        total_listings: total.length,
+        p25: p(25)||null,
+        median: p(50)||null,
+        p75: p(75)||null,
+        p90: p(90)||null,
+        avg_ral: avg,
+        min_ral: vals[0]||null,
+        max_ral: vals[vals.length-1]||null,
+        listings_30d: d30.length,
+        listings_90d: d90.length,
+        listings_365d: total.length,
+        companies_count: companies,
+        updated_at: new Date().toISOString(),
+      };
+
+      try{
+        await api('salary_benchmarks','POST',benchmarkData);
+      }catch(e){
+        // Esiste già — aggiorna
+        try{
+          await api(`salary_benchmarks?canonical_role=eq.${encodeURIComponent(role)}&therapeutic_area=eq.not_applicable&region=eq.N%2FD&company_type=eq.N%2FD&sector_v2=eq.N%2FD`,'PATCH',benchmarkData);
+        }catch(e2){}
+      }
+    }
+  }catch(e){console.warn('updateSalaryBenchmarks error:',e.message);}
+}
+
+/* ── PROGRESS UI ── */
+function showEnrichmentProgress(message, pct){
+  let el = document.getElementById('enrichment-progress');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'enrichment-progress';
+    el.style.cssText = `
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:var(--surface);border:1px solid var(--accent2);border-radius:14px;
+      padding:16px 24px;min-width:380px;max-width:500px;z-index:9999;
+      box-shadow:0 8px 32px rgba(0,0,0,.4);
+    `;
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+      <div style="font-size:16px;">⚙️</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);">Completamento automatico dati</div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">${message}</div>
+    <div style="background:var(--surface2);border-radius:6px;height:8px;overflow:hidden;">
+      <div style="height:100%;width:${pct}%;background:var(--accent2);border-radius:6px;transition:width .4s ease;"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-top:6px;text-align:right;">${pct}%</div>
+  `;
+}
+
+function hideEnrichmentProgress(){
+  const el = document.getElementById('enrichment-progress');
+  if(el) el.remove();
 }
 
 /* ══════════════════════════════════════════════
