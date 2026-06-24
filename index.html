@@ -181,6 +181,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-companies" onclick="showView('companies',this)">🏢 Aziende</button>
     <button class="nav-btn" id="nav-ruolo" onclick="showView('ruolo',this)">🔍 Analisi Ruolo</button>
     <button class="nav-btn" id="nav-role-intel" onclick="showView('role-intel',this)">🎯 Role Intelligence</button>
+    <button class="nav-btn" id="nav-commercial" onclick="showView('commercial',this)" style="border-color:#10b981;color:#10b981;">💼 Commercial</button>
     <button class="nav-btn" id="nav-signals" onclick="showView('signals',this)" style="border-color:#a78bfa;color:#a78bfa;">📡 Market Signals</button>
     <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
   </div>
@@ -629,6 +630,195 @@ a.job-link:hover{text-decoration:underline;}
     </div>
   </div>
 
+
+
+  <!-- ANALISI RUOLO -->
+  <div class="view" id="view-ruolo">
+    <div class="section-header">
+      <div class="section-title">🔍 Analisi Ruolo <span style="font-size:13px;color:var(--text2);font-weight:400;">Benchmark per figura professionale</span></div>
+    </div>
+
+    <!-- Filtri -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end;">
+      <div class="filter-group" style="flex:2;min-width:200px;">
+        <div class="filter-label">Cerca figura professionale</div>
+        <input type="text" id="ruolo-search" placeholder="es. Medical Advisor, MSL, KAM..." style="width:100%;font-size:14px;padding:10px 14px;" oninput="analyzeRuolo()">
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Settore</div>
+        <select id="ruolo-sector" onchange="analyzeRuolo()">
+          <option value="">Tutti</option>
+          <option value="pharma_rx">Pharma RX</option>
+          <option value="biotech">Biotech</option>
+          <option value="medical_devices">Medical Devices</option>
+          <option value="diagnostics">Diagnostics</option>
+          <option value="cro">CRO</option>
+          <option value="cdmo">CDMO</option>
+          <option value="consumer_health">Consumer Health</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area funzionale</div>
+        <select id="ruolo-area" onchange="analyzeRuolo()">
+          <option value="">Tutte</option>
+          <option value="medical_affairs">Medical Affairs</option>
+          <option value="commercial">Commercial</option>
+          <option value="marketing">Marketing</option>
+          <option value="market_access">Market Access</option>
+          <option value="regulatory_affairs">Regulatory Affairs</option>
+          <option value="quality">Quality</option>
+          <option value="clinical_operations">Clinical Operations</option>
+          <option value="drug_safety">Drug Safety / PV</option>
+          <option value="rd">R&D</option>
+          <option value="manufacturing">Manufacturing</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Area terapeutica</div>
+        <select id="ruolo-ta" onchange="analyzeRuolo()">
+          <option value="">Tutte</option>
+          <option value="oncology">Oncology</option>
+          <option value="rare_diseases">Rare Diseases</option>
+          <option value="immunology">Immunology</option>
+          <option value="cardiovascular">Cardiovascular</option>
+          <option value="neurology">Neurology</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">RAL</div>
+        <select id="ruolo-ral" onchange="analyzeRuolo()">
+          <option value="">Tutti</option>
+          <option value="only">Solo con RAL</option>
+          <option value="no">Solo senza RAL</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="stats-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:20px;">
+      <div class="stat-card"><div class="stat-label">Annunci</div><div class="stat-value" id="ruolo-kpi-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Aziende</div><div class="stat-value" id="ruolo-kpi-companies">—</div></div>
+      <div class="stat-card"><div class="stat-label">Con RAL</div><div class="stat-value" id="ruolo-kpi-ral-pct">—</div></div>
+      <div class="stat-card"><div class="stat-label">Min RAL</div><div class="stat-value" id="ruolo-kpi-min">—</div></div>
+      <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">Media</div><div class="stat-value" id="ruolo-kpi-avg" style="color:var(--success)">—</div></div>
+      <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">Mediana</div><div class="stat-value" id="ruolo-kpi-median" style="color:var(--success)">—</div></div>
+      <div class="stat-card"><div class="stat-label">Max RAL</div><div class="stat-value" id="ruolo-kpi-max">—</div></div>
+    </div>
+
+    <!-- AI Summary Ruolo -->
+    <div class="ai-summary-card" id="ruolo-ai-card" style="display:none;margin-bottom:20px;">
+      <div class="ai-summary-header">🤖 AI Role Intelligence</div>
+      <div class="ai-summary-text" id="ruolo-ai-text"></div>
+      <div class="ai-insights-grid" id="ruolo-ai-insights"></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="chart-grid" style="margin-bottom:20px;">
+      <div class="chart-card">
+        <div class="chart-card-title">RAL per seniority</div>
+        <div id="ruolo-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Top aziende</div>
+        <div id="ruolo-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:20px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Area terapeutica</div>
+        <div id="ruolo-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Distribuzione geografica</div>
+        <div id="ruolo-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:20px;">
+      <div class="chart-card">
+        <div class="chart-card-title">Distribuzione seniority</div>
+        <div id="ruolo-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Field vs HQ</div>
+        <div id="ruolo-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+      </div>
+    </div>
+
+    <!-- Confronto ruoli simili -->
+    <div id="ruolo-similar-wrap" style="display:none;margin-bottom:20px;">
+      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Confronto ruoli simili</div>
+      <div id="ruolo-similar"></div>
+    </div>
+
+    <!-- Tabella annunci -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Annunci trovati</div>
+        <div class="table-count" id="ruolo-count">—</div>
+      </div>
+      <div id="ruolo-table"><div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div></div>
+    </div>
+  </div>
+
+  <!-- COMMERCIAL INTELLIGENCE -->
+  <div class="view" id="view-commercial">
+    <div class="section-header">
+      <div class="section-title">💼 Commercial Intelligence <span style="font-size:13px;color:var(--text2);font-weight:400;">Opportunità per MC Pharma Consulting</span></div>
+      <button class="btn btn-primary" onclick="loadCommercialIntelligence()" style="background:#7c3aed;border-color:#7c3aed;">🔄 Aggiorna analisi</button>
+    </div>
+
+    <!-- AI Summary Commercial -->
+    <div class="ai-summary-card" id="commercial-ai-card" style="margin-bottom:24px;">
+      <div class="ai-summary-header">🤖 AI Commercial Intelligence</div>
+      <div class="ai-summary-text" id="commercial-ai-text">Clicca "Aggiorna analisi" per generare le opportunità commerciali.</div>
+      <div class="ai-insights-grid" id="commercial-ai-insights"></div>
+    </div>
+
+    <!-- Rankings -->
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">🚀 Aziende con maggior Hiring Momentum</div>
+        <div id="ci-hiring-momentum"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">📈 Aziende in maggiore crescita</div>
+        <div id="ci-growth"></div>
+      </div>
+    </div>
+
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">🧬 Aziende che investono in Oncology</div>
+        <div id="ci-oncology"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">🦋 Aziende che investono in Rare Diseases</div>
+        <div id="ci-rare"></div>
+      </div>
+    </div>
+
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">🎯 Aziende che assumono MSL</div>
+        <div id="ci-msl"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">💊 Aziende che assumono Medical Advisor</div>
+        <div id="ci-medical-advisor"></div>
+      </div>
+    </div>
+
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card">
+        <div class="chart-card-title">🏥 Aziende che investono in Market Access</div>
+        <div id="ci-market-access"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">⭐ Company Opportunity Score — Top 10</div>
+        <div id="ci-opportunity"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ROLE INTELLIGENCE -->
   <div class="view" id="view-role-intel">
@@ -1785,6 +1975,7 @@ function showView(name,btn){
   if(name==='dashboard')loadDashboard();
   if(name==='role-intel'){loadRoleIntelligence();loadRoleList();}
   if(name==='signals')generateMarketSignals();
+  if(name==='commercial')loadCommercialIntelligence();
   if(name==='compliance')loadCompliance();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
@@ -1893,6 +2084,26 @@ async function analyzeRuolo(){
     const byFH={}; data.filter(l=>l.field_hq).forEach(l=>{byFH[l.field_hq]=(byFH[l.field_hq]||0)+1;});
     renderRuoloBar('ruolo-chart-fieldhq',Object.entries(byFH).sort((a,b)=>b[1]-a[1]),'blue');
 
+    // AI Summary — asincrono
+    if(search&&data.length>0){
+      const aiCard=document.getElementById('ruolo-ai-card');
+      if(aiCard)aiCard.style.display='block';
+      document.getElementById('ruolo-ai-text').textContent='⏳ Generazione AI intelligence...';
+      generateRuoloAISummary(data,search).then(result=>{
+        document.getElementById('ruolo-ai-text').textContent=result.summary||'';
+        const insEl=document.getElementById('ruolo-ai-insights');
+        if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+      }).catch(()=>{document.getElementById('ruolo-ai-text').textContent='AI non disponibile.';});
+
+      // Confronto ruoli simili
+      loadRuoloComparisons(search);
+    }else{
+      const aiCard=document.getElementById('ruolo-ai-card');
+      if(aiCard)aiCard.style.display='none';
+      const wrapEl=document.getElementById('ruolo-similar-wrap');
+      if(wrapEl)wrapEl.style.display='none';
+    }
+
     // Table
     if(!data.length){
       document.getElementById('ruolo-table').innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio trovato</div><div class="empty-sub">Prova con un termine diverso</div></div>';
@@ -1949,6 +2160,300 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 /* ── DASHBOARD v2 ── */
+/* ══════════════════════════════════════════════
+   ANALISI RUOLO — AI SUMMARY + CONFRONTO RUOLI
+   ══════════════════════════════════════════════ */
+
+async function generateRuoloAISummary(data, searchTerm){
+  const withRal=data.filter(l=>l.ral_min||l.ral_max);
+  const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
+  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+
+  const prompt=`Sei un esperto headhunter specializzato nel settore Life Sciences italiano.
+Analizza questi dati di mercato per la figura "${searchTerm}" e genera un intelligence report in italiano.
+
+DATI:
+- Annunci totali: ${data.length}
+- Aziende che assumono: ${new Set(data.map(l=>l.company_name).filter(Boolean)).size}
+- RAL media: ${avgRal?`€${(avgRal/1000).toFixed(0)}k`:'n.d.'}
+- Compliance RAL: ${Math.round(withRal.length/data.length*100)}%
+- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
+- Top aree terapeutiche: ${topTA.map(([t,n])=>`${t} (${n})`).join(', ')||'n.d.'}
+
+JSON con struttura ESATTA:
+{
+  "summary": "<2-3 frasi professionali sul profilo di mercato di questa figura>",
+  "insights": [
+    {"text": "<insight 1: domanda di mercato e trend>", "type": "positive"},
+    {"text": "<insight 2: salary benchmark vs mercato>", "type": "positive"},
+    {"text": "<insight 3: opportunità commerciale per un headhunter>", "type": "positive"},
+    {"text": "<insight 4: area di attenzione o variabilità>", "type": "warning"}
+  ]
+}`;
+
+  try{
+    const raw=await callAI(prompt,500);
+    return JSON.parse(raw.replace(/```json|```/g,'').trim());
+  }catch(e){
+    return{summary:`${data.length} annunci per "${searchTerm}" nel database. ${new Set(data.map(l=>l.company_name).filter(Boolean)).size} aziende attive.`,insights:[]};
+  }
+}
+
+async function loadRuoloComparisons(searchTerm){
+  // Confronto automatico con ruoli della stessa famiglia
+  const comparisons={
+    'medical advisor':['Medical Science Liaison','Medical Manager','Medical Director'],
+    'msl':['Medical Advisor','Medical Manager'],
+    'medical science liaison':['Medical Advisor','Medical Manager'],
+    'regulatory affairs':['Regulatory Manager','Regulatory Director'],
+    'qa manager':['QA Specialist','Quality Director'],
+    'product manager':['Brand Manager','Marketing Manager'],
+    'kam':['Area Manager','National Sales Manager'],
+    'key account manager':['Area Manager','National Sales Manager'],
+    'informatore scientifico':['Product Specialist','Area Manager','KAM'],
+    'market access':['Medical Advisor','Medical Affairs Manager'],
+  };
+
+  const term=searchTerm.toLowerCase();
+  let compareRoles=[];
+  for(const [key,roles] of Object.entries(comparisons)){
+    if(term.includes(key)){compareRoles=roles;break;}
+  }
+  if(!compareRoles.length)return;
+
+  const wrapEl=document.getElementById('ruolo-similar-wrap');
+  const simEl=document.getElementById('ruolo-similar');
+  if(!wrapEl||!simEl)return;
+  wrapEl.style.display='block';
+
+  const rows=await Promise.all(compareRoles.map(async role=>{
+    const data=await api(`job_listings?select=ral_min,ral_max,published_date&canonical_role=ilike.*${encodeURIComponent(role)}*&limit=200`);
+    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    const avg=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
+    const d30=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
+    return{role,total:data.length,avg,d30};
+  }));
+
+  simEl.innerHTML=`<table><thead><tr>
+    <th>Ruolo confronto</th><th>Annunci totali</th><th>RAL media</th><th>Ultimi 30gg</th>
+  </tr></thead><tbody>${rows.map(r=>`<tr>
+    <td><a href="#" onclick="document.getElementById('ruolo-search').value='${r.role}';analyzeRuolo();return false;" style="color:var(--accent2);text-decoration:none;">${r.role}</a></td>
+    <td>${r.total}</td>
+    <td>${r.avg?`€${(r.avg/1000).toFixed(0)}k`:'n.d.'}</td>
+    <td>${r.d30}</td>
+  </tr>`).join('')}</tbody></table>`;
+}
+
+/* ══════════════════════════════════════════════
+   ROLE INTELLIGENCE — AI SUMMARY
+   ══════════════════════════════════════════════ */
+
+async function generateRoleIntelAISummary(listings, benchmarks, roleName){
+  const withRal=listings.filter(l=>l.ral_min||l.ral_max);
+  const topCo=Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
+
+  const prompt=`Sei un esperto headhunter Life Sciences. Genera un intelligence report professionale per la figura "${roleName}".
+
+DATI:
+- Annunci totali: ${listings.length}
+- Con RAL: ${withRal.length} (${Math.round(withRal.length/listings.length*100)}%)
+- P25: ${mainBench?.p25?`€${(mainBench.p25/1000).toFixed(0)}k`:'n.d.'}
+- Mediana: ${mainBench?.median?`€${(mainBench.median/1000).toFixed(0)}k`:'n.d.'}
+- P75: ${mainBench?.p75?`€${(mainBench.p75/1000).toFixed(0)}k`:'n.d.'}
+- P90: ${mainBench?.p90?`€${(mainBench.p90/1000).toFixed(0)}k`:'n.d.'}
+- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
+
+JSON ESATTO:
+{
+  "summary": "<executive summary 2-3 frasi: posizionamento di mercato, benchmark salariale, demand>",
+  "insights": [
+    {"text": "<insight benchmark vs mercato>", "type": "positive"},
+    {"text": "<insight aziende e domanda>", "type": "positive"},
+    {"text": "<insight opportunità headhunter>", "type": "positive"},
+    {"text": "<insight variabilità o attenzione>", "type": "warning"}
+  ]
+}`;
+
+  try{
+    const raw=await callAI(prompt,500);
+    return JSON.parse(raw.replace(/```json|```/g,'').trim());
+  }catch(e){
+    return{summary:`${listings.length} annunci per "${roleName}". ${withRal.length} con RAL indicata.`,insights:[]};
+  }
+}
+
+/* ══════════════════════════════════════════════
+   COMMERCIAL INTELLIGENCE
+   ══════════════════════════════════════════════ */
+
+async function loadCommercialIntelligence(){
+  try{
+    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=1000');
+    const now=Date.now();
+
+    // Helper: ranking aziende per criterio
+    const rankCompanies=(filterFn,limit=8)=>{
+      const byCompany={};
+      data.filter(filterFn).forEach(l=>{
+        const c=l.ragione_sociale||l.company_name;
+        if(c)byCompany[c]=(byCompany[c]||0)+1;
+      });
+      return Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,limit);
+    };
+
+    const renderRank=(elId,entries,color='var(--accent2)')=>{
+      const el=document.getElementById(elId);
+      if(!el)return;
+      const max=Math.max(...entries.map(d=>d[1]),1);
+      el.innerHTML=entries.length?entries.map(([c,n],i)=>`
+        <div class="bar-row">
+          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
+          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/max*100)}%;background:${color}"></div></div>
+          <div class="bar-count">${n}</div>
+        </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text2);">Dati insufficienti</div>';
+    };
+
+    // Hiring Momentum per azienda
+    const d30=new Date(now-30*864e5);
+    const d30_60=new Date(now-60*864e5);
+    const momentumMap={};
+    data.forEach(l=>{
+      const c=l.ragione_sociale||l.company_name;if(!c)return;
+      if(!momentumMap[c])momentumMap[c]={d30:0,d60:0};
+      if(l.published_date&&new Date(l.published_date)>d30)momentumMap[c].d30++;
+      else if(l.published_date&&new Date(l.published_date)>d30_60)momentumMap[c].d60++;
+    });
+    const momentumRank=Object.entries(momentumMap)
+      .map(([c,v])=>[c,v.d30])
+      .sort((a,b)=>b[1]-a[1]).slice(0,8);
+    renderRank('ci-hiring-momentum',momentumRank,'var(--success)');
+
+    // Growth (crescita % 30gg vs 30gg prec)
+    const growthRank=Object.entries(momentumMap)
+      .filter(([,v])=>v.d60>0)
+      .map(([c,v])=>[c,Math.round((v.d30-v.d60)/v.d60*100)])
+      .filter(([,pct])=>pct>0)
+      .sort((a,b)=>b[1]-a[1]).slice(0,8)
+      .map(([c,pct])=>[c,pct]);
+    const growthEl=document.getElementById('ci-growth');
+    if(growthEl){
+      const max=Math.max(...growthRank.map(d=>d[1]),1);
+      growthEl.innerHTML=growthRank.length?growthRank.map(([c,pct],i)=>`
+        <div class="bar-row">
+          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
+          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(pct/max*100)}%;background:var(--success)"></div></div>
+          <div class="bar-count" style="color:var(--success)">+${pct}%</div>
+        </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text2);">Dati insufficienti</div>';
+    }
+
+    // Oncology
+    renderRank('ci-oncology',rankCompanies(l=>l.therapeutic_area==='oncology'),'#f97316');
+
+    // Rare diseases
+    renderRank('ci-rare',rankCompanies(l=>l.therapeutic_area==='rare_diseases'),'#a78bfa');
+
+    // MSL
+    renderRank('ci-msl',rankCompanies(l=>(l.canonical_role||l.job_title||'').toLowerCase().includes('msl')||(l.canonical_role||'').includes('Medical Science Liaison')),'var(--accent2)');
+
+    // Medical Advisor
+    renderRank('ci-medical-advisor',rankCompanies(l=>(l.canonical_role||l.job_title||'').toLowerCase().includes('medical advisor')),'var(--success)');
+
+    // Market Access
+    renderRank('ci-market-access',rankCompanies(l=>l.functional_area_v2==='market_access'),'var(--accent)');
+
+    // Opportunity Score ranking
+    const byCoAll={};
+    data.forEach(l=>{
+      const c=l.ragione_sociale||l.company_name;if(!c)return;
+      if(!byCoAll[c])byCoAll[c]=[];
+      byCoAll[c].push(l);
+    });
+    const oppRank=Object.entries(byCoAll)
+      .map(([c,listings])=>[c,calcOpportunityScore(listings)])
+      .sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const oppEl=document.getElementById('ci-opportunity');
+    if(oppEl){
+      const max=Math.max(...oppRank.map(d=>d[1]),1);
+      oppEl.innerHTML=oppRank.map(([c,score],i)=>`
+        <div class="bar-row">
+          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
+          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${score}%;background:${score>60?'var(--success)':score>30?'var(--accent)':'var(--text2)'}"></div></div>
+          <div class="bar-count" style="color:${score>60?'var(--success)':score>30?'var(--accent)':'var(--text2)'};">${score}</div>
+        </div>`).join('');
+    }
+
+    // AI Summary Commercial
+    const topMomentum=momentumRank.slice(0,3).map(([c])=>c).join(', ');
+    const topOpp=oppRank.slice(0,3).map(([c,s])=>`${c} (${s})`).join(', ');
+    const ciPrompt=`Sei un esperto di business development per uno studio di executive search Life Sciences. Genera 3 opportunità commerciali concrete basate su questi dati.
+
+- Aziende con maggior momentum: ${topMomentum}
+- Top opportunity score: ${topOpp}
+- Aziende che assumono MSL: ${rankCompanies(l=>(l.canonical_role||'').includes('MSL')).slice(0,3).map(([c])=>c).join(', ')||'n.d.'}
+- Aziende in Oncology: ${rankCompanies(l=>l.therapeutic_area==='oncology').slice(0,3).map(([c])=>c).join(', ')||'n.d.'}
+
+JSON ESATTO:
+{
+  "summary": "<2 frasi: panoramica opportunità di business development per MC Pharma Consulting>",
+  "insights": [
+    {"text": "<opportunità 1: azienda specifica + motivo>", "type": "positive"},
+    {"text": "<opportunità 2: azienda specifica + motivo>", "type": "positive"},
+    {"text": "<opportunità 3: area terapeutica o trend da presidiare>", "type": "positive"}
+  ]
+}`;
+
+    try{
+      const raw=await callAI(ciPrompt,500);
+      const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
+      document.getElementById('commercial-ai-text').textContent=result.summary||'';
+      const insEl=document.getElementById('commercial-ai-insights');
+      if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+    }catch(e){
+      document.getElementById('commercial-ai-text').textContent='AI summary non disponibile.';
+    }
+
+    // Salva segnali su Supabase
+    await saveMarketSignalsToSupabase(data);
+
+  }catch(e){
+    toast('Errore Commercial Intelligence: '+e.message,'error');
+    console.error(e);
+  }
+}
+
+/* ══════════════════════════════════════════════
+   MARKET SIGNALS — SALVATAGGIO SU SUPABASE
+   ══════════════════════════════════════════════ */
+
+async function saveMarketSignalsToSupabase(data){
+  try{
+    const signals=detectMarketSignals(data,data);
+    if(!signals.length)return;
+
+    // Elimina segnali vecchi (>7 giorni)
+    const cutoff=new Date(Date.now()-7*864e5).toISOString();
+    await api(`market_signals?created_at=lt.${cutoff}`,'DELETE');
+
+    // Inserisce nuovi segnali
+    for(const signal of signals.slice(0,20)){
+      try{
+        await api('market_signals','POST',{
+          signal_type:signal.type,
+          company_name:signal.company,
+          severity:signal.badge==='expansion'?'high':signal.badge==='growth'?'medium':'low',
+          title:signal.title,
+          description:signal.desc,
+        });
+      }catch(e){/* ignora duplicati */}
+    }
+  }catch(e){console.warn('saveMarketSignals error:',e.message);}
+}
+
 /* ══════════════════════════════════════════════
    MARKET EXPLORER — Query Builder Engine
    ══════════════════════════════════════════════ */
@@ -4207,6 +4712,30 @@ async function loadRoleIntelligence(){
     const byFH={};listings.filter(l=>l.field_hq).forEach(l=>{byFH[l.field_hq]=(byFH[l.field_hq]||0)+1;});
     if(Object.keys(byFH).length) renderRuoloBar('ri-chart-fieldhq',Object.entries(byFH).sort((a,b)=>b[1]-a[1]),'blue');
     else document.getElementById('ri-chart-fieldhq').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati Field/HQ non disponibili</div>';
+
+    // ── AI SUMMARY ROLE INTELLIGENCE — asincrono ──
+    if(listings.length>0){
+      // Aggiungi AI card prima della tabella se non esiste
+      let riAiCard=document.getElementById('ri-ai-card');
+      if(!riAiCard){
+        riAiCard=document.createElement('div');
+        riAiCard.id='ri-ai-card';
+        riAiCard.className='ai-summary-card';
+        riAiCard.style.marginBottom='24px';
+        riAiCard.innerHTML=`<div class="ai-summary-header">🤖 AI Role Intelligence</div>
+          <div class="ai-summary-text" id="ri-ai-text">⏳ Generazione...</div>
+          <div class="ai-insights-grid" id="ri-ai-insights"></div>`;
+        const listingsEl=document.getElementById('ri-listings-count')?.closest('.table-wrap');
+        if(listingsEl)listingsEl.parentNode.insertBefore(riAiCard,listingsEl);
+      }
+      riAiCard.style.display='block';
+      generateRoleIntelAISummary(listings,benchmarks,roleName).then(result=>{
+        const textEl=document.getElementById('ri-ai-text');
+        const insEl=document.getElementById('ri-ai-insights');
+        if(textEl)textEl.textContent=result.summary||'';
+        if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+      }).catch(()=>{const el=document.getElementById('ri-ai-text');if(el)el.textContent='AI non disponibile.';});
+    }
 
     // ── RECENT LISTINGS TABLE ──
     document.getElementById('ri-listings-count').textContent=`${listings.length} annunci`;
