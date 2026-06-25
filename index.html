@@ -1717,10 +1717,29 @@ async function importVocationsCSV(event){
   const sep=';';
   const headers=lines[0].split(sep).map(h=>h.trim().replace(/^\uFEFF/,''));
 
+  // Parser CSV che rispetta le virgolette (gestisce campi con ; interni)
+  function parseCSVLine(line, sep){
+    const vals=[];
+    let cur='', inQuote=false;
+    for(let ci=0;ci<line.length;ci++){
+      const ch=line[ci];
+      if(ch==='"'){
+        if(inQuote && line[ci+1]==='"'){cur+='"';ci++;} // escaped quote
+        else inQuote=!inQuote;
+      } else if(ch===sep && !inQuote){
+        vals.push(cur.trim());cur='';
+      } else {
+        cur+=ch;
+      }
+    }
+    vals.push(cur.trim());
+    return vals;
+  }
+
   const rows=[];
   for(let i=1;i<lines.length;i++){
     if(!lines[i].trim())continue;
-    const vals=lines[i].split(sep);
+    const vals=parseCSVLine(lines[i], sep);
     const row={};
     headers.forEach((h,j)=>row[h]=(vals[j]||'').trim());
     rows.push(row);
