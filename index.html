@@ -184,6 +184,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-commercial" onclick="showView('commercial',this)" style="border-color:#10b981;color:#10b981;">💼 Commercial</button>
     <button class="nav-btn" id="nav-signals" onclick="showView('signals',this)" style="border-color:#a78bfa;color:#a78bfa;">📡 Market Signals</button>
     <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
+    <button class="nav-btn" id="nav-scarcity" onclick="showView('scarcity',this)" style="border-color:#f59e0b;color:#f59e0b;">🎯 Talent Scarcity</button>
   </div>
 </div>
 
@@ -2324,6 +2325,7 @@ function showView(name,btn){
   if(name==='signals')generateMarketSignals();
   if(name==='commercial')loadCommercialIntelligence();
   if(name==='compliance')loadCompliance();
+  if(name==='scarcity')loadScarcityIndex();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -5524,7 +5526,87 @@ async function exportRoleIntelligencePDF(){
   const win=window.open('','_blank');
   win.document.write(`<html><head><title>Benchmark ${role}</title>
     <style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style>
-    </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}</body></html>`);
+    </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}
+<!-- ── TALENT SCARCITY INDEX ── -->
+<div class="view" id="view-scarcity">
+  <div style="padding:24px 32px;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">🎯 Talent Scarcity Index</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Misura la difficoltà di reperimento dei profili Life Sciences nel mercato italiano</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div id="scarcity-last-update" style="font-size:11px;color:var(--text2);"></div>
+        <button onclick="loadScarcityIndex()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
+      </div>
+    </div>
+
+    <!-- Warning dati insufficienti -->
+    <div id="scarcity-data-warning" style="display:none;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#f59e0b;">
+      ⚠️ <strong>Dati storici insufficienti</strong> — Gli score di Growth Rate e Hiring Persistence richiedono almeno 3 mesi di annunci. I valori attuali riflettono solo Company Competition e Geographic Dispersion.
+    </div>
+
+    <!-- KPI bar -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Ruoli analizzati</div><div class="stat-value" id="sc-kpi-roles">—</div></div>
+      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="sc-kpi-avg">—</div></div>
+      <div class="stat-card"><div class="stat-label">Ruolo più scarso</div><div class="stat-value" style="font-size:13px;" id="sc-kpi-top">—</div></div>
+      <div class="stat-card"><div class="stat-label">Mesi storici disponibili</div><div class="stat-value" id="sc-kpi-months">—</div></div>
+    </div>
+
+    <!-- Main content: ranking + detail -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+
+      <!-- Ranking Top 20 -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">🏆 Ranking Scarcity</div>
+          <div class="table-count" id="sc-ranking-count">—</div>
+        </div>
+        <div id="sc-ranking-body" style="padding:0;"></div>
+      </div>
+
+      <!-- Score breakdown selezionato -->
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">📊 Score Breakdown</div>
+        <div id="sc-breakdown-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un ruolo dal ranking</div>
+        <div id="sc-breakdown-content" style="display:none;">
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;" id="sc-bd-role">—</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:20px;" id="sc-bd-family">—</div>
+
+          <!-- Score globale -->
+          <div style="margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:12px;font-weight:600;color:var(--text);">Scarcity Score</span>
+              <span style="font-size:20px;font-weight:800;" id="sc-bd-score">—</span>
+            </div>
+            <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;">
+              <div id="sc-bd-bar" style="height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);border-radius:4px;transition:width 0.5s;width:0%"></div>
+            </div>
+          </div>
+
+          <!-- 4 sub-score -->
+          <div style="display:flex;flex-direction:column;gap:12px;" id="sc-bd-subscores"></div>
+
+          <!-- Stats -->
+          <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sc-bd-stats"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bubble chart SVG -->
+    <div class="table-wrap" style="padding:20px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🫧 Scarcity Map — dimensione = annunci totali, colore = score</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">Ruoli in alto a destra sono più scarsi e più ricercati</div>
+      <div id="sc-bubble-chart" style="overflow-x:auto;"></div>
+    </div>
+
+  </div>
+</div>
+
+</body></html>`);
   win.print();
 }
 
@@ -6171,6 +6253,190 @@ async function initApp(){
   }
 }
 initApp();
+
+/* ═══════════════════════════════════════════════════
+   TALENT SCARCITY INDEX
+═══════════════════════════════════════════════════ */
+
+let _scarcityData = [];
+
+async function loadScarcityIndex(){
+  const ranking = document.getElementById('sc-ranking-body');
+  if(ranking) ranking.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">⏳ Calcolo in corso...</div>';
+
+  try{
+    // Chiama RPC Supabase — tutto calcolato server-side
+    const data = await api('rpc/compute_talent_scarcity', 'POST', {});
+    _scarcityData = data || [];
+
+    // Controlla se dati storici insufficienti (tutti active_months = 1)
+    const maxMonths = Math.max(..._scarcityData.map(r => r.active_months || 0));
+    const warning = document.getElementById('scarcity-data-warning');
+    if(warning) warning.style.display = maxMonths <= 1 ? '' : 'none';
+
+    // KPI
+    const avgScore = _scarcityData.length
+      ? (_scarcityData.reduce((s,r) => s + parseFloat(r.scarcity_score||0), 0) / _scarcityData.length).toFixed(1)
+      : '—';
+    _setEl('sc-kpi-roles', _scarcityData.length);
+    _setEl('sc-kpi-avg', avgScore);
+    _setEl('sc-kpi-top', _scarcityData[0]?.canonical_role || '—');
+    _setEl('sc-kpi-months', maxMonths || '—');
+    _setEl('sc-ranking-count', _scarcityData.length + ' ruoli');
+    _setEl('scarcity-last-update', 'Aggiornato: ' + new Date().toLocaleTimeString('it-IT'));
+
+    renderScarcityRanking(_scarcityData);
+    renderScarcityBubble(_scarcityData);
+
+  }catch(e){
+    if(ranking) ranking.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger);">Errore caricamento dati</div>';
+    console.error('Scarcity error:', e);
+  }
+}
+
+function _setEl(id, val){
+  const el = document.getElementById(id);
+  if(el) el.textContent = val;
+}
+
+function renderScarcityRanking(data){
+  const body = document.getElementById('sc-ranking-body');
+  if(!body) return;
+  if(!data.length){
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';
+    return;
+  }
+
+  const scoreColor = s => s >= 70 ? '#ef4444' : s >= 50 ? '#f59e0b' : s >= 30 ? '#3b82f6' : '#6b7280';
+  const scoreLabel = s => s >= 70 ? 'Critico' : s >= 50 ? 'Alto' : s >= 30 ? 'Medio' : 'Basso';
+
+  body.innerHTML = data.slice(0, 20).map((r, i) => {
+    const score = parseFloat(r.scarcity_score || 0);
+    const color = scoreColor(score);
+    return `<div onclick="showScarcityBreakdown(${i})"
+      style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:12px;transition:background .15s;"
+      onmouseover="this.style.background='var(--surface2)'"
+      onmouseout="this.style.background=''"
+      id="sc-row-${i}">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);width:20px;text-align:right;">${i+1}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.canonical_role}</div>
+        <div style="font-size:11px;color:var(--text2);">${r.role_family || '—'}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:16px;font-weight:800;color:${color};">${score.toFixed(0)}</div>
+        <div style="font-size:10px;color:${color};font-weight:600;">${scoreLabel(score)}</div>
+      </div>
+      <div style="width:60px;">
+        <div style="background:var(--surface2);border-radius:3px;height:4px;overflow:hidden;">
+          <div style="width:${score}%;height:100%;background:${color};border-radius:3px;"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showScarcityBreakdown(idx){
+  const r = _scarcityData[idx];
+  if(!r) return;
+
+  // Highlight riga selezionata
+  document.querySelectorAll('[id^="sc-row-"]').forEach(el => el.style.background = '');
+  const row = document.getElementById('sc-row-' + idx);
+  if(row) row.style.background = 'var(--surface2)';
+
+  document.getElementById('sc-breakdown-empty').style.display = 'none';
+  document.getElementById('sc-breakdown-content').style.display = '';
+
+  _setEl('sc-bd-role', r.canonical_role);
+  _setEl('sc-bd-family', r.role_family || '—');
+
+  const score = parseFloat(r.scarcity_score || 0);
+  _setEl('sc-bd-score', score.toFixed(1));
+  const bar = document.getElementById('sc-bd-bar');
+  if(bar) bar.style.width = score + '%';
+
+  // Sub-score
+  const subscores = [
+    { label: 'Growth Rate', key: 'growth_score', weight: '30%', icon: '📈', desc: 'Velocità di crescita annunci' },
+    { label: 'Geographic Dispersion', key: 'geo_score', weight: '25%', icon: '🗺️', desc: 'Distribuzione geografica' },
+    { label: 'Company Competition', key: 'competition_score', weight: '25%', icon: '🏢', desc: 'Aziende in competizione' },
+    { label: 'Hiring Persistence', key: 'persistence_score', weight: '20%', icon: '📅', desc: 'Continuità nel tempo' },
+  ];
+
+  const subEl = document.getElementById('sc-bd-subscores');
+  if(subEl) subEl.innerHTML = subscores.map(s => {
+    const val = parseFloat(r[s.key] || 0);
+    const col = val >= 70 ? '#ef4444' : val >= 50 ? '#f59e0b' : val >= 30 ? '#3b82f6' : '#6b7280';
+    return `<div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;color:var(--text2);">${s.icon} ${s.label} <span style="color:var(--text2);opacity:0.6;">(${s.weight})</span></span>
+        <span style="font-size:12px;font-weight:700;color:${col};">${val.toFixed(1)}</span>
+      </div>
+      <div style="background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+        <div style="width:${val}%;height:100%;background:${col};border-radius:3px;transition:width 0.4s;"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text2);margin-top:2px;">${s.desc}</div>
+    </div>`;
+  }).join('');
+
+  // Stats
+  const statsEl = document.getElementById('sc-bd-stats');
+  if(statsEl) statsEl.innerHTML = [
+    { label: 'Annunci totali', val: r.total_listings || 0 },
+    { label: 'Annunci 90gg', val: r.listings_90d || 0 },
+    { label: 'Province', val: r.provinces_count || 0 },
+    { label: 'Aziende', val: r.companies_count || 0 },
+    { label: 'Mesi attivi', val: r.active_months || 0 },
+    { label: 'Role family', val: r.role_family || '—' },
+  ].map(s => `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;">
+    <div style="font-size:10px;color:var(--text2);">${s.label}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--text);">${s.val}</div>
+  </div>`).join('');
+}
+
+function renderScarcityBubble(data){
+  const el = document.getElementById('sc-bubble-chart');
+  if(!el || !data.length) return;
+
+  const W = 700, H = 300, PAD = 40;
+  const maxScore = Math.max(...data.map(r => parseFloat(r.scarcity_score||0)));
+  const maxListings = Math.max(...data.map(r => parseInt(r.total_listings||0)));
+  const maxCompanies = Math.max(...data.map(r => parseInt(r.companies_count||0)));
+
+  const scoreColor = s => s >= 70 ? '#ef4444' : s >= 50 ? '#f59e0b' : s >= 30 ? '#3b82f6' : '#6b7280';
+
+  const bubbles = data.map((r, i) => {
+    const score = parseFloat(r.scarcity_score || 0);
+    const listings = parseInt(r.total_listings || 0);
+    const companies = parseInt(r.companies_count || 0);
+    // X = competition (companies), Y = score (inverso per visual), R = listings
+    const x = PAD + (companies / Math.max(maxCompanies,1)) * (W - PAD*2);
+    const y = H - PAD - (score / Math.max(maxScore,1)) * (H - PAD*2);
+    const r2 = 6 + (listings / Math.max(maxListings,1)) * 20;
+    const color = scoreColor(score);
+    const label = r.canonical_role.length > 15 ? r.canonical_role.substring(0,14)+'…' : r.canonical_role;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r2.toFixed(1)}"
+      fill="${color}" fill-opacity="0.7" stroke="${color}" stroke-width="1.5"
+      style="cursor:pointer;" title="${r.canonical_role}: ${score}">
+      <title>${r.canonical_role} — Score: ${score} | Annunci: ${listings} | Aziende: ${companies}</title>
+    </circle>
+    <text x="${x.toFixed(1)}" y="${(y - r2 - 3).toFixed(1)}" text-anchor="middle"
+      style="font-size:9px;fill:var(--text2);pointer-events:none;">${label}</text>`;
+  }).join('');
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;font-family:Inter,sans-serif;">
+    <!-- Griglie -->
+    <line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/>
+    <line x1="${PAD}" y1="${H-PAD}" x2="${W-PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/>
+    <!-- Label assi -->
+    <text x="${W/2}" y="${H-8}" text-anchor="middle" style="font-size:10px;fill:var(--text2);">← Meno competizione — Aziende concorrenti — Più competizione →</text>
+    <text x="12" y="${H/2}" text-anchor="middle" transform="rotate(-90,12,${H/2})" style="font-size:10px;fill:var(--text2);">Scarcity Score ↑</text>
+    <!-- Bubbles -->
+    ${bubbles}
+  </svg>`;
+}
+
 </script>
 </body>
 </html>
