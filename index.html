@@ -1754,7 +1754,7 @@ async function importVocationsCSV(event){
     return n&&n>=10000&&n<=500000?n:null;
   };
 
-  const contractMap={permanent:'TI',contract:'TD',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Freelance','n/a':'altro'};
+  const contractMap={permanent:'TI',contract:'TD',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Agenzia','n/a':'altro'};
   const sectorMap={
     'Farmaceutico':'pharma_rx','Chimico e Farmaceutico':'pharma_rx','Chimico':'cdmo',
     'Medicale':'medical_devices','Biomedico':'biotech','Biomedicale':'biotech',
@@ -1834,6 +1834,7 @@ async function importVocationsCSV(event){
       row['Target']?`Profilo: ${row['Target']}`:''
     ].filter(Boolean).join('\n').substring(0,2000)||null;
 
+    const isAgenzia = contract_type === 'Agenzia';
     records.push({
       job_title:title,
       company_name:company,
@@ -1844,14 +1845,16 @@ async function importVocationsCSV(event){
       location,
       province,
       contract_type,
+      contract_category: isAgenzia ? 'agent' : 'employee',
+      fixed_monthly: isAgenzia ? ral : null,
       orario:(row['Orario']||'').trim()||null,
       collar:(row['Collar']||'').trim()||null,
       sector_v2,
       functional_area_v2,
       seniority_v2,
       therapeutic_area,
-      ral_min:ral,
-      ral_max:ral,
+      ral_min: isAgenzia ? null : ral,
+      ral_max: isAgenzia ? null : ral,
       salary_text:row['Stipendio annuo']||null,
       benefits:(row['Benefit']||'').trim()||null,
       job_description:desc,
