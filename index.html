@@ -1956,7 +1956,8 @@ async function importVocationsCSV(event){
         }catch(e){console.warn('Company update error:',e.message);}
       }
     }catch(e){
-      console.error('Vocations import error:',e.message,title);
+      console.error('Vocations import error:', JSON.stringify(e), title?.substring(0,40));
+      if(ok===0 && errors===0) toast('Errore insert: '+JSON.stringify(e).substring(0,100),'error');
       errors++;
     }
   }
@@ -2485,7 +2486,11 @@ let currentCompany=null; // company object shown in detail view
 
 async function api(path,method,body){
   const r=await fetch(SB_URL+'/rest/v1/'+path,{method:method||'GET',headers:H,body:body?JSON.stringify(body):null});
-  if(!r.ok){const e=await r.text();throw new Error(e);}
+  if(!r.ok){
+    const e=await r.text();
+    console.error('API ERROR',method||'GET',path.substring(0,60),r.status,e.substring(0,200));
+    throw new Error(e);
+  }
   if(method==='DELETE')return true;
   const t=await r.text();return t?JSON.parse(t):[];
 }
