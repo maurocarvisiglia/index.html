@@ -4821,6 +4821,7 @@ function renderListingsTable(data){
     <th ${thStyle} onclick="sortListings('seniority_v2')">Seniority${arrow('seniority_v2')}</th>
     <th>Benefit</th>
     <th ${thStyle} onclick="sortListings('ral_min')">RAL${arrow('ral_min')}</th>
+    <th ${thStyle} onclick="sortListings('fixed_monthly')">Fisso/mese${arrow('fixed_monthly')}</th>
     <th ${thStyle} onclick="sortListings('contract_type')">Contratto${arrow('contract_type')}</th>
     <th ${thStyle} onclick="sortListings('location')">Sede${arrow('location')}</th>
     <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
@@ -4846,6 +4847,7 @@ function renderListingsTable(data){
     <td style="font-size:11px;">${l.seniority_v2||l.seniority||'—'}</td>
     <td>${benefitCell}</td>
     <td id="ral-cell-${l.id}">${ralCell(l)}</td>
+    <td style="font-size:11px;color:var(--accent);">${l.fixed_monthly?'€'+l.fixed_monthly.toLocaleString('it-IT')+'/m':'—'}</td>
     <td style="font-size:11px;">${l.contract_type||'—'}</td>
     <td style="font-size:11px;">${l.location||'—'}</td>
     <td style="font-size:11px;">${l.published_date||'—'}</td>
