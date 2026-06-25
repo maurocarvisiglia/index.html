@@ -1919,13 +1919,9 @@ async function importVocationsCSV(event){
     if(!qv.valid){rejected++;continue;}
 
     try{
-      // Dedup per URL
-      if(record.url){
-        const existing=await api(`job_listings?url=eq.${encodeURIComponent(record.url)}&select=id`);
-        if(existing.length){skip++;continue;}
-      }
-      await api('job_listings','POST',record);
-      ok++;
+      const result = await upsertListing(record);
+      if(result === 'inserted') ok++;
+      else if(result === 'skipped') skip++;
 
       // Aggiorna/crea scheda azienda con dati completi
       if(company){
