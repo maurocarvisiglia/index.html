@@ -1713,43 +1713,41 @@ async function importVocationsCSV(event){
   event.target.value='';
 
   const text=await file.text();
-  const lines=text.split('\n');
   const sep=';';
-  const headers=lines[0].split(sep).map(h=>h.trim().replace(/^\uFEFF/,''));
 
-  // Parser CSV che rispetta le virgolette (gestisce campi con ; interni)
-  function parseCSVLine(line, sep){
+  // Parser CSV robusto — gestisce campi con ; interni e virgolette
+  function parseCSVLine(line){
     const vals=[];
-    let cur='', inQuote=false;
+    let cur='', inQ=false;
     for(let ci=0;ci<line.length;ci++){
       const ch=line[ci];
       if(ch==='"'){
-        if(inQuote && line[ci+1]==='"'){cur+='"';ci++;} // escaped quote
-        else inQuote=!inQuote;
-      } else if(ch===sep && !inQuote){
-        vals.push(cur.trim());cur='';
-      } else {
-        cur+=ch;
-      }
+        if(inQ && line[ci+1]==='"'){cur+='"';ci++;}
+        else inQ=!inQ;
+      } else if(ch===sep && !inQ){
+        vals.push(cur.trim()); cur='';
+      } else { cur+=ch; }
     }
     vals.push(cur.trim());
     return vals;
   }
 
+  const allLines = text.split('\n');
+  const headers = parseCSVLine(allLines[0].replace(/^\uFEFF/,''));
+  
   const rows=[];
-  for(let i=1;i<lines.length;i++){
-    if(!lines[i].trim())continue;
-    const vals=parseCSVLine(lines[i], sep);
+  for(let i=1;i<allLines.length;i++){
+    if(!allLines[i].trim())continue;
+    const vals=parseCSVLine(allLines[i]);
     const row={};
     headers.forEach((h,j)=>row[h]=(vals[j]||'').trim());
     rows.push(row);
   }
   if(!rows.length){toast('Nessun dato nel CSV','error');return;}
-  toast(`Vocations CSV: ${rows.length} annunci rilevati. Importazione...`);
+  toast(`📋 Vocations CSV: ${rows.length} annunci rilevati. Importazione in corso...`);
 
-  // Parser RAL: "€37K" → 37000
   const parseRAL=str=>{
-    if(!str||!str.trim()||str==='N/A')return null;
+    if(!str||str==='N/A')return null;
     const s=str.replace(/[€\s]/g,'').toUpperCase();
     if(s.includes('K')){const n=parseFloat(s.replace('K',''))*1000;return n>=10000&&n<=500000?Math.round(n):null;}
     const n=parseInt(s.replace(/\./g,''));
@@ -1763,214 +1761,181 @@ async function importVocationsCSV(event){
     'Biotecnologico':'biotech','Cosmetico':'cosmetics','Nutraceutico':'nutraceutical',
     'Veterinario':'veterinary','Manifatturiero e Industriale':'manufacturing',
     'Ingegneria Industriale e Servizi Ingegneristici':'engineering',
-    'Cybersecurity e Informatica':'digital_health'
+    'Cybersecurity e Informatica':'digital_health','Sanità e Igiene':'medical_devices'
   };
 
-  let ok=0,skip=0,rejected=0,errors=0;
-
+  // Costruisce i record da inserire
+  const records=[];
   for(const row of rows){
     const title=(row['Nome posizione']||'').trim();
     const company=(row['Nome azienda']||'').trim();
-    const ragione_sociale=(row['Ragione sociale']||'').trim();
-    const url=(row['URL']||'').trim();
-    const city=(row['Città']||'').trim();
-    const province=(row['Province']||'').trim();
-    const region=(row['Regioni']||'').trim();
-    const location=city?`${city}, ${region}`:region;
+    if(!title||!company)continue;
 
-    // Data: "20/06/2026" → "2026-06-20"
+    const ragione_sociale=(row['Ragione sociale']||'').trim()||null;
+    const url=(row['URL']||'').trim()||null;
+    const city=(row['Città']||'').trim();
+    const province=(row['Province']||'').trim()||null;
+    const region=(row['Regioni']||'').split(',')[0].trim();
+    const location=city?`${city}, ${region}`:region||null;
+
     let published_date=null;
     const rd=(row['Data creazione']||'').trim();
     if(rd&&rd!=='N/A'){const p=rd.split('/');if(p.length===3)published_date=`${p[2]}-${p[1]}-${p[0]}`;}
 
-    // RAL
     const ral=parseRAL(row['Stipendio annuo']||'');
-
-    // Settore
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
     const sector_v2=sectorMap[settoreRaw]||'pharma_rx';
-
-    // Contratto e orario
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
     const contract_type=contractMap[contractRaw]||'altro';
-    const orario=(row['Orario']||'').trim()||null;
-    const collar=(row['Collar']||'').trim()||null;
-    const categorie_protette=(row['Categorie protette']||'').trim()||null;
 
-    // Inferenza area funzionale dal titolo
     const tl=title.toLowerCase();
     let functional_area_v2=null;
     if(/\bisf\b|informatore scientifico|sales rep|area manager|kam\b|key account|territory|district manager/.test(tl))functional_area_v2='commercial';
     else if(/medical advisor|msl\b|medical science|medical manager|medical affairs/.test(tl))functional_area_v2='medical_affairs';
-    else if(/regulatory|registrazione|dossier reg/.test(tl))functional_area_v2='regulatory_affairs';
-    else if(/quality assurance|\bqa\b|quality manager|quality director/.test(tl))functional_area_v2='quality';
-    else if(/quality control|\bqc\b|analista qc/.test(tl))functional_area_v2='quality';
-    else if(/market access|pricing|reimburs/.test(tl))functional_area_v2='market_access';
-    else if(/pharmacovigilance|drug safety|\bpv\b|farmacovigilanza/.test(tl))functional_area_v2='drug_safety';
-    else if(/clinical research|\bcra\b|clinical operations|trial manager/.test(tl))functional_area_v2='clinical_operations';
+    else if(/regulatory|registrazione/.test(tl))functional_area_v2='regulatory_affairs';
+    else if(/quality assurance|\bqa\b|quality manager/.test(tl))functional_area_v2='quality';
+    else if(/quality control|\bqc\b/.test(tl))functional_area_v2='quality';
+    else if(/market access|pricing/.test(tl))functional_area_v2='market_access';
+    else if(/pharmacovigilance|drug safety|farmacovigilanza/.test(tl))functional_area_v2='drug_safety';
+    else if(/clinical research|\bcra\b|clinical operations/.test(tl))functional_area_v2='clinical_operations';
     else if(/marketing|brand manager|product manager/.test(tl))functional_area_v2='marketing';
-    else if(/produzione|production|manufacturing|operatore|operator/.test(tl))functional_area_v2='manufacturing';
-    else if(/supply chain|logistic|warehouse|magazzino|planning/.test(tl))functional_area_v2='supply_chain';
-    else if(/ricerca|research|\br&d\b|scientist|formul/.test(tl))functional_area_v2='rd';
-    else if(/\bhr\b|human resource|talent|recruiter|people/.test(tl))functional_area_v2='hr';
-    else if(/finance|controller|budget|accounting|contabil/.test(tl))functional_area_v2='finance';
-    else if(/\bit\b|software|digital|data engineer|system/.test(tl))functional_area_v2='it';
-    else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
+    else if(/produzione|production|manufacturing|operatore/.test(tl))functional_area_v2='manufacturing';
+    else if(/supply chain|logistic|warehouse|magazzino/.test(tl))functional_area_v2='supply_chain';
+    else if(/ricerca|research|\br&d\b|scientist/.test(tl))functional_area_v2='rd';
+    else if(/\bhr\b|human resource|talent|recruiter/.test(tl))functional_area_v2='hr';
+    else if(/finance|controller|budget|accounting/.test(tl))functional_area_v2='finance';
+    else if(/\bit\b|software|digital|data engineer/.test(tl))functional_area_v2='it';
 
-    // Inferenza ROLE FAMILY dal titolo
-    let role_family=null;
-    if(/informatore scientifico|\bisf\b/.test(tl))role_family='ISF';
-    else if(/medical science liaison|\bmsl\b/.test(tl))role_family='MSL';
-    else if(/medical advisor/.test(tl))role_family='Medical Advisor';
-    else if(/medical manager|medical director|medical affairs manager/.test(tl))role_family='Medical Manager';
-    else if(/key account|\bkam\b/.test(tl))role_family='Key Account Manager';
-    else if(/area manager|regional manager|district manager|territory manager/.test(tl))role_family='Area Manager';
-    else if(/product manager/.test(tl))role_family='Product Manager';
-    else if(/brand manager/.test(tl))role_family='Brand Manager';
-    else if(/product specialist/.test(tl))role_family='Product Specialist';
-    else if(/market access/.test(tl))role_family='Market Access';
-    else if(/regulatory affairs/.test(tl))role_family='Regulatory Affairs';
-    else if(/quality assurance|\bqa manager\b/.test(tl))role_family='QA Manager';
-    else if(/quality control|\bqc\b/.test(tl))role_family='QC Analyst';
-    else if(/pharmacovigilance|drug safety/.test(tl))role_family='Pharmacovigilance';
-    else if(/clinical research|\bcra\b/.test(tl))role_family='CRA';
-    else if(/supply chain/.test(tl))role_family='Supply Chain';
-    else if(/production manager|plant manager/.test(tl))role_family='Production Manager';
-    else if(/research scientist|r&d scientist/.test(tl))role_family='Research Scientist';
-    else if(/hr business partner|\bhrbp\b/.test(tl))role_family='HR Business Partner';
-    else if(/financial controller|finance manager/.test(tl))role_family='Finance';
-
-    // Inferenza AREA TERAPEUTICA dal titolo + settori CSV
-    let therapeutic_area=null;
-    const settoriCSV=(row['Settori']||'').toLowerCase();
-    const targetCSV=(row['Target']||'').toLowerCase();
-    const combined=tl+' '+settoriCSV+' '+targetCSV;
-    if(/oncol|tumor|cancer|leucem|linfom/.test(combined))therapeutic_area='oncology';
-    else if(/rare disease|malattia rara|orfan|ultra-rare/.test(combined))therapeutic_area='rare_diseases';
-    else if(/immuno|autoimmun|reumat|psoriasi|crohn/.test(combined))therapeutic_area='immunology';
-    else if(/hematol|ematol|blood disorder/.test(combined))therapeutic_area='hematology';
-    else if(/cardiovasc|cardiac|cardiolog|heart failure/.test(combined))therapeutic_area='cardiovascular';
-    else if(/neurolog|alzheimer|parkinson|sclerosi|epiless/.test(combined))therapeutic_area='neurology';
-    else if(/respirator|asthma|bpco|polmon/.test(combined))therapeutic_area='respiratory';
-    else if(/diabet|insulina|glucos/.test(combined))therapeutic_area='diabetes';
-    else if(/dermatolog|skin|pelle/.test(combined))therapeutic_area='dermatology';
-    else if(/ophthalm|oculist|retina|ocul/.test(combined))therapeutic_area='ophthalmology';
-    else if(/vaccin|immuni|infettivo|infect/.test(combined))therapeutic_area='vaccines';
-    else if(/gastro|epatol|liver|crohn|colite/.test(combined))therapeutic_area='gastroenterology';
-    else if(/oncolog|biotech|farmaceut/.test(settoriCSV))therapeutic_area='not_applicable';
-
-    // Inferenza seniority dal titolo
-    let seniority_v2=null;
-    if(/\bstage\b|\bintern\b|\btirocinio\b/.test(tl))seniority_v2='internship';
-    else if(/\bjunior\b|\bentry\b|\bneolaure/.test(tl))seniority_v2='entry_level';
-    else if(/\bsenior\b|\bsr\.\b|\bsr\b/.test(tl))seniority_v2='senior_specialist';
-    else if(/\bmanager\b|\bresponsabile\b/.test(tl))seniority_v2='manager';
-    else if(/\bdirector\b|\bdirettore\b/.test(tl))seniority_v2='director';
-    else if(/\bhead\b|\bhead of\b/.test(tl))seniority_v2='head_of';
-    else if(/\bvp\b|\bvice president\b/.test(tl))seniority_v2='vp';
-    else if(/\bspecialist\b|\besperto\b|\bexpert\b/.test(tl))seniority_v2='specialist';
+    let seniority_v2='specialist';
+    if(/\bstage\b|\bintern\b|tirocinio/.test(tl))seniority_v2='internship';
+    else if(/\bjunior\b|\bentry\b|neolaure/.test(tl))seniority_v2='entry_level';
+    else if(/\bsenior\b|\bsr\.\b/.test(tl))seniority_v2='senior_specialist';
+    else if(/\bmanager\b|responsabile/.test(tl))seniority_v2='manager';
+    else if(/\bdirector\b|direttore/.test(tl))seniority_v2='director';
+    else if(/\bhead\b|head of/.test(tl))seniority_v2='head_of';
+    else if(/\bvp\b|vice president/.test(tl))seniority_v2='vp';
     else if(/\bassociate\b/.test(tl))seniority_v2='associate';
-    else seniority_v2='specialist'; // default
 
-    // Azienda
-    const employees=parseInt(row['Dipendenti']||'0')||null;
-    const posizioni_aperte=parseInt(row['Posizioni aperte']||'0')||null;
-    const company_url=(row['URL azienda']||'').trim()||null;
-    const iva=(row['IVA']||'').trim()||null;
+    let therapeutic_area=null;
+    const combined=tl+' '+(row['Settori']||'').toLowerCase()+' '+(row['Target']||'').toLowerCase();
+    if(/oncol|tumor|cancer|leucem|linfom/.test(combined))therapeutic_area='oncology';
+    else if(/rare disease|malattia rara|orfan/.test(combined))therapeutic_area='rare_diseases';
+    else if(/immuno|autoimmun|reumat|psoriasi/.test(combined))therapeutic_area='immunology';
+    else if(/hematol|ematol/.test(combined))therapeutic_area='hematology';
+    else if(/cardiovasc|cardiac|cardiolog/.test(combined))therapeutic_area='cardiovascular';
+    else if(/neurolog|alzheimer|parkinson|sclerosi/.test(combined))therapeutic_area='neurology';
+    else if(/respirator|asthma|bpco/.test(combined))therapeutic_area='respiratory';
+    else if(/diabet|insulina/.test(combined))therapeutic_area='diabetes';
+    else if(/dermatolog|skin/.test(combined))therapeutic_area='dermatology';
+    else if(/vaccin|infettivo/.test(combined))therapeutic_area='vaccines';
 
-    // Benefit
-    const benefits=(row['Benefit']||'').trim()||null;
-
-    // job_description da competenze + target
     const desc=[
-      row['Competenze']?`Competenze richieste: ${row['Competenze']}`:'',
-      row['Target']?`Profilo ricercato: ${row['Target']}`:''
-    ].filter(Boolean).join('\n').substring(0,3000)||null;
+      row['Competenze']?`Competenze: ${row['Competenze']}`:'',
+      row['Target']?`Profilo: ${row['Target']}`:''
+    ].filter(Boolean).join('\n').substring(0,2000)||null;
 
-    const record={
+    records.push({
       job_title:title,
       company_name:company,
-      ragione_sociale:ragione_sociale||null,
-      url:url||null,
+      ragione_sociale,
+      url,
       source:'Vocations',
       published_date,
-      location:location||null,
-      province:province||null,
+      location,
+      province,
       contract_type,
-      orario,
-      collar,
-      categorie_protette,
+      orario:(row['Orario']||'').trim()||null,
+      collar:(row['Collar']||'').trim()||null,
       sector_v2,
-      functional_area_v2:functional_area_v2||null,
-      seniority_v2:seniority_v2||null,
-      role_family:role_family||null,
-      therapeutic_area:therapeutic_area||null,
+      functional_area_v2,
+      seniority_v2,
+      therapeutic_area,
       ral_min:ral,
       ral_max:ral,
-      company_employees:employees,
-      posizioni_aperte,
-      company_url,
-      benefits,
+      salary_text:row['Stipendio annuo']||null,
+      benefits:(row['Benefit']||'').trim()||null,
       job_description:desc,
       entity_type:'life_sciences',
-    };
+    });
+  }
 
-    const qv=validateListing(record);
-    if(!qv.valid){rejected++;continue;}
+  if(!records.length){toast('Nessun record valido nel CSV','error');return;}
 
+  // Insert in batch da 50 — nessuna chiamata per record
+  const BATCH=50;
+  let ok=0, skip=0, errors=0;
+  for(let i=0;i<records.length;i+=BATCH){
+    const batch=records.slice(i,i+BATCH);
     try{
-      const result = await upsertListing(record);
-      if(result === 'inserted') ok++;
-      else if(result === 'skipped') skip++;
-
-      // Aggiorna/crea scheda azienda con dati completi
-      if(company){
-        try{
-          const coExisting=await api(`companies?name=eq.${encodeURIComponent(company)}&select=id`);
-          const coData={
-            name:company,
-            ragione_sociale:ragione_sociale||null,
-            website:company_url,
-            is_active:true,
-            entity_type:'life_sciences',
-            region:region||null,
-            province:province||null,
-            sectors:(row['Settori']||'').trim()||null,
-            collar,
-            orario,
-            categorie_protette,
-            posizioni_aperte,
-            last_updated_vocations:new Date().toISOString(),
-          };
-          if(iva)coData.iva=iva;
-          if(employees)coData.employees=employees;
-          if(coExisting.length){
-            await api(`companies?id=eq.${coExisting[0].id}`,'PATCH',coData);
-          }else{
-            await api('companies','POST',coData);
-          }
-        }catch(e){console.warn('Company update error:',e.message);}
+      const r=await fetch(SB_URL+'/rest/v1/job_listings',{
+        method:'POST',
+        headers:{...H,'Prefer':'resolution=ignore-duplicates,return=representation'},
+        body:JSON.stringify(batch)
+      });
+      if(r.ok){
+        const inserted=await r.json();
+        ok+=Array.isArray(inserted)?inserted.length:batch.length;
+        skip+=batch.length-(Array.isArray(inserted)?inserted.length:0);
+      } else {
+        const errText=await r.text();
+        console.error('Batch error',i,r.status,errText.substring(0,200));
+        errors+=batch.length;
       }
     }catch(e){
-      console.error('Vocations import error:', JSON.stringify(e), title?.substring(0,40));
-      if(ok===0 && errors===0) toast('Errore insert: '+JSON.stringify(e).substring(0,100),'error');
-      errors++;
+      console.error('Batch fetch error:',e.message);
+      errors+=batch.length;
     }
+    toast(`⏳ Importazione: ${Math.min(i+BATCH,records.length)}/${records.length}...`);
   }
 
-  const{msg,type}=qualitySummary(ok,skip,rejected,0,errors,'Vocations CSV');
-  toast(msg,type);
+  // Aggiorna schede aziende in background (non bloccante)
+  setTimeout(()=>syncCompaniesFromVocations(rows),500);
+
+  const msg=`Vocations CSV: ${ok} importati, ${skip} già presenti${errors?', '+errors+' errori':''}`;
+  toast(msg, ok>0?'success':'warning');
   loadListings();
   refreshPendingBadges();
-
-  // ── POST-IMPORT ENRICHMENT AUTOMATICO ──
   if(ok>0){
-    toast(`✅ ${ok} annunci importati. Avvio completamento automatico dati...`, 'success');
-    await runPostImportEnrichment(ok);
+    setTimeout(async()=>{
+      toast('✅ Avvio completamento automatico dati...');
+      await runPostImportEnrichment(ok);
+    },1000);
   }
-
-  loadDashboard();
 }
+
+async function syncCompaniesFromVocations(rows){
+  for(const row of rows){
+    const company=(row['Nome azienda']||'').trim();
+    if(!company)continue;
+    try{
+      const ragione_sociale=(row['Ragione sociale']||'').trim()||null;
+      const company_url=(row['URL azienda']||'').trim()||null;
+      const iva=(row['IVA']||'').trim()||null;
+      const employees=parseInt(row['Dipendenti']||'0')||null;
+      const posizioni_aperte=parseInt(row['Posizioni aperte']||'0')||null;
+      const region=(row['Regioni']||'').split(',')[0].trim()||null;
+      const province=(row['Province']||'').trim()||null;
+      const collar=(row['Collar']||'').trim()||null;
+      const orario=(row['Orario']||'').trim()||null;
+      const coData={
+        name:company,ragione_sociale,website:company_url,
+        is_active:true,entity_type:'life_sciences',
+        region,province,sectors:(row['Settori']||'').trim()||null,
+        collar,orario,posizioni_aperte,
+        last_updated_vocations:new Date().toISOString(),
+      };
+      if(iva)coData.iva=iva;
+      if(employees)coData.employees=employees;
+      const existing=await api(`companies?name=eq.${encodeURIComponent(company)}&select=id`);
+      if(existing.length){
+        await api(`companies?id=eq.${existing[0].id}`,'PATCH',coData);
+      }else{
+        await api('companies','POST',coData);
+      }
+    }catch(e){console.warn('Company sync error:',e.message);}
+  }
+}
+
 
 async function importVocations(){
   const key=getVocKey();
