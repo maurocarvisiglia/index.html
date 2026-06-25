@@ -185,6 +185,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-signals" onclick="showView('signals',this)" style="border-color:#a78bfa;color:#a78bfa;">📡 Market Signals</button>
     <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
     <button class="nav-btn" id="nav-scarcity" onclick="showView('scarcity',this)" style="border-color:#f59e0b;color:#f59e0b;">🎯 Talent Scarcity</button>
+    <button class="nav-btn" id="nav-competitor" onclick="showView('competitor',this)" style="border-color:#06b6d4;color:#06b6d4;">🔬 Competitor Monitor</button>
   </div>
 </div>
 
@@ -1568,6 +1569,83 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 </div>
 
+<!-- ── COMPETITOR HIRING MONITOR ── -->
+<div class="view" id="view-competitor">
+  <div style="padding:24px 32px;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Analizza quali aziende competono per gli stessi profili nel mercato Life Sciences</div>
+      </div>
+    </div>
+
+    <!-- Due modalità: per Ruolo / per Azienda -->
+    <div style="display:flex;gap:8px;margin-bottom:24px;">
+      <button id="comp-mode-role" onclick="setCompetitorMode('role')"
+        style="padding:8px 20px;border-radius:8px;border:2px solid #06b6d4;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">
+        🎯 Per Ruolo
+      </button>
+      <button id="comp-mode-company" onclick="setCompetitorMode('company')"
+        style="padding:8px 20px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;">
+        🏢 Per Azienda
+      </button>
+    </div>
+
+    <!-- Pannello Per Ruolo -->
+    <div id="comp-panel-role">
+      <div style="display:flex;gap:12px;margin-bottom:20px;align-items:center;">
+        <select id="comp-role-select" onchange="loadRoleCompetitors()"
+          style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+          <option value="">— Seleziona un ruolo —</option>
+        </select>
+      </div>
+
+      <!-- KPI ruolo -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
+        <div class="stat-card"><div class="stat-label">Aziende che assumono</div><div class="stat-value" id="cr-kpi-companies">—</div></div>
+        <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="cr-kpi-listings">—</div></div>
+        <div class="stat-card"><div class="stat-label">Annunci ultimi 90gg</div><div class="stat-value" id="cr-kpi-90d">—</div></div>
+      </div>
+
+      <!-- Tabella aziende per ruolo -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">🏢 Aziende in competizione</div>
+          <div class="table-count" id="cr-table-count">—</div>
+        </div>
+        <div id="cr-table-body"></div>
+      </div>
+    </div>
+
+    <!-- Pannello Per Azienda -->
+    <div id="comp-panel-company" style="display:none;">
+      <div style="display:flex;gap:12px;margin-bottom:20px;align-items:center;">
+        <select id="comp-company-select" onchange="loadCompanyCompetitors()"
+          style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+          <option value="">— Seleziona un'azienda —</option>
+        </select>
+      </div>
+
+      <!-- KPI azienda -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:20px;">
+        <div class="stat-card"><div class="stat-label">Competitor identificati</div><div class="stat-value" id="cc-kpi-competitors">—</div></div>
+        <div class="stat-card"><div class="stat-label">Ruoli in overlap</div><div class="stat-value" id="cc-kpi-roles">—</div></div>
+      </div>
+
+      <!-- Tabella competitor -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">⚔️ Competitor diretti</div>
+          <div class="table-count" id="cc-table-count">—</div>
+        </div>
+        <div id="cc-table-body"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
 <script>
 const SB_URL='https://ehrayeltqottgvkzvbdk.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocmF5ZWx0cW90dGd2a3p2YmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTEzNTgsImV4cCI6MjA5NzQyNzM1OH0.wmh0h8Xbt_gkxLwBRFHRM7yXXBw5comJbpbrotLksxE';
@@ -2405,6 +2483,7 @@ function showView(name,btn){
   if(name==='commercial')loadCommercialIntelligence();
   if(name==='compliance')loadCompliance();
   if(name==='scarcity')loadScarcityIndex();
+  if(name==='competitor')initCompetitorMonitor();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -6436,6 +6515,172 @@ function renderScarcityBubble(data){
     <!-- Bubbles -->
     ${bubbles}
   </svg>`;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   COMPETITOR HIRING MONITOR
+═══════════════════════════════════════════════════ */
+
+let _competitorMode = 'role';
+
+function setCompetitorMode(mode){
+  _competitorMode = mode;
+  const isRole = mode === 'role';
+
+  // Toggle panels
+  document.getElementById('comp-panel-role').style.display = isRole ? '' : 'none';
+  document.getElementById('comp-panel-company').style.display = isRole ? 'none' : '';
+
+  // Toggle buttons style
+  const btnRole = document.getElementById('comp-mode-role');
+  const btnCompany = document.getElementById('comp-mode-company');
+  if(isRole){
+    btnRole.style.background = '#06b6d4'; btnRole.style.color = 'white'; btnRole.style.borderColor = '#06b6d4';
+    btnCompany.style.background = 'transparent'; btnCompany.style.color = 'var(--text2)'; btnCompany.style.borderColor = 'var(--border)';
+  } else {
+    btnCompany.style.background = '#06b6d4'; btnCompany.style.color = 'white'; btnCompany.style.borderColor = '#06b6d4';
+    btnRole.style.background = 'transparent'; btnRole.style.color = 'var(--text2)'; btnRole.style.borderColor = 'var(--border)';
+  }
+}
+
+async function initCompetitorMonitor(){
+  try{
+    // Carica ruoli distinti per il select
+    const roles = await api('job_listings?select=canonical_role&canonical_role=not.is.null&order=canonical_role');
+    const uniqueRoles = [...new Set(roles.map(r => r.canonical_role))].sort();
+    const roleSelect = document.getElementById('comp-role-select');
+    roleSelect.innerHTML = '<option value="">— Seleziona un ruolo —</option>' +
+      uniqueRoles.map(r => `<option value="${r}">${r}</option>`).join('');
+
+    // Carica aziende distinte per il select
+    const companies = await api('job_listings?select=ragione_sociale&ragione_sociale=not.is.null&order=ragione_sociale');
+    const uniqueCompanies = [...new Set(companies.map(c => c.ragione_sociale))].sort();
+    const compSelect = document.getElementById('comp-company-select');
+    compSelect.innerHTML = '<option value="">— Seleziona un\'azienda —</option>' +
+      uniqueCompanies.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  }catch(e){ console.error('initCompetitorMonitor error:', e); }
+}
+
+async function loadRoleCompetitors(){
+  const role = document.getElementById('comp-role-select').value;
+  if(!role) return;
+
+  const body = document.getElementById('cr-table-body');
+  body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+  ['cr-kpi-companies','cr-kpi-listings','cr-kpi-90d'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.textContent = '—';
+  });
+
+  try{
+    const data = await api(`rpc/get_role_competitors`, 'POST', { p_role: role });
+
+    if(!data.length){
+      body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Nessuna azienda trovata per questo ruolo</div>';
+      return;
+    }
+
+    const totListings = data.reduce((s,r) => s + parseInt(r.annunci||0), 0);
+    const tot90d = data.reduce((s,r) => s + parseInt(r.annunci_90d||0), 0);
+    document.getElementById('cr-kpi-companies').textContent = data.length;
+    document.getElementById('cr-kpi-listings').textContent = totListings;
+    document.getElementById('cr-kpi-90d').textContent = tot90d;
+    document.getElementById('cr-table-count').textContent = data.length + ' aziende';
+
+    const maxAnnunci = Math.max(...data.map(r => parseInt(r.annunci||0)));
+
+    body.innerHTML = `<table><thead><tr>
+      <th>Azienda</th>
+      <th style="text-align:center;">Annunci</th>
+      <th style="text-align:center;">Ultimi 90gg</th>
+      <th style="text-align:center;">Ruoli distinti</th>
+      <th style="text-align:center;">Ultima pubbl.</th>
+      <th style="width:120px;">Volume</th>
+    </tr></thead><tbody>` +
+    data.map((r, i) => {
+      const ann = parseInt(r.annunci||0);
+      const pct = Math.round(ann / maxAnnunci * 100);
+      const isTop = i === 0;
+      return `<tr style="${isTop?'background:rgba(6,182,212,0.06);':''}">
+        <td style="font-weight:${isTop?'700':'500'};color:${isTop?'#06b6d4':'var(--text)'};">
+          ${isTop?'🥇 ':''}${r.ragione_sociale}
+        </td>
+        <td style="text-align:center;font-weight:700;">${ann}</td>
+        <td style="text-align:center;color:${r.annunci_90d>0?'#10b981':'var(--text2)'};">${r.annunci_90d||0}</td>
+        <td style="text-align:center;">${r.ruoli_distinti||1}</td>
+        <td style="text-align:center;font-size:11px;color:var(--text2);">${r.ultima_pubblicazione||'—'}</td>
+        <td>
+          <div style="background:var(--surface2);border-radius:3px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:#06b6d4;border-radius:3px;"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+
+  }catch(e){
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger);">Errore caricamento</div>';
+    console.error('loadRoleCompetitors error:', e);
+  }
+}
+
+async function loadCompanyCompetitors(){
+  const company = document.getElementById('comp-company-select').value;
+  if(!company) return;
+
+  const body = document.getElementById('cc-table-body');
+  body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+  ['cc-kpi-competitors','cc-kpi-roles'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.textContent = '—';
+  });
+
+  try{
+    const data = await api(`rpc/get_company_competitors`, 'POST', { p_company: company });
+
+    if(!data.length){
+      body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Nessun competitor trovato — questa azienda ha ruoli unici nel database</div>';
+      document.getElementById('cc-kpi-competitors').textContent = '0';
+      document.getElementById('cc-kpi-roles').textContent = '0';
+      return;
+    }
+
+    const totalSharedRoles = new Set(data.flatMap(r => (r.shared_role_names||'').split(', '))).size;
+    document.getElementById('cc-kpi-competitors').textContent = data.length;
+    document.getElementById('cc-kpi-roles').textContent = totalSharedRoles;
+    document.getElementById('cc-table-count').textContent = data.length + ' competitor';
+
+    const maxShared = Math.max(...data.map(r => parseInt(r.shared_roles||0)));
+
+    body.innerHTML = `<table><thead><tr>
+      <th>Competitor</th>
+      <th style="text-align:center;">Ruoli condivisi</th>
+      <th>Ruoli in overlap</th>
+      <th style="text-align:center;">Tot. annunci</th>
+      <th style="width:120px;">Overlap</th>
+    </tr></thead><tbody>` +
+    data.map((r, i) => {
+      const shared = parseInt(r.shared_roles||0);
+      const pct = Math.round(shared / maxShared * 100);
+      const isTop = i === 0;
+      return `<tr style="${isTop?'background:rgba(6,182,212,0.06);':''}">
+        <td style="font-weight:${isTop?'700':'500'};color:${isTop?'#06b6d4':'var(--text)'};">
+          ${isTop?'⚔️ ':''}${r.competitor}
+        </td>
+        <td style="text-align:center;font-weight:700;color:#06b6d4;">${shared}</td>
+        <td style="font-size:11px;color:var(--text2);max-width:300px;">${r.shared_role_names||'—'}</td>
+        <td style="text-align:center;">${r.competitor_total_listings||0}</td>
+        <td>
+          <div style="background:var(--surface2);border-radius:3px;height:6px;overflow:hidden;">
+            <div style="width:${pct}%;height:100%;background:#06b6d4;border-radius:3px;"></div>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+
+  }catch(e){
+    body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger);">Errore caricamento</div>';
+    console.error('loadCompanyCompetitors error:', e);
+  }
 }
 
 </script>
