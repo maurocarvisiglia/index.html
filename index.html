@@ -169,6 +169,13 @@ a.job-link:hover{text-decoration:underline;}
 .signal-badge.growth{background:rgba(124,156,255,.15);color:var(--accent2);}
 .signal-badge.alert{background:rgba(201,169,110,.15);color:var(--accent);}
 .signal-badge.warning{background:rgba(224,92,92,.15);color:var(--danger);}
+@keyframes pulse {
+  0%,100%{opacity:1;transform:scale(1);}
+  50%{opacity:.5;transform:scale(1.2);}
+}
+.qb-btn{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;}
+.qb-btn:hover{border-color:var(--accent);color:var(--accent);}
+.qb-btn.active{border-color:var(--accent);background:rgba(99,102,241,.12);color:var(--accent);font-weight:700;}
 </style>
 </head>
 <body>
@@ -194,34 +201,56 @@ a.job-link:hover{text-decoration:underline;}
   <!-- MARKET EXPLORER — Life Sciences Intelligence Engine -->
   <div class="view active" id="view-dashboard">
 
-    <!-- MARKET EXPLORER HEADER -->
-    <div style="text-align:center;padding:32px 0 24px;">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--accent);margin-bottom:8px;">Life Sciences Market Intelligence Engine</div>
-      <div style="font-size:28px;font-weight:800;color:var(--text);margin-bottom:8px;">Interroga il mercato</div>
-      <div style="font-size:14px;color:var(--text2);">Costruisci la tua analisi personalizzata del mercato Life Sciences italiano</div>
-    </div>
+    <!-- ═══════════════════════════════════════
+         QUERY BUILDER COMPATTO
+    ═══════════════════════════════════════ -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px;" id="query-builder">
 
-    <!-- QUERY BUILDER -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px 32px;margin-bottom:28px;" id="query-builder">
+      <!-- Header QB -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--accent);">Life Sciences Market Intelligence</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text);margin-top:2px;">Configura la tua analisi</div>
+        </div>
+        <button onclick="toggleQueryBuilder()" id="qb-toggle-btn" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text2);cursor:pointer;font-size:12px;">▼ Espandi filtri</button>
+      </div>
 
-      <!-- Step 1: Cosa vuoi analizzare -->
-      <div style="margin-bottom:24px;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">1 · Cosa vuoi analizzare?</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;" id="qb-subject-buttons">
+      <!-- Riga 1: Soggetto + Analisi + CTA sempre visibili -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;">Analizza:</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;" id="qb-subject-buttons">
           <button onclick="setQuerySubject('role',this)" class="qb-btn active" data-subject="role">👤 Ruolo</button>
           <button onclick="setQuerySubject('company',this)" class="qb-btn" data-subject="company">🏢 Azienda</button>
-          <button onclick="setQuerySubject('area',this)" class="qb-btn" data-subject="area">🎯 Area funzionale</button>
-          <button onclick="setQuerySubject('ta',this)" class="qb-btn" data-subject="ta">🧬 Area terapeutica</button>
+          <button onclick="setQuerySubject('area',this)" class="qb-btn" data-subject="area">🎯 Area</button>
+          <button onclick="setQuerySubject('ta',this)" class="qb-btn" data-subject="ta">🧬 Terapeutica</button>
           <button onclick="setQuerySubject('geo',this)" class="qb-btn" data-subject="geo">📍 Regione</button>
           <button onclick="setQuerySubject('salary',this)" class="qb-btn" data-subject="salary">💶 Salary</button>
           <button onclick="setQuerySubject('sector',this)" class="qb-btn" data-subject="sector">🏭 Settore</button>
         </div>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-secondary" onclick="resetQuery()" style="padding:8px 14px;font-size:12px;">↺ Reset</button>
+          <button class="btn btn-primary" onclick="runMarketQuery()" id="btn-run-query" style="padding:8px 20px;font-size:13px;font-weight:700;">
+            🔍 Analizza mercato
+          </button>
+          <button class="btn btn-pdf" onclick="exportPDF()" style="padding:8px 14px;font-size:12px;">⬇ Export</button>
+        </div>
       </div>
 
-      <!-- Step 2: Filtri dinamici -->
-      <div style="margin-bottom:24px;" id="qb-filters">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">2 · Filtra</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;" id="qb-filter-grid">
+      <!-- Riga 2: Tipo analisi sempre visibile -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0;" id="qb-analysis-buttons">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;align-self:center;">Tipo:</div>
+        <button onclick="setQueryAnalysis('market',this)" class="qb-btn active" data-analysis="market">📊 Market Overview</button>
+        <button onclick="setQueryAnalysis('salary',this)" class="qb-btn" data-analysis="salary">💶 Salary Benchmark</button>
+        <button onclick="setQueryAnalysis('hiring',this)" class="qb-btn" data-analysis="hiring">📈 Hiring Trend</button>
+        <button onclick="setQueryAnalysis('company',this)" class="qb-btn" data-analysis="company">🏢 Company Intel</button>
+        <button onclick="setQueryAnalysis('geographic',this)" class="qb-btn" data-analysis="geographic">📍 Geographic</button>
+        <button onclick="setQueryAnalysis('talent',this)" class="qb-btn" data-analysis="talent">🎯 Talent Intel</button>
+      </div>
+
+      <!-- Filtri avanzati — collassabili -->
+      <div id="qb-filters" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:12px;">Filtri avanzati</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;" id="qb-filter-grid">
           <div class="filter-group">
             <div class="filter-label">Area funzionale</div>
             <select id="qb-area">
@@ -313,7 +342,7 @@ a.job-link:hover{text-decoration:underline;}
               <option value="TI">Indeterminato</option>
               <option value="TD">Determinato</option>
               <option value="Stage">Stage</option>
-              <option value="Freelance">Freelance</option>
+              <option value="Agenzia">Agenzia</option>
             </select>
           </div>
           <div class="filter-group">
@@ -335,159 +364,284 @@ a.job-link:hover{text-decoration:underline;}
           </div>
         </div>
       </div>
-
-      <!-- Step 3: Tipo analisi -->
-      <div style="margin-bottom:24px;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">3 · Tipo di analisi</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;" id="qb-analysis-buttons">
-          <button onclick="setQueryAnalysis('market',this)" class="qb-btn active" data-analysis="market">📊 Market Overview</button>
-          <button onclick="setQueryAnalysis('salary',this)" class="qb-btn" data-analysis="salary">💶 Salary Benchmark</button>
-          <button onclick="setQueryAnalysis('hiring',this)" class="qb-btn" data-analysis="hiring">📈 Hiring Trend</button>
-          <button onclick="setQueryAnalysis('company',this)" class="qb-btn" data-analysis="company">🏢 Company Intelligence</button>
-          <button onclick="setQueryAnalysis('geographic',this)" class="qb-btn" data-analysis="geographic">📍 Geographic</button>
-          <button onclick="setQueryAnalysis('talent',this)" class="qb-btn" data-analysis="talent">🎯 Talent Intelligence</button>
-        </div>
-      </div>
-
-      <!-- Run button -->
-      <div style="display:flex;justify-content:center;gap:12px;">
-        <button class="btn btn-primary" onclick="runMarketQuery()" id="btn-run-query" style="padding:14px 40px;font-size:15px;font-weight:700;border-radius:12px;">
-          🔍 Analizza il mercato
-        </button>
-        <button class="btn btn-secondary" onclick="resetQuery()" style="padding:14px 20px;font-size:13px;">
-          ↺ Reset
-        </button>
-        <button class="btn btn-pdf" onclick="exportPDF()" style="padding:14px 20px;font-size:13px;">
-          ⬇ Export
-        </button>
-      </div>
     </div>
 
-    <!-- RISULTATI QUERY -->
+    <!-- ═══════════════════════════════════════
+         RISULTATI — mostrati dopo runMarketQuery()
+    ═══════════════════════════════════════ -->
     <div id="qb-results" style="display:none;">
 
-      <!-- Context bar -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding:12px 20px;background:var(--surface2);border-radius:10px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);" id="qb-context-label">—</div>
-        <div style="font-size:12px;color:var(--text2);" id="qb-context-count">—</div>
-      </div>
+      <!-- ── HERO SECTION ── -->
+      <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:20px;margin-bottom:20px;">
 
-      <!-- Score Engine -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;" id="dash-scores">
-        <div class="score-card">
-          <div class="score-card-label">Hiring Momentum</div>
-          <div class="score-ring" id="dash-score-momentum" style="margin:0 auto 8px;">—</div>
-          <div style="font-size:10px;color:var(--text2);text-align:center;" id="dash-score-momentum-label">—</div>
-          <div class="score-bar"><div class="score-bar-fill" id="dash-score-momentum-bar" style="width:0%;background:var(--success)"></div></div>
-        </div>
-        <div class="score-card">
-          <div class="score-card-label">Salary Attractiveness</div>
-          <div class="score-ring" id="dash-score-salary" style="margin:0 auto 8px;">—</div>
-          <div style="font-size:10px;color:var(--text2);text-align:center;" id="dash-score-salary-label">—</div>
-          <div class="score-bar"><div class="score-bar-fill" id="dash-score-salary-bar" style="width:0%;background:var(--accent)"></div></div>
-        </div>
-        <div class="score-card">
-          <div class="score-card-label">Market Depth</div>
-          <div class="score-ring" id="dash-score-depth" style="margin:0 auto 8px;">—</div>
-          <div style="font-size:10px;color:var(--text2);text-align:center;" id="dash-score-depth-label">—</div>
-          <div class="score-bar"><div class="score-bar-fill" id="dash-score-depth-bar" style="width:0%;background:var(--accent2)"></div></div>
-        </div>
-        <div class="score-card">
-          <div class="score-card-label">Talent Scarcity</div>
-          <div class="score-ring" id="dash-score-scarcity" style="margin:0 auto 8px;">—</div>
-          <div style="font-size:10px;color:var(--text2);text-align:center;" id="dash-score-scarcity-label">—</div>
-          <div class="score-bar"><div class="score-bar-fill" id="dash-score-scarcity-bar" style="width:0%;background:var(--danger)"></div></div>
-        </div>
-      </div>
+        <!-- Colonna sinistra: KPI primari + context -->
+        <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border:1px solid rgba(99,102,241,0.3);border-radius:16px;padding:24px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#6366f1;margin-bottom:4px;">Analisi in corso</div>
+          <div style="font-size:17px;font-weight:800;color:white;margin-bottom:2px;" id="qb-context-label">Life Sciences Italia</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:20px;" id="qb-context-count">—</div>
 
-      <!-- AI Summary -->
-      <div class="ai-summary-card" id="dash-ai-card">
-        <div class="ai-summary-header">🤖 AI Market Intelligence — <span id="dash-ai-sector-label">Life Sciences Italia</span></div>
-        <div class="ai-summary-text" id="dash-ai-text">⏳ Generazione analisi AI...</div>
-        <div class="ai-insights-grid" id="dash-ai-insights"></div>
-      </div>
+          <!-- KPI primari -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Annunci</div>
+              <div style="font-size:28px;font-weight:800;color:white;" id="stat-total">—</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);" id="stat-trend-delta">nel database</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Aziende</div>
+              <div style="font-size:28px;font-weight:800;color:white;" id="stat-companies-unique">—</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">che assumono</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">RAL media</div>
+              <div style="font-size:28px;font-weight:800;color:#f59e0b;" id="stat-ral-avg">—</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">mercato</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Attive 90gg</div>
+              <div style="font-size:28px;font-weight:800;color:#10b981;" id="stat-active-90">—</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">aziende recenti</div>
+            </div>
+          </div>
 
-      <!-- Output dinamico per tipo analisi -->
-      <div id="qb-output-market">
-        <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Executive Summary</div>
-        <div class="stats-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:24px;">
-          <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="stat-total">—</div><div class="stat-sub">nel database</div></div>
-          <div class="stat-card"><div class="stat-label">Aziende uniche</div><div class="stat-value" id="stat-companies-unique">—</div><div class="stat-sub">che assumono</div></div>
-          <div class="stat-card"><div class="stat-label">Attive 90gg</div><div class="stat-value" id="stat-active-90">—</div><div class="stat-sub">aziende recenti</div></div>
-          <div class="stat-card"><div class="stat-label">Con RAL</div><div class="stat-value" id="stat-ral">—</div><div class="stat-sub" id="stat-ral-pct"></div></div>
-          <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="stat-ral-avg">—</div><div class="stat-sub">mercato</div></div>
-          <div class="stat-card"><div class="stat-label">Classificati v2</div><div class="stat-value" id="stat-classified">—</div><div class="stat-sub" id="stat-classified-pct"></div></div>
+          <!-- KPI secondari -->
+          <div style="display:flex;gap:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
+            <div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">30gg</div>
+              <div style="font-size:15px;font-weight:700;color:white;" id="stat-trend-30">—</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">90gg</div>
+              <div style="font-size:15px;font-weight:700;color:white;" id="stat-trend-90">—</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">12 mesi</div>
+              <div style="font-size:15px;font-weight:700;color:white;" id="stat-trend-365">—</div>
+            </div>
+            <div style="margin-left:auto;text-align:right;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);">Con RAL</div>
+              <div style="font-size:15px;font-weight:700;color:#f59e0b;" id="stat-ral">—</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);" id="stat-ral-pct"></div>
+            </div>
+          </div>
         </div>
-        <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Hiring Trends</div>
-        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px;">
-          <div class="stat-card"><div class="stat-label">Ultimi 30 giorni</div><div class="stat-value" id="stat-trend-30">—</div><div class="stat-sub">nuovi annunci</div></div>
-          <div class="stat-card"><div class="stat-label">Ultimi 90 giorni</div><div class="stat-value" id="stat-trend-90">—</div><div class="stat-sub">nuovi annunci</div></div>
-          <div class="stat-card"><div class="stat-label">Ultimi 12 mesi</div><div class="stat-value" id="stat-trend-365">—</div><div class="stat-sub">nuovi annunci</div></div>
-        </div>
-      </div>
 
-      <!-- Charts principali — sempre visibili -->
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Funzioni più richieste</div>
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">Aree funzionali</div>
-          <div id="chart-area"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Sottoaree</div>
-          <div id="chart-subarea"></div>
-        </div>
-      </div>
+        <!-- Colonna destra: AI Executive Summary a 4 quadranti -->
+        <div style="background:linear-gradient(135deg,#1a0533 0%,#2d1065 100%);border:1px solid rgba(139,92,246,0.4);border-radius:16px;padding:24px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+            <div style="width:8px;height:8px;border-radius:50%;background:#8b5cf6;animation:pulse 2s infinite;"></div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8b5cf6;">AI Executive Intelligence</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.3);margin-left:auto;" id="dash-ai-sector-label">Life Sciences Italia</div>
+          </div>
 
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Role Family Intelligence</div>
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">Famiglie di ruolo</div>
-          <div id="chart-role-family"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Ruoli canonici più richiesti</div>
-          <div id="chart-canonical-role"></div>
-        </div>
-      </div>
+          <!-- 4 quadranti AI -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" id="dash-ai-card">
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px;border-left:3px solid #3b82f6;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#3b82f6;margin-bottom:6px;">📊 Situazione</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.8);line-height:1.5;" id="ai-q-situation">⏳ Analisi in corso...</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px;border-left:3px solid #10b981;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#10b981;margin-bottom:6px;">🚀 Opportunità</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.8);line-height:1.5;" id="ai-q-opportunity">⏳ Analisi in corso...</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px;border-left:3px solid #ef4444;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#ef4444;margin-bottom:6px;">⚠️ Criticità</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.8);line-height:1.5;" id="ai-q-risk">⏳ Analisi in corso...</div>
+            </div>
+            <div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px;border-left:3px solid #f59e0b;">
+              <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:6px;">🔮 Previsione</div>
+              <div style="font-size:11px;color:rgba(255,255,255,0.8);line-height:1.5;" id="ai-q-forecast">⏳ Analisi in corso...</div>
+            </div>
+          </div>
 
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">Area terapeutica</div>
-          <div id="chart-therapeutic"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Distribuzione seniority</div>
-          <div id="chart-seniority"></div>
+          <!-- testo AI completo nascosto (usato per compatibilità JS esistente) -->
+          <div id="dash-ai-text" style="display:none;"></div>
+          <div id="dash-ai-insights" style="display:none;"></div>
         </div>
       </div>
 
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Salary Intelligence</div>
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">RAL media per area funzionale</div>
-          <div id="chart-ral"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Distribuzione percentili RAL</div>
-          <div id="chart-percentiles"></div>
+      <!-- ── SCORE ENGINE ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;margin-bottom:20px;" id="dash-scores">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:var(--text2);margin-bottom:16px;">Score Engine — Metriche di mercato</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;">
+
+          <!-- Momentum -->
+          <div style="border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;background:rgba(16,185,129,0.04);cursor:help;" title="Misura la velocità di crescita degli annunci negli ultimi 30 giorni rispetto alla media storica">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--text);">Hiring Momentum</div>
+              <div style="font-size:22px;font-weight:800;color:#10b981;" id="dash-score-momentum">—</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden;">
+              <div class="score-bar-fill" id="dash-score-momentum-bar" style="width:0%;height:100%;background:#10b981;border-radius:3px;transition:width 1s;"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text2);line-height:1.4;" id="dash-score-momentum-label">Velocità di crescita annunci</div>
+          </div>
+
+          <!-- Salary -->
+          <div style="border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:16px;background:rgba(245,158,11,0.04);cursor:help;" title="Indice di competitività salariale rispetto alla media del settore Life Sciences">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--text);">Salary Attractiveness</div>
+              <div style="font-size:22px;font-weight:800;color:#f59e0b;" id="dash-score-salary">—</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden;">
+              <div class="score-bar-fill" id="dash-score-salary-bar" style="width:0%;height:100%;background:#f59e0b;border-radius:3px;transition:width 1s;"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text2);line-height:1.4;" id="dash-score-salary-label">Competitività retributiva</div>
+          </div>
+
+          <!-- Depth -->
+          <div style="border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px;background:rgba(99,102,241,0.04);cursor:help;" title="Misura la varietà e profondità dei profili ricercati nel mercato selezionato">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--text);">Market Depth</div>
+              <div style="font-size:22px;font-weight:800;color:#6366f1;" id="dash-score-depth">—</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden;">
+              <div class="score-bar-fill" id="dash-score-depth-bar" style="width:0%;height:100%;background:#6366f1;border-radius:3px;transition:width 1s;"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text2);line-height:1.4;" id="dash-score-depth-label">Varietà profili ricercati</div>
+          </div>
+
+          <!-- Scarcity -->
+          <div style="border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;background:rgba(239,68,68,0.04);cursor:help;" title="Indice di difficoltà nel reperimento dei profili: più alto = più difficile trovare candidati">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--text);">Talent Scarcity</div>
+              <div style="font-size:22px;font-weight:800;color:#ef4444;" id="dash-score-scarcity">—</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden;">
+              <div class="score-bar-fill" id="dash-score-scarcity-bar" style="width:0%;height:100%;background:#ef4444;border-radius:3px;transition:width 1s;"></div>
+            </div>
+            <div style="font-size:10px;color:var(--text2);line-height:1.4;" id="dash-score-scarcity-label">Difficoltà reperimento</div>
+          </div>
+
         </div>
       </div>
 
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Market Intelligence</div>
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">Top aziende</div>
-          <div id="chart-companies"></div>
+      <!-- ── SEZIONE 1: MARKET OVERVIEW ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;" id="qb-output-market">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-market')">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">📈 Sezione 1 — Market Overview</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px;">Trend di hiring, volume annunci e distribuzione geografica</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);" id="sec-market-toggle">▼</div>
         </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Settori</div>
-          <div id="chart-sector"></div>
+        <div id="sec-market" style="padding:20px 24px;">
+          <!-- Hiring trend KPI inline -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+            <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:3px solid #3b82f6;">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Ultimi 30gg</div>
+              <div style="font-size:22px;font-weight:800;color:#3b82f6;" id="stat-trend-30b">—</div>
+              <div style="font-size:10px;color:var(--text2);">nuovi annunci</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:3px solid #6366f1;">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Ultimi 90gg</div>
+              <div style="font-size:22px;font-weight:800;color:#6366f1;" id="stat-trend-90b">—</div>
+              <div style="font-size:10px;color:var(--text2);">nuovi annunci</div>
+            </div>
+            <div style="background:var(--surface2);border-radius:10px;padding:14px;border-left:3px solid var(--text2);">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">12 mesi</div>
+              <div style="font-size:22px;font-weight:800;color:var(--text);" id="stat-trend-365b">—</div>
+              <div style="font-size:10px;color:var(--text2);">nuovi annunci</div>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <div class="chart-card-title">Top aziende</div>
+              <div id="chart-companies"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Settori</div>
+              <div id="chart-sector"></div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Detail panel -->
-      <div id="detail-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <!-- ── SEZIONE 2: RUOLI & COMPETENZE ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-roles')">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">🎯 Sezione 2 — Ruoli & Competenze</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px;">Aree funzionali, role family, seniority e profili più richiesti</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);" id="sec-roles-toggle">▼</div>
+        </div>
+        <div id="sec-roles" style="padding:20px 24px;">
+          <div class="chart-grid" style="margin-bottom:20px;">
+            <div class="chart-card">
+              <div class="chart-card-title">Aree funzionali</div>
+              <div id="chart-area"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Sottoaree</div>
+              <div id="chart-subarea"></div>
+            </div>
+          </div>
+          <div class="chart-grid" style="margin-bottom:20px;">
+            <div class="chart-card">
+              <div class="chart-card-title">Famiglie di ruolo</div>
+              <div id="chart-role-family"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Ruoli canonici più richiesti</div>
+              <div id="chart-canonical-role"></div>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <div class="chart-card-title">Area terapeutica</div>
+              <div id="chart-therapeutic"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Distribuzione seniority</div>
+              <div id="chart-seniority"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SEZIONE 3: SALARY INTELLIGENCE ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-salary')">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">💶 Sezione 3 — Salary Intelligence</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px;">RAL media per area, percentili e distribuzione retributiva</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);" id="sec-salary-toggle">▼</div>
+        </div>
+        <div id="sec-salary" style="padding:20px 24px;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:#f59e0b;text-transform:uppercase;letter-spacing:1px;">Con RAL</div>
+              <div style="font-size:22px;font-weight:800;color:#f59e0b;" id="stat-ral-b">—</div>
+              <div style="font-size:10px;color:var(--text2);" id="stat-ral-pct-b">annunci con retribuzione</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:#f59e0b;text-transform:uppercase;letter-spacing:1px;">RAL media</div>
+              <div style="font-size:22px;font-weight:800;color:#f59e0b;" id="stat-ral-avg-b">—</div>
+              <div style="font-size:10px;color:var(--text2);">mercato selezionato</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:14px;">
+              <div style="font-size:10px;color:#f59e0b;text-transform:uppercase;letter-spacing:1px;">Classificati v2</div>
+              <div style="font-size:22px;font-weight:800;color:var(--text);" id="stat-classified">—</div>
+              <div style="font-size:10px;color:var(--text2);" id="stat-classified-pct">annunci classificati</div>
+            </div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <div class="chart-card-title">RAL media per area funzionale</div>
+              <div id="chart-ral"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Distribuzione percentili RAL</div>
+              <div id="chart-percentiles"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail panel — ora posizionato qui per compatibilità -->
+      <div id="detail-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div style="font-weight:700;font-size:16px;" id="detail-title">—</div>
           <button onclick="document.getElementById('detail-panel').style.display='none'" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">✕</button>
@@ -495,21 +649,20 @@ a.job-link:hover{text-decoration:underline;}
         <div id="detail-body"></div>
       </div>
 
-      <!-- Insights -->
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Market Insights</div>
-      <div id="insight-cards" class="chart-grid"></div>
+      <!-- Market Insights -->
+      <div style="margin-bottom:8px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.5px;">Market Insights</div>
+      <div id="insight-cards" class="chart-grid" style="margin-bottom:20px;"></div>
 
     </div>
 
     <!-- Empty state iniziale -->
     <div id="qb-empty" style="text-align:center;padding:60px 24px;color:var(--text2);">
-      <div style="font-size:64px;margin-bottom:20px;">🔬</div>
-      <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:10px;">Pronto ad analizzare il mercato</div>
-      <div style="font-size:14px;max-width:500px;margin:0 auto;">Seleziona cosa vuoi analizzare, imposta i filtri e scegli il tipo di analisi. Il sistema genererà insight personalizzati.</div>
+      <div style="font-size:56px;margin-bottom:16px;">🔬</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">Pronto ad analizzare il mercato</div>
+      <div style="font-size:13px;max-width:440px;margin:0 auto;color:var(--text2);">Seleziona il tipo di analisi, configura i filtri se necessario e clicca <strong style="color:var(--accent);">Analizza mercato</strong>.</div>
     </div>
 
   </div>
-
 
   <!-- ANNUNCI -->
   <div class="view" id="view-listings">
@@ -3746,6 +3899,8 @@ async function renderQueryResults(data, analysisType, contextLabel){
   document.getElementById('stat-trend-30').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
   document.getElementById('stat-trend-90').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
   document.getElementById('stat-trend-365').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d365).length;
+  // Sync KPI nelle sezioni collassabili
+  setTimeout(syncDashboardKPIs, 50);
 
   // Charts — sempre
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
@@ -3783,11 +3938,27 @@ async function renderQueryResults(data, analysisType, contextLabel){
   if(aiCard)aiCard.style.display='block';
   document.getElementById('dash-ai-sector-label').textContent=contextLabel;
   document.getElementById('dash-ai-text').textContent='⏳ Generazione AI intelligence...';
+  // Azzera quadranti in attesa
+  ['ai-q-situation','ai-q-opportunity','ai-q-risk','ai-q-forecast'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.textContent='⏳ Analisi in corso...';
+  });
   generateDashboardAISummary(data, contextLabel).then(result=>{
-    document.getElementById('dash-ai-text').textContent=result.summary||'';
+    const summary=result.summary||'';
+    document.getElementById('dash-ai-text').textContent=summary;
+    // Popola i 4 quadranti AI
+    renderAIQuadrants(summary);
+    // Sync KPI duplicati nelle sezioni
+    setTimeout(syncDashboardKPIs, 100);
     const insEl=document.getElementById('dash-ai-insights');
     if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
-  }).catch(()=>{document.getElementById('dash-ai-text').textContent='AI summary non disponibile.';});
+  }).catch(()=>{
+    document.getElementById('dash-ai-text').textContent='AI summary non disponibile.';
+    ['ai-q-situation','ai-q-opportunity','ai-q-risk','ai-q-forecast'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.textContent='—';
+    });
+  });
 
   _dashListings=data;
 }
@@ -6858,6 +7029,68 @@ async function refreshPendingBadges(){
     if(badge2){ badge2.textContent = unnorm.length; badge2.style.display = unnorm.length ? '' : 'none'; }
   }catch(e){}
 }
+
+
+/* ═══════════════════════════════════════════════════
+   MARKET OVERVIEW — NEW UX FUNCTIONS
+═══════════════════════════════════════════════════ */
+
+function toggleQueryBuilder(){
+  const filters = document.getElementById('qb-filters');
+  const btn = document.getElementById('qb-toggle-btn');
+  if(!filters || !btn) return;
+  const isOpen = filters.style.display !== 'none';
+  filters.style.display = isOpen ? 'none' : '';
+  btn.textContent = isOpen ? '▼ Espandi filtri' : '▲ Chiudi filtri';
+}
+
+function toggleSection(id){
+  const el = document.getElementById(id);
+  const toggle = document.getElementById(id + '-toggle');
+  if(!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : '';
+  if(toggle) toggle.textContent = isOpen ? '▶' : '▼';
+}
+
+// Override AI summary rendering per popolare i 4 quadranti
+function renderAIQuadrants(text){
+  if(!text) return;
+  // Cerca pattern nei 4 quadranti
+  const sit = document.getElementById('ai-q-situation');
+  const opp = document.getElementById('ai-q-opportunity');
+  const risk = document.getElementById('ai-q-risk');
+  const fore = document.getElementById('ai-q-forecast');
+  if(!sit) return;
+
+  // Split il testo in 4 parti approssimative
+  const lines = text.split(/\n+/).filter(l => l.trim().length > 10);
+  const quarter = Math.ceil(lines.length / 4);
+  sit.textContent = lines.slice(0, quarter).join(' ').substring(0, 180) || text.substring(0, 180);
+  opp.textContent = lines.slice(quarter, quarter*2).join(' ').substring(0, 180) || '—';
+  risk.textContent = lines.slice(quarter*2, quarter*3).join(' ').substring(0, 180) || '—';
+  fore.textContent = lines.slice(quarter*3).join(' ').substring(0, 180) || '—';
+}
+
+// Sync KPI duplicati (Hero usa stat-trend-30, sezioni usano stat-trend-30b)
+function syncDashboardKPIs(){
+  const pairs = [
+    ['stat-trend-30','stat-trend-30b'],
+    ['stat-trend-90','stat-trend-90b'],
+    ['stat-trend-365','stat-trend-365b'],
+    ['stat-ral','stat-ral-b'],
+    ['stat-ral-avg','stat-ral-avg-b'],
+    ['stat-ral-pct','stat-ral-pct-b'],
+  ];
+  pairs.forEach(([src, dst]) => {
+    const s = document.getElementById(src);
+    const d = document.getElementById(dst);
+    if(s && d) d.textContent = s.textContent;
+  });
+}
+
+// Hook nel ciclo di render esistente
+const _origRunMarketQuery = typeof runMarketQuery === 'function' ? runMarketQuery : null;
 
 </script>
 </body>
