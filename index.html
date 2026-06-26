@@ -238,6 +238,14 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
+      <!-- Campo ricerca per soggetto (appare solo per role/company/geo) -->
+      <div id="qb-subject-search-box" style="display:none;margin-bottom:10px;">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px;" id="qb-subject-search-label"></div>
+        <input type="text" id="qb-subject-search" placeholder="Cerca..."
+          style="width:100%;max-width:400px;padding:8px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--surface2);color:var(--text);font-size:13px;"
+          onkeydown="if(event.key==='Enter')runMarketQuery()">
+      </div>
+
       <!-- Riga 2: Tipo analisi sempre visibile -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0;" id="qb-analysis-buttons">
         <div style="font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;align-self:center;">Tipo:</div>
@@ -3943,6 +3951,33 @@ function setQuerySubject(subject, btn){
     b.classList.remove('active');
   });
   if(btn) btn.classList.add('active');
+
+  // Mostra/nascondi campo di ricerca per soggetto specifico
+  const searchBox = document.getElementById('qb-subject-search-box');
+  const searchInput = document.getElementById('qb-subject-search');
+  const searchLabel = document.getElementById('qb-subject-search-label');
+
+  const needsSearch = ['role','company','area','ta','geo','salary','sector'].includes(subject);
+  const labels = {
+    role:'Cerca ruolo (es. Medical Advisor, MSL...)',
+    company:'Cerca azienda (es. Chiesi, Recordati...)',
+    area:'Lascia vuoto per tutte le aree, oppure seleziona dal filtro "Area funzionale"',
+    ta:'Lascia vuoto per tutte, oppure seleziona dal filtro "Area terapeutica"',
+    geo:'Cerca regione (es. Lombardia, Lazio...)',
+    salary:'Analisi salary — usa i filtri per restringere',
+    sector:'Lascia vuoto per tutti i settori, oppure seleziona dal filtro "Settore"',
+  };
+
+  if(searchBox && searchInput && searchLabel){
+    if(subject === 'role' || subject === 'company' || subject === 'geo'){
+      searchBox.style.display = '';
+      searchLabel.textContent = labels[subject]||'';
+      searchInput.placeholder = labels[subject]||'';
+      searchInput.value = '';
+    } else {
+      searchBox.style.display = 'none';
+    }
+  }
 }
 
 function setQueryAnalysis(analysis, btn){
@@ -3985,33 +4020,55 @@ async function runMarketQuery(){
   const ralFilter=document.getElementById('qb-ral').value;
   const period=document.getElementById('qb-period').value;
 
-  // Costruisce query
-  let q='job_listings?select=*&order=published_date.desc.nullslast&limit=1000';
-  if(area)q+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
-  if(sector)q+=`&sector_v2=eq.${encodeURIComponent(sector)}`;
-  if(ta)q+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
-  if(seniority)q+=`&seniority_v2=eq.${encodeURIComponent(seniority)}`;
-  if(region)q+=`&location=ilike.*${encodeURIComponent(region)}*`;
-  if(contract)q+=`&contract_type=eq.${encodeURIComponent(contract)}`;
-  if(ralFilter==='yes')q+=`&or=(ral_min.not.is.null,ral_max.not.is.null)`;
+  // Valore campo ricerca soggetto
+  const subjectSearch=(document.getElementById('qb-subject-search')?.value||'').trim();
+
+  // Costruisce query con soggetto
+  let q='job_listings?select=*&order=published_date.desc.nullslast&limit=1500';
+
+  if(_qbSubject==='role'&&subjectSearch)
+    q+='&job_title=ilike.*'+encodeURIComponent(subjectSearch)+'*';
+  else if(_qbSubject==='company'&&subjectSearch)
+    q+='&or=(ragione_sociale.ilike.*'+encodeURIComponent(subjectSearch)+'*,company_name.ilike.*'+encodeURIComponent(subjectSearch)+'*)';
+  else if(_qbSubject==='geo'&&subjectSearch)
+    q+='&location=ilike.*'+encodeURIComponent(subjectSearch)+'*';
+  else if(_qbSubject==='area'&&area)
+    q+='&functional_area_v2=eq.'+encodeURIComponent(area);
+  else if(_qbSubject==='ta'&&ta)
+    q+='&therapeutic_area=eq.'+encodeURIComponent(ta);
+  else if(_qbSubject==='sector'&&sector)
+    q+='&sector_v2=eq.'+encodeURIComponent(sector);
+  else if(_qbSubject==='salary')
+    q+='&or=(ral_min.not.is.null,ral_max.not.is.null)';
+
+  if(area&&_qbSubject!=='area')q+='&functional_area_v2=eq.'+encodeURIComponent(area);
+  if(sector&&_qbSubject!=='sector')q+='&sector_v2=eq.'+encodeURIComponent(sector);
+  if(ta&&_qbSubject!=='ta')q+='&therapeutic_area=eq.'+encodeURIComponent(ta);
+  if(seniority)q+='&seniority_v2=eq.'+encodeURIComponent(seniority);
+  if(region&&_qbSubject!=='geo')q+='&location=ilike.*'+encodeURIComponent(region)+'*';
+  if(contract)q+='&contract_type=eq.'+encodeURIComponent(contract);
+  if(ralFilter==='yes')q+='&or=(ral_min.not.is.null,ral_max.not.is.null)';
   if(period){
     const cutoff=new Date(Date.now()-parseInt(period)*864e5).toISOString().split('T')[0];
-    q+=`&published_date=gte.${cutoff}`;
+    q+='&published_date=gte.'+cutoff;
   }
 
   try{
     const data=await api(q);
 
     // Context label
+    const subjectLabels={role:'Ruolo',company:'Azienda',area:'Area',ta:'Area Terapeutica',geo:'Regione',salary:'Salary',sector:'Settore'};
     const filters=[];
-    if(area)filters.push(area.replace(/_/g,' '));
-    if(sector)filters.push(sector.replace(/_/g,' '));
-    if(ta)filters.push(ta.replace(/_/g,' '));
-    if(seniority)filters.push(seniority.replace(/_/g,' '));
+    if(subjectSearch)filters.push(subjectLabels[_qbSubject]+': "'+subjectSearch+'"');
+    if(area&&!subjectSearch)filters.push(toLabel(area));
+    if(sector&&!subjectSearch)filters.push(toLabel(sector));
+    if(ta&&!subjectSearch)filters.push(toLabel(ta));
+    if(seniority)filters.push(toLabel(seniority));
     if(region)filters.push(region);
-    const contextLabel=filters.length?filters.join(' · '):'Tutto il mercato Life Sciences';
-    document.getElementById('qb-context-label').textContent=`📊 Analisi: ${contextLabel}`;
-    document.getElementById('qb-context-count').textContent=`${data.length} annunci trovati`;
+    if(period)filters.push('Ultimi '+period+'gg');
+    const contextLabel=filters.length?filters.join(' - '):'Tutto il mercato Life Sciences';
+    document.getElementById('qb-context-label').textContent=contextLabel;
+    document.getElementById('qb-context-count').textContent=data.length+' annunci trovati';
 
     // Renderizza in base al tipo di analisi
     await renderQueryResults(data, _qbAnalysis, contextLabel);
