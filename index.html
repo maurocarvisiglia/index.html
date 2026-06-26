@@ -270,6 +270,8 @@ a.job-link:hover{text-decoration:underline;}
               <option value="hr">HR</option>
               <option value="it">IT</option>
               <option value="business_development">Business Development</option>
+              <option value="healthcare_services">Healthcare Services</option>
+              <option value="general_management">General Management</option>
             </select>
           </div>
           <div class="filter-group">
@@ -4537,6 +4539,8 @@ const LABEL_MAP = {
   manufacturing:'Manufacturing / Produzione', supply_chain:'Supply Chain / Logistica',
   finance:'Finance / Controllo', hr:'Human Resources', it:'IT / Digital',
   business_development:'Business Development',
+  healthcare_services:'Healthcare Services',
+  general_management:'General Management',
   // Settori
   pharma_rx:'Pharma RX', biotech:'Biotech', medical_devices:'Medical Devices',
   diagnostics:'Diagnostics', cro:'CRO', cdmo:'CDMO', consumer_health:'Consumer Health',
@@ -4777,6 +4781,7 @@ FUNCTIONAL_AREA_V2:
 - hr: HR Business Partner, Talent Acquisition, L&D, C&B, HR Manager
 - it: IT, Digital, Software, Data Engineer, System Administrator
 - business_development: BD, Licensing, Partnerships, M&A
+- healthcare_services: Medici, Infermieri, Fisioterapisti, Farmacisti, Biologi clinici, Operatori sanitari, Tecnici radiologi, Igienisti, Logopedisti, Nutrizionisti
 - general_management: General Manager, Country Manager, CEO, COO, Managing Director
 
 SUB_AREA — codice breve (esempi):
@@ -7335,6 +7340,7 @@ const AREA_OPTIONS = [
   {v:'hr',l:'Human Resources'},
   {v:'it',l:'IT / Digital'},
   {v:'business_development',l:'Business Development'},
+  {v:'healthcare_services',l:'Healthcare Services (Medici, Infermieri, Fisioterapisti)'},
   {v:'general_management',l:'General Management'},
 ];
 
@@ -7355,6 +7361,7 @@ const AREA_REGEX_RULES = [
   {re:/\bhr\b|human resources|talent acquisition|people.*relations|labour relations|head.*people|hrbp|hr.*business.*partner|recruiting|recruiter/i, v:'hr'},
   {re:/\bit\b|software|digital.*services|data engineer|system.*specialist|network|cybersecurity|ai engineer|mes.*engineer|full.*stack|bi.*support|functional.*analyst|information.*technology/i, v:'it'},
   {re:/business development|licensing|partnership|m&a|alliance|franchise.*head/i, v:'business_development'},
+  {re:/fisioterapista|infermier|medico|dottore|biologo.*clinico|farmacista|health.*professional|operatore.*sanitario|educatore|ospedale|ambulatorio|clinica|assistente.*sanitario|tecnico.*radiolog|igienista|logopedista|nutrizionista/i, v:'healthcare_services'},
   {re:/general manager|country manager|\bceo\b|\bcoo\b|\bcfo\b|managing director|direttore.*generale|direzione/i, v:'general_management'},
   {re:/manutenzione|maintenance|tecnico.*campo|tornitore|cnc|field.*service.*engineer|filter.*assembly/i, v:'manufacturing'},
   {re:/segreteria|assistente.*direzione|front.*office|administrative|back.*office|office.*clerk/i, v:'hr'},
