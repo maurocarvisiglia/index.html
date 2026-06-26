@@ -6002,56 +6002,6 @@ async function exportRoleIntelligencePDF(){
     <style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style>
     </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}
 
-
-<!-- MODAL TAXONOMY MAPPER -->
-<div class="modal-overlay" id="modal-taxonomy-mapper">
-  <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
-    <div class="modal-title">🗂️ Mappa Tassonomia — Step 3</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
-      Assegna <strong>Role Family</strong> e <strong>Canonical Role</strong> ai titoli non ancora classificati.
-    </div>
-    <div id="taxonomy-mapper-body" style="overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
-      <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- MODAL AREA CLASSIFIER -->
-<div class="modal-overlay" id="modal-area-classifier">
-  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
-    <div class="modal-title">🗂️ Classificatore Aree Funzionali</div>
-
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
-      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="autoClassifyAreas()" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
-        <button class="btn btn-secondary" onclick="applyAreaRegex()" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
-      </div>
-    </div>
-
-    <!-- Filtri rapidi -->
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
-      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
-      <button onclick="filterAreaClassifier('')" class="qb-btn active" id="acf-all">Tutti</button>
-      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
-      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
-      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
-      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
-      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
-      <button onclick="filterAreaClassifier(null)" class="qb-btn" id="acf-unset">⚠️ Non classificati</button>
-    </div>
-
-    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
-
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
-      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
-      <button class="btn btn-primary" onclick="saveAreaClassifications()">💾 Salva classificazioni</button>
-    </div>
-  </div>
 </div>
 
 </body></html>`);
@@ -7586,5 +7536,53 @@ async function autoClassifyAreas(){
 }
 
 </script>
+
+<!-- MODAL TAXONOMY MAPPER -->
+<div class="modal-overlay" id="modal-taxonomy-mapper">
+  <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🗂️ Mappa Tassonomia — Step 3</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+      Assegna <strong>Role Family</strong> e <strong>Canonical Role</strong> ai titoli non ancora classificati.
+    </div>
+    <div id="taxonomy-mapper-body" style="overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL AREA CLASSIFIER -->
+<div class="modal-overlay" id="modal-area-classifier">
+  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🗂️ Classificatore Aree Funzionali</div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="autoClassifyAreas()" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
+        <button class="btn btn-secondary" onclick="applyAreaRegex()" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
+      </div>
+    </div>
+
+    <!-- Filtri rapidi -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
+      <button onclick="filterAreaClassifier('')" class="qb-btn active" id="acf-all">Tutti</button>
+      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
+      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
+      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
+      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
+      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
+      <button onclick="filterAreaClassifier(null)" class="qb-btn" id="acf-unset">⚠️ Non classificati</button>
+    </div>
+
+    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
+      <button class="btn btn-primary" onclick="saveAreaClassifications()">💾 Salva classificazioni</button>
+    </div>
+  </div>
 </body>
 </html>
