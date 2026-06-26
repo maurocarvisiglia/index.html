@@ -4070,6 +4070,15 @@ async function runMarketQuery(){
     document.getElementById('qb-context-label').textContent=contextLabel;
     document.getElementById('qb-context-count').textContent=data.length+' annunci trovati';
 
+    // Titolo analisi nel QB
+    const analysisLabels = {
+      market:'Market Overview',salary:'Salary Benchmark',
+      hiring:'Hiring Trend',company:'Company Intelligence',
+      geographic:'Geographic Analysis',talent:'Talent Intelligence'
+    };
+    const analysisLabel = analysisLabels[_qbAnalysis]||'Market Overview';
+    document.getElementById('qb-context-label').textContent = analysisLabel+': '+contextLabel;
+
     // Renderizza in base al tipo di analisi
     await renderQueryResults(data, _qbAnalysis, contextLabel);
 
@@ -4123,7 +4132,47 @@ async function renderQueryResults(data, analysisType, contextLabel){
   // Sync KPI nelle sezioni collassabili
   setTimeout(syncDashboardKPIs, 50);
 
-  // Charts — sempre
+  // ── Visibilità sezioni per tipo di analisi ──
+  const sectionConfig = {
+    market:   {scores:1, market:1, roles:1, salary:1, company:1},
+    salary:   {scores:1, market:0, roles:0, salary:1, company:0},
+    hiring:   {scores:1, market:1, roles:0, salary:0, company:0},
+    company:  {scores:1, market:0, roles:0, salary:0, company:1},
+    geographic:{scores:0,market:1, roles:0, salary:0, company:0},
+    talent:   {scores:1, market:0, roles:1, salary:0, company:0},
+  };
+  const cfg = sectionConfig[analysisType] || sectionConfig.market;
+  const toggle = (id, show) => {
+    const el = document.getElementById(id);
+    if(el) el.style.display = show ? '' : 'none';
+  };
+  toggle('dash-scores',       cfg.scores);
+  toggle('qb-output-market',  cfg.market);
+  toggle('sec-market',        cfg.market);  // forza apertura
+  // Sezione Ruoli (sec-roles è dentro il div collassabile)
+  const secRolesParent = document.querySelector('[onclick="toggleSection('sec-roles')"]')?.parentElement?.parentElement;
+  if(secRolesParent) secRolesParent.style.display = cfg.roles ? '' : 'none';
+  // Sezione Salary
+  const secSalaryParent = document.querySelector('[onclick="toggleSection('sec-salary')"]')?.parentElement?.parentElement;
+  if(secSalaryParent) secSalaryParent.style.display = cfg.salary ? '' : 'none';
+  // Sezione Company
+  const secCompanyParent = document.querySelector('[onclick="toggleSection('sec-company')"]')?.parentElement?.parentElement;
+  if(secCompanyParent) secCompanyParent.style.display = cfg.company ? '' : 'none';
+
+  // Per Salary: apri sezione salary e scrolla
+  if(analysisType==='salary'){
+    const sal = document.getElementById('sec-salary');
+    if(sal) sal.style.display='';
+    const salToggle = document.getElementById('sec-salary-toggle');
+    if(salToggle) salToggle.textContent='▼';
+  }
+  // Per Company: apri sezione company
+  if(analysisType==='company'){
+    const comp = document.getElementById('sec-company');
+    if(comp) comp.style.display='';
+  }
+
+  // ── Charts — sempre (filtrati per tipo) ──
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
   renderClickableBar('chart-area',areaData,'','functional_area',data);
   renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue');
