@@ -5396,11 +5396,6 @@ initApp();
 
 
 
-`);
-  win.print();
-}
-
-
 
 async function loadRoleList(){
   try{
@@ -5519,19 +5514,12 @@ async function loadRoleIntelligence(){
       const pct=v=>Math.round((v-min)/range*100);
       ralBar.innerHTML=`
         <div style="position:relative;height:48px;margin:8px 0 4px;">
-          <!-- track -->
           <div style="position:absolute;top:20px;left:0;right:0;height:8px;background:var(--surface2);border-radius:4px;"></div>
-          <!-- p25-p75 range -->
           <div style="position:absolute;top:20px;left:${pct(mainBench.p25)}%;width:${pct(mainBench.p75)-pct(mainBench.p25)}%;height:8px;background:var(--success);opacity:.4;border-radius:4px;"></div>
-          <!-- median line -->
           <div style="position:absolute;top:14px;left:${pct(mainBench.median)}%;width:3px;height:20px;background:var(--success);border-radius:2px;transform:translateX(-50%);"></div>
-          <!-- P25 label -->
           <div style="position:absolute;top:34px;left:${pct(mainBench.p25)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P25<br><strong>${fmt(mainBench.p25)}</strong></div>
-          <!-- Median label -->
           <div style="position:absolute;top:-2px;left:${pct(mainBench.median)}%;transform:translateX(-50%);font-size:10px;color:var(--success);font-weight:700;">MEDIANA<br>${fmt(mainBench.median)}</div>
-          <!-- P75 label -->
           <div style="position:absolute;top:34px;left:${pct(mainBench.p75)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P75<br><strong>${fmt(mainBench.p75)}</strong></div>
-          <!-- P90 label -->
           <div style="position:absolute;top:34px;left:${pct(mainBench.p90)}%;transform:translateX(-50%);font-size:10px;color:var(--accent2);">P90<br><strong style="color:var(--accent2)">${fmt(mainBench.p90)}</strong></div>
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:11px;color:var(--text2);">
