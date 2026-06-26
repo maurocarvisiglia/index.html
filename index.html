@@ -1715,26 +1715,22 @@ async function importVocationsCSV(event){
   const text=await file.text();
   const sep=';';
 
-  // Parser CSV robusto — gestisce campi con ; interni e virgolette
   function parseCSVLine(line){
     const vals=[];
-    let cur='', inQ=false;
+    let cur='',inQ=false;
     for(let ci=0;ci<line.length;ci++){
       const ch=line[ci];
-      if(ch==='"'){
-        if(inQ && line[ci+1]==='"'){cur+='"';ci++;}
-        else inQ=!inQ;
-      } else if(ch===sep && !inQ){
-        vals.push(cur.trim()); cur='';
-      } else { cur+=ch; }
+      if(ch==='"'){if(inQ&&line[ci+1]==='"'){cur+='"';ci++;}else inQ=!inQ;}
+      else if(ch===sep&&!inQ){vals.push(cur.trim());cur='';}
+      else cur+=ch;
     }
     vals.push(cur.trim());
     return vals;
   }
 
-  const allLines = text.split('\n');
-  const headers = parseCSVLine(allLines[0].replace(/^\uFEFF/,''));
-  
+  const allLines=text.split('\n');
+  const headers=parseCSVLine(allLines[0].replace(/^\uFEFF/,''));
+
   const rows=[];
   for(let i=1;i<allLines.length;i++){
     if(!allLines[i].trim())continue;
@@ -1744,7 +1740,7 @@ async function importVocationsCSV(event){
     rows.push(row);
   }
   if(!rows.length){toast('Nessun dato nel CSV','error');return;}
-  toast(`📋 Vocations CSV: ${rows.length} annunci rilevati. Importazione in corso...`);
+  toast(`📋 ${rows.length} annunci rilevati. Importazione...`);
 
   const parseRAL=str=>{
     if(!str||str==='N/A')return null;
@@ -1761,15 +1757,17 @@ async function importVocationsCSV(event){
     'Biotecnologico':'biotech','Cosmetico':'cosmetics','Nutraceutico':'nutraceutical',
     'Veterinario':'veterinary','Manifatturiero e Industriale':'manufacturing',
     'Ingegneria Industriale e Servizi Ingegneristici':'engineering',
-    'Cybersecurity e Informatica':'digital_health','Sanità e Igiene':'medical_devices'
+    'Cybersecurity e Informatica':'digital_health','Sanità e Igiene':'medical_devices',
+    'Tecnologia':'digital_health','Scienza e Dati':'digital_health'
   };
 
-  // Costruisce i record da inserire
-  const records=[];
-  for(const row of rows){
+  let ok=0,skip=0,errors=0;
+
+  for(let idx=0;idx<rows.length;idx++){
+    const row=rows[idx];
     const title=(row['Nome posizione']||'').trim();
     const company=(row['Nome azienda']||'').trim();
-    if(!title||!company)continue;
+    if(!title||title.length<3||!company)continue;
 
     const ragione_sociale=(row['Ragione sociale']||'').trim()||null;
     const url=(row['URL']||'').trim()||null;
@@ -1787,6 +1785,7 @@ async function importVocationsCSV(event){
     const sector_v2=sectorMap[settoreRaw]||'pharma_rx';
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
     const contract_type=contractMap[contractRaw]||'altro';
+    const isAgenzia=contract_type==='Agenzia';
 
     const tl=title.toLowerCase();
     let functional_area_v2=null;
@@ -1805,6 +1804,7 @@ async function importVocationsCSV(event){
     else if(/\bhr\b|human resource|talent|recruiter/.test(tl))functional_area_v2='hr';
     else if(/finance|controller|budget|accounting/.test(tl))functional_area_v2='finance';
     else if(/\bit\b|software|digital|data engineer/.test(tl))functional_area_v2='it';
+    else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
 
     let seniority_v2='specialist';
     if(/\bstage\b|\bintern\b|tirocinio/.test(tl))seniority_v2='internship';
@@ -1834,8 +1834,8 @@ async function importVocationsCSV(event){
       row['Target']?`Profilo: ${row['Target']}`:''
     ].filter(Boolean).join('\n').substring(0,2000)||null;
 
-    const isAgenzia = contract_type === 'Agenzia';
-    records.push({
+    // Record minimo — solo campi sicuri senza vincoli CHECK
+    const record={
       job_title:title,
       company_name:company,
       ragione_sociale,
@@ -1845,57 +1845,56 @@ async function importVocationsCSV(event){
       location,
       province,
       contract_type,
-      contract_category: isAgenzia ? 'agent' : 'employee',
-      fixed_monthly: isAgenzia ? ral : null,
-      orario:(row['Orario']||'').trim()||null,
-      collar:(row['Collar']||'').trim()||null,
+      contract_category:isAgenzia?'agent':'employee',
       sector_v2,
       functional_area_v2,
       seniority_v2,
       therapeutic_area,
-      ral_min: isAgenzia ? null : ral,
-      ral_max: isAgenzia ? null : ral,
+      ral_min:isAgenzia?null:ral,
+      ral_max:isAgenzia?null:ral,
+      fixed_monthly:isAgenzia?ral:null,
       salary_text:row['Stipendio annuo']||null,
       benefits:(row['Benefit']||'').trim()||null,
       job_description:desc,
       entity_type:'life_sciences',
-    });
-  }
+    };
 
-  if(!records.length){toast('Nessun record valido nel CSV','error');return;}
-
-  // Insert in batch da 50 — nessuna chiamata per record
-  const BATCH=50;
-  let ok=0, skip=0, errors=0;
-  for(let i=0;i<records.length;i+=BATCH){
-    const batch=records.slice(i,i+BATCH);
     try{
+      // Insert diretto — ON CONFLICT su url viene ignorato da Supabase
       const r=await fetch(SB_URL+'/rest/v1/job_listings',{
         method:'POST',
-        headers:{...H,'Prefer':'resolution=ignore-duplicates,return=representation'},
-        body:JSON.stringify(batch)
+        headers:{
+          'apikey':SB_KEY,
+          'Authorization':'Bearer '+SB_KEY,
+          'Content-Type':'application/json',
+          'Prefer':'resolution=ignore-duplicates,return=minimal'
+        },
+        body:JSON.stringify(record)
       });
-      if(r.ok){
-        const inserted=await r.json();
-        ok+=Array.isArray(inserted)?inserted.length:batch.length;
-        skip+=batch.length-(Array.isArray(inserted)?inserted.length:0);
-      } else {
+      if(r.status===201||r.status===200){ok++;}
+      else if(r.status===409){skip++;}
+      else{
         const errText=await r.text();
-        console.error('Batch error',i,r.status,errText.substring(0,200));
-        errors+=batch.length;
+        console.error(`Riga ${idx+1} errore ${r.status}:`,errText.substring(0,150));
+        errors++;
       }
     }catch(e){
-      console.error('Batch fetch error:',e.message);
-      errors+=batch.length;
+      console.error(`Riga ${idx+1} fetch error:`,e.message);
+      errors++;
     }
-    toast(`⏳ Importazione: ${Math.min(i+BATCH,records.length)}/${records.length}...`);
+
+    // Progress ogni 50
+    if((idx+1)%50===0){
+      toast(`⏳ Importazione: ${idx+1}/${rows.length} (ok:${ok} err:${errors})...`);
+      await new Promise(r=>setTimeout(r,50));
+    }
   }
 
-  // Aggiorna schede aziende in background (non bloccante)
-  setTimeout(()=>syncCompaniesFromVocations(rows),500);
+  // Aggiorna aziende in background
+  setTimeout(()=>syncCompaniesFromVocations(rows),1000);
 
-  const msg=`Vocations CSV: ${ok} importati, ${skip} già presenti${errors?', '+errors+' errori':''}`;
-  toast(msg, ok>0?'success':'warning');
+  const msg=`Vocations CSV: ${ok} importati, ${skip} già presenti${errors?' | '+errors+' errori':''}`;
+  toast(msg,ok>0?'success':'warning');
   loadListings();
   refreshPendingBadges();
   if(ok>0){
@@ -1905,6 +1904,7 @@ async function importVocationsCSV(event){
     },1000);
   }
 }
+
 
 async function syncCompaniesFromVocations(rows){
   for(const row of rows){
