@@ -193,6 +193,8 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
     <button class="nav-btn" id="nav-scarcity" onclick="showView('scarcity',this)" style="border-color:#f59e0b;color:#f59e0b;">🎯 Talent Scarcity</button>
     <button class="nav-btn" id="nav-competitor" onclick="showView('competitor',this)" style="border-color:#06b6d4;color:#06b6d4;">🔬 Competitor Monitor</button>
+    <button class="nav-btn" id="nav-geo" onclick="showView('geo',this)" style="border-color:#10b981;color:#10b981;">🗺️ Geographic</button>
+    <button class="nav-btn" id="nav-demand" onclick="showView('demand',this)" style="border-color:#f59e0b;color:#f59e0b;">📈 Employer Demand</button>
   </div>
 </div>
 
@@ -1877,6 +1879,121 @@ a.job-link:hover{text-decoration:underline;}
 
   </div>
 </div>
+
+<!-- ── GEOGRAPHIC HEATMAP ── -->
+<div class="view" id="view-geo">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">🗺️ Geographic Hiring Heatmap</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Concentrazione geografica della domanda Life Sciences in Italia</div>
+      </div>
+      <button onclick="refreshGeoData()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
+    </div>
+
+    <!-- KPI -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
+      <div class="stat-card"><div class="stat-label">Città attive</div><div class="stat-value" id="geo-kpi-cities">—</div></div>
+      <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
+      <div class="stat-card"><div class="stat-label">% Milano/Roma</div><div class="stat-value" id="geo-kpi-concentration">—</div></div>
+    </div>
+
+    <!-- Tab Regioni / Città -->
+    <div style="display:flex;gap:8px;margin-bottom:20px;">
+      <button onclick="setGeoTab('regione',this)" id="geo-tab-regione" class="qb-btn active">📍 Per Regione</button>
+      <button onclick="setGeoTab('citta',this)" id="geo-tab-citta" class="qb-btn">🏙️ Per Città</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- Ranking -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title" id="geo-ranking-title">Ranking Regioni</div>
+          <div class="table-count" id="geo-ranking-count">—</div>
+        </div>
+        <div id="geo-ranking-body"></div>
+      </div>
+
+      <!-- Dettaglio area selezionata -->
+      <div class="table-wrap" style="padding:20px;" id="geo-detail-panel">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">📊 Dettaglio area</div>
+        <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un'area dal ranking</div>
+        <div id="geo-detail-content" style="display:none;">
+          <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:4px;" id="geo-det-name">—</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Top Ruoli</div>
+          <div id="geo-det-roles"></div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-top:12px;margin-bottom:8px;">Top Aziende</div>
+          <div id="geo-det-companies"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Mappa SVG Italia -->
+    <div class="table-wrap" style="padding:20px;margin-top:20px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🇮🇹 Distribuzione geografica — intensità annunci per regione</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">Colore più scuro = più annunci</div>
+      <div id="geo-map-container" style="text-align:center;"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── EMPLOYER DEMAND SCORE ── -->
+<div class="view" id="view-demand">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">📈 Employer Demand Score</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Classifica le aziende più aggressive nel recruiting Life Sciences</div>
+      </div>
+      <button onclick="refreshDemandData()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
+    </div>
+
+    <!-- KPI -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Aziende analizzate</div><div class="stat-value" id="demand-kpi-companies">—</div></div>
+      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="demand-kpi-avg">—</div></div>
+      <div class="stat-card"><div class="stat-label">Top employer</div><div class="stat-value" style="font-size:13px;" id="demand-kpi-top">—</div></div>
+      <div class="stat-card"><div class="stat-label">In crescita 90gg</div><div class="stat-value" id="demand-kpi-growing">—</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+      <!-- Leaderboard -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">🏆 Employer Demand Leaderboard</div>
+          <div class="table-count" id="demand-count">—</div>
+        </div>
+        <div id="demand-ranking-body"></div>
+      </div>
+
+      <!-- Dettaglio azienda -->
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">📊 Score Breakdown</div>
+        <div id="demand-detail-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un'azienda</div>
+        <div id="demand-detail-content" style="display:none;">
+          <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:16px;" id="demand-det-name">—</div>
+          <div id="demand-det-scores"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;" id="demand-det-stats"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Scatter chart: Volume vs Diversity -->
+    <div class="table-wrap" style="padding:20px;margin-top:20px;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🎯 Volume vs Diversità Ruoli — dimensione = Demand Score</div>
+      <div id="demand-scatter"></div>
+    </div>
+
+  </div>
+</div>
+
 <script>
 const SB_URL='https://ehrayeltqottgvkzvbdk.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocmF5ZWx0cW90dGd2a3p2YmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTEzNTgsImV4cCI6MjA5NzQyNzM1OH0.wmh0h8Xbt_gkxLwBRFHRM7yXXBw5comJbpbrotLksxE';
@@ -2703,6 +2820,8 @@ function showView(name,btn){
   if(name==='compliance')loadCompliance();
   if(name==='scarcity')loadScarcityIndex();
   if(name==='competitor')initCompetitorMonitor();
+  if(name==='geo')loadGeoModule();
+  if(name==='demand')loadDemandModule();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -7590,6 +7709,353 @@ async function autoClassifyAreas(){
   renderAreaClassifier();
   if(status) status.textContent = `✅ Completato: regex + AI su ${done} titoli unici`;
   toast(`✅ Classificazione completata`, 'success');
+}
+
+
+/* ═══════════════════════════════════════════════════
+   MODULO 3 — GEOGRAPHIC HIRING HEATMAP
+═══════════════════════════════════════════════════ */
+
+let _geoData = [];
+let _geoTab = 'regione';
+
+async function loadGeoModule(){
+  const body = document.getElementById('geo-ranking-body');
+  if(body) body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+  try{
+    _geoData = await api('geographic_metrics?order=total_jobs.desc');
+    if(!_geoData.length){
+      if(body) body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato — clicca 🔄 Ricalcola per generare le metriche geografiche</div>';
+      return;
+    }
+    renderGeoModule();
+  }catch(e){ console.error('Geo load error:', e); }
+}
+
+async function refreshGeoData(){
+  toast('⏳ Ricalcolo metriche geografiche...');
+  try{
+    await api('rpc/refresh_geographic_metrics','POST',{});
+    toast('✅ Metriche geografiche aggiornate','success');
+    await loadGeoModule();
+  }catch(e){ toast('Errore ricalcolo: '+e.message,'error'); }
+}
+
+function setGeoTab(tab, btn){
+  _geoTab = tab;
+  document.querySelectorAll('[id^="geo-tab-"]').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const titleEl = document.getElementById('geo-ranking-title');
+  if(titleEl) titleEl.textContent = tab==='regione' ? 'Ranking Regioni' : 'Ranking Città';
+  renderGeoRanking();
+}
+
+function renderGeoModule(){
+  const regioni = _geoData.filter(d=>d.area_type==='regione');
+  const citta = _geoData.filter(d=>d.area_type==='citta');
+
+  // KPI
+  document.getElementById('geo-kpi-regions').textContent = regioni.length;
+  document.getElementById('geo-kpi-cities').textContent = citta.length;
+  document.getElementById('geo-kpi-top').textContent = regioni[0]?.area_name || '—';
+
+  // % Milano + Roma su totale città
+  const totalCitta = citta.reduce((s,d)=>s+d.total_jobs,0);
+  const milRom = citta.filter(d=>['Milano','Roma','Rome'].includes(d.area_name)).reduce((s,d)=>s+d.total_jobs,0);
+  document.getElementById('geo-kpi-concentration').textContent = totalCitta ? Math.round(milRom/totalCitta*100)+'%' : '—';
+
+  renderGeoRanking();
+  renderGeoMap(regioni);
+}
+
+function renderGeoRanking(){
+  const body = document.getElementById('geo-ranking-body');
+  const countEl = document.getElementById('geo-ranking-count');
+  if(!body) return;
+
+  const data = _geoData.filter(d=>d.area_type===_geoTab).sort((a,b)=>b.total_jobs-a.total_jobs);
+  const maxJobs = Math.max(...data.map(d=>d.total_jobs));
+  if(countEl) countEl.textContent = data.length + ' aree';
+
+  body.innerHTML = data.map((d,i)=>{
+    const pct = Math.round(d.total_jobs/maxJobs*100);
+    const growth = d.hiring_growth;
+    const growthEl = growth!=null ? `<span style="font-size:10px;color:${growth>0?'#10b981':growth<0?'#ef4444':'var(--text2)'};">${growth>0?'↑':'↓'}${Math.abs(growth).toFixed(0)}%</span>` : '';
+    const avgSal = d.avg_salary ? `€${(d.avg_salary/1000).toFixed(0)}k` : '—';
+    return `<div onclick="showGeoDetail(${i})"
+      style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);width:20px;">${i+1}</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);">${d.area_name} ${growthEl}</div>
+        <div style="background:var(--surface2);border-radius:3px;height:4px;margin-top:4px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:#10b981;border-radius:3px;"></div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:15px;font-weight:700;color:var(--text);">${d.total_jobs}</div>
+        <div style="font-size:10px;color:#f59e0b;">${avgSal}</div>
+      </div>
+    </div>`;
+  }).join('') || '<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';
+}
+
+function showGeoDetail(idx){
+  const data = _geoData.filter(d=>d.area_type===_geoTab).sort((a,b)=>b.total_jobs-a.total_jobs);
+  const d = data[idx];
+  if(!d) return;
+
+  document.getElementById('geo-detail-empty').style.display='none';
+  document.getElementById('geo-detail-content').style.display='';
+  document.getElementById('geo-det-name').textContent = d.area_name;
+
+  const kpis = [
+    {l:'Annunci totali', v:d.total_jobs},
+    {l:'RAL media', v:d.avg_salary?'€'+(d.avg_salary/1000).toFixed(0)+'k':'—'},
+    {l:'RAL mediana', v:d.median_salary?'€'+(d.median_salary/1000).toFixed(0)+'k':'—'},
+    {l:'Crescita 90gg', v:d.hiring_growth!=null?(d.hiring_growth>0?'+':'')+d.hiring_growth.toFixed(1)+'%':'—'},
+  ];
+  document.getElementById('geo-det-kpis').innerHTML = kpis.map(k=>`
+    <div style="background:var(--surface2);border-radius:8px;padding:10px;">
+      <div style="font-size:10px;color:var(--text2);">${k.l}</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);">${k.v}</div>
+    </div>`).join('');
+
+  // Top ruoli
+  const roles = d.top_roles||[];
+  document.getElementById('geo-det-roles').innerHTML = roles.length
+    ? roles.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);">
+        <span>${r.role||'—'}</span><strong>${r.n}</strong></div>`).join('')
+    : '<div style="color:var(--text2);font-size:12px;">—</div>';
+
+  // Top aziende
+  const companies = d.top_companies||[];
+  document.getElementById('geo-det-companies').innerHTML = companies.length
+    ? companies.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);">
+        <span>${c.company||'—'}</span><strong>${c.n}</strong></div>`).join('')
+    : '<div style="color:var(--text2);font-size:12px;">—</div>';
+}
+
+function renderGeoMap(regioni){
+  const el = document.getElementById('geo-map-container');
+  if(!el) return;
+  const maxJobs = Math.max(...regioni.map(d=>d.total_jobs),1);
+
+  // Mappa Italia SVG semplificata — principali regioni come rettangoli proporzionali
+  const regionData = {};
+  regioni.forEach(d=>{ regionData[d.area_name]=d.total_jobs; });
+
+  const cols = ['Lombardia','Piemonte','Veneto','Emilia-Romagna','Toscana','Lazio','Campania','Puglia','Sicilia','Sardegna',
+    'Liguria','Friuli-Venezia Giulia','Marche','Umbria','Abruzzo','Calabria','Basilicata','Molise','Valle d\'Aosta','Trentino-Alto Adige'];
+
+  const getColor = (n) => {
+    if(!n) return 'rgba(99,102,241,0.08)';
+    const pct = n/maxJobs;
+    if(pct>0.6) return '#6366f1';
+    if(pct>0.4) return 'rgba(99,102,241,0.7)';
+    if(pct>0.2) return 'rgba(99,102,241,0.45)';
+    if(pct>0.05) return 'rgba(99,102,241,0.25)';
+    return 'rgba(99,102,241,0.1)';
+  };
+
+  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:700px;margin:0 auto;">
+    ${cols.map(r=>{
+      const n = regionData[r]||0;
+      const size = 60 + Math.round((n/maxJobs)*60);
+      return `<div style="background:${getColor(n)};border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:8px 12px;
+        min-width:${size}px;text-align:center;cursor:default;" title="${r}: ${n} annunci">
+        <div style="font-size:10px;font-weight:600;color:var(--text);white-space:nowrap;">${r.replace('Emilia-Romagna','Em.-Romagna').replace('Friuli-Venezia Giulia','Friuli-VG').replace('Trentino-Alto Adige','Trentino')}</div>
+        <div style="font-size:14px;font-weight:800;color:#6366f1;">${n||'—'}</div>
+      </div>`;
+    }).join('')}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:16px;font-size:10px;color:var(--text2);">
+    <div style="width:12px;height:12px;border-radius:2px;background:rgba(99,102,241,0.1);"></div> Basso
+    <div style="width:12px;height:12px;border-radius:2px;background:rgba(99,102,241,0.45);"></div> Medio
+    <div style="width:12px;height:12px;border-radius:2px;background:#6366f1;"></div> Alto
+  </div>`;
+}
+
+/* ═══════════════════════════════════════════════════
+   MODULO 4 — EMPLOYER DEMAND SCORE
+═══════════════════════════════════════════════════ */
+
+let _demandData = [];
+
+async function loadDemandModule(){
+  const body = document.getElementById('demand-ranking-body');
+  if(body) body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+  try{
+    _demandData = await api('employer_demand?order=demand_score.desc&limit=100');
+    if(!_demandData.length){
+      if(body) body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato — clicca 🔄 Ricalcola</div>';
+      return;
+    }
+    renderDemandModule();
+  }catch(e){ console.error('Demand load error:', e); }
+}
+
+async function refreshDemandData(){
+  toast('⏳ Ricalcolo Employer Demand Score...');
+  try{
+    await api('rpc/refresh_employer_demand','POST',{});
+    toast('✅ Employer Demand aggiornato','success');
+    await loadDemandModule();
+  }catch(e){ toast('Errore: '+e.message,'error'); }
+}
+
+function renderDemandModule(){
+  // KPI
+  const avg = _demandData.reduce((s,d)=>s+parseFloat(d.demand_score||0),0)/_demandData.length;
+  const growing = _demandData.filter(d=>d.listings_90d>d.listings_prev_90d).length;
+  document.getElementById('demand-kpi-companies').textContent = _demandData.length;
+  document.getElementById('demand-kpi-avg').textContent = avg.toFixed(1);
+  document.getElementById('demand-kpi-top').textContent = _demandData[0]?.ragione_sociale||'—';
+  document.getElementById('demand-kpi-growing').textContent = growing;
+  document.getElementById('demand-count').textContent = _demandData.length+' aziende';
+
+  renderDemandRanking();
+  renderDemandScatter();
+}
+
+function renderDemandRanking(){
+  const body = document.getElementById('demand-ranking-body');
+  if(!body) return;
+
+  const scoreColor = s => s>=75?'#ef4444':s>=50?'#f59e0b':s>=25?'#6366f1':'#6b7280';
+
+  body.innerHTML = _demandData.slice(0,30).map((d,i)=>{
+    const score = parseFloat(d.demand_score||0);
+    const col = scoreColor(score);
+    const trend = d.listings_90d > d.listings_prev_90d ? '↑' : d.listings_90d < d.listings_prev_90d ? '↓' : '→';
+    const trendCol = trend==='↑'?'#10b981':trend==='↓'?'#ef4444':'var(--text2)';
+    return `<div onclick="showDemandDetail(${i})"
+      style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;"
+      onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"
+      id="demand-row-${i}">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);width:20px;">${i+1}</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);">${d.ragione_sociale}</div>
+        <div style="font-size:10px;color:var(--text2);">${d.total_listings} annunci · ${d.distinct_roles} ruoli distinti</div>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:${trendCol};">${trend}</div>
+      <div style="text-align:right;min-width:40px;">
+        <div style="font-size:18px;font-weight:800;color:${col};">${score.toFixed(0)}</div>
+      </div>
+      <div style="width:50px;">
+        <div style="background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+          <div style="width:${score}%;height:100%;background:${col};border-radius:3px;"></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showDemandDetail(idx){
+  const d = _demandData[idx];
+  if(!d) return;
+
+  document.querySelectorAll('[id^="demand-row-"]').forEach(el=>el.style.background='');
+  const row = document.getElementById('demand-row-'+idx);
+  if(row) row.style.background='var(--surface2)';
+
+  document.getElementById('demand-detail-empty').style.display='none';
+  document.getElementById('demand-detail-content').style.display='';
+  document.getElementById('demand-det-name').textContent = d.ragione_sociale;
+
+  const scores = [
+    {l:'Volume',k:'volume_score',w:'40%',c:'#6366f1',desc:'Numero totale annunci'},
+    {l:'Frequency',k:'frequency_score',w:'20%',c:'#10b981',desc:'Annunci per mese attivo'},
+    {l:'Diversity',k:'diversity_score',w:'20%',c:'#f59e0b',desc:'Varietà ruoli ricercati'},
+    {l:'Growth',k:'growth_score',w:'20%',c:'#ef4444',desc:'Trend ultimi 90gg'},
+  ];
+
+  document.getElementById('demand-det-scores').innerHTML = `
+    <div style="font-size:24px;font-weight:800;color:var(--accent);margin-bottom:16px;">
+      Demand Score: ${parseFloat(d.demand_score||0).toFixed(1)}
+    </div>
+    ${scores.map(s=>{
+      const val = parseFloat(d[s.k]||0);
+      return `<div style="margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-size:11px;color:var(--text2);">${s.l} <span style="opacity:0.6;">(${s.w})</span></span>
+          <span style="font-size:12px;font-weight:700;color:${s.c};">${val.toFixed(1)}</span>
+        </div>
+        <div style="background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+          <div style="width:${val}%;height:100%;background:${s.c};border-radius:3px;transition:width 0.5s;"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px;">${s.desc}</div>
+      </div>`;
+    }).join('')}`;
+
+  const stats = [
+    {l:'Annunci totali',v:d.total_listings},
+    {l:'Mesi attivi',v:d.active_months},
+    {l:'Ruoli distinti',v:d.distinct_roles},
+    {l:'Ultimi 90gg',v:d.listings_90d},
+    {l:'Prev. 90gg',v:d.listings_prev_90d},
+    {l:'Trend',v:d.listings_90d>d.listings_prev_90d?'📈 In crescita':d.listings_90d<d.listings_prev_90d?'📉 In calo':'→ Stabile'},
+  ];
+  document.getElementById('demand-det-stats').innerHTML = stats.map(s=>`
+    <div style="background:var(--surface2);border-radius:8px;padding:8px 10px;">
+      <div style="font-size:10px;color:var(--text2);">${s.l}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text);">${s.v}</div>
+    </div>`).join('');
+}
+
+function renderDemandScatter(){
+  const el = document.getElementById('demand-scatter');
+  if(!el||!_demandData.length) return;
+
+  const W=700,H=280,PAD=50;
+  const maxVol=Math.max(..._demandData.map(d=>d.total_listings),1);
+  const maxDiv=Math.max(..._demandData.map(d=>d.distinct_roles),1);
+  const maxScore=Math.max(..._demandData.map(d=>parseFloat(d.demand_score||0)),1);
+
+  const scoreColor=s=>s>=75?'#ef4444':s>=50?'#f59e0b':s>=25?'#6366f1':'#6b7280';
+
+  const dots = _demandData.slice(0,40).map(d=>{
+    const x=PAD+(d.total_listings/maxVol)*(W-PAD*2);
+    const y=H-PAD-(d.distinct_roles/maxDiv)*(H-PAD*2);
+    const r=6+parseFloat(d.demand_score||0)/maxScore*14;
+    const col=scoreColor(parseFloat(d.demand_score||0));
+    const label=d.ragione_sociale.length>20?d.ragione_sociale.substring(0,18)+'…':d.ragione_sociale;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}"
+      fill="${col}" fill-opacity="0.7" stroke="${col}" stroke-width="1">
+      <title>${d.ragione_sociale} — Score: ${d.demand_score} | Annunci: ${d.total_listings} | Ruoli: ${d.distinct_roles}</title>
+    </circle>
+    <text x="${x.toFixed(1)}" y="${(y-r-3).toFixed(1)}" text-anchor="middle" style="font-size:8px;fill:var(--text2);">${label}</text>`;
+  }).join('');
+
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;">
+    <line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/>
+    <line x1="${PAD}" y1="${H-PAD}" x2="${W-PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/>
+    <text x="${W/2}" y="${H-8}" text-anchor="middle" style="font-size:10px;fill:var(--text2);">Volume annunci →</text>
+    <text x="14" y="${H/2}" text-anchor="middle" transform="rotate(-90,14,${H/2})" style="font-size:10px;fill:var(--text2);">Diversità ruoli ↑</text>
+    ${dots}
+  </svg>`;
+}
+
+/* ═══════════════════════════════════════════════════
+   PULSANTE ELABORAZIONE MENSILE — aggiornato con tutti i moduli
+═══════════════════════════════════════════════════ */
+
+async function runMonthlyElaboration(){
+  const steps = [
+    {label:'Talent Scarcity Index...', fn:()=>api('rpc/refresh_talent_scarcity','POST',{})},
+    {label:'Competitor Role Overlap...', fn:()=>api('rpc/refresh_company_role_overlap','POST',{})},
+    {label:'Geographic Metrics...', fn:()=>api('rpc/refresh_geographic_metrics','POST',{})},
+    {label:'Employer Demand Score...', fn:()=>api('rpc/refresh_employer_demand','POST',{})},
+  ];
+
+  toast('📊 Elaborazione mensile avviata — attendere...');
+  for(let i=0;i<steps.length;i++){
+    const s=steps[i];
+    toast(`⏳ Step ${i+1}/${steps.length}: ${s.label}`);
+    try{ await s.fn(); }
+    catch(e){ console.warn('Elaborazione error:', s.label, e.message); }
+  }
+  toast('✅ Elaborazione mensile completata!','success');
 }
 
 </script>
