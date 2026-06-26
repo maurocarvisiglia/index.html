@@ -7491,55 +7491,105 @@ async function applyAreaRegex(){
 
 async function saveAreaClassifications(){
   const status = document.getElementById('area-classifier-status');
-  if(status) status.textContent = '⏳ Salvataggio...';
+  if(status) status.textContent = '⏳ Salvataggio in corso...';
 
   const selects = document.querySelectorAll('[id^="ac-sel-"]');
-  let saved = 0;
+  let savedGroups = 0;
+  let savedRecords = 0;
+  let errors = 0;
 
   for(const sel of selects){
-    const ids = sel.dataset.ids ? sel.dataset.ids.split(',') : [];
-    const area = sel.value;
-    if(!ids.length) continue;
+    const title = sel.dataset.title;
+    const area = sel.value; // può essere '' per rimuovere la classificazione
+    if(!title) continue;
 
-    for(const id of ids){
-      if(!id) continue;
-      try{
-        await api(`job_listings?id=eq.${id}`, 'PATCH', { functional_area_v2: area || null });
-        saved++;
-      }catch(e){ console.warn('Area save error:', id, e.message); }
+    try{
+      // PATCH per job_title — una sola chiamata per gruppo
+      const r = await fetch(SB_URL + '/rest/v1/job_listings?job_title=eq.' + encodeURIComponent(title), {
+        method: 'PATCH',
+        headers: {...H, 'Prefer': 'return=minimal'},
+        body: JSON.stringify({ functional_area_v2: area || null })
+      });
+      if(r.ok){
+        // Conta quanti record ha toccato
+        const count = parseInt(r.headers.get('content-range')?.split('/')[1] || '1');
+        savedRecords += count || 1;
+        savedGroups++;
+      } else {
+        const err = await r.text();
+        console.warn('Save error for', title, r.status, err.substring(0,100));
+        errors++;
+      }
+    }catch(e){
+      console.warn('Area save error:', title, e.message);
+      errors++;
+    }
+
+    if(savedGroups % 10 === 0 && status){
+      status.textContent = `⏳ Salvati ${savedGroups}/${selects.length} gruppi...`;
     }
   }
 
-  // Aggiorna dati locali
+  // Ricarica dati aggiornati
   _areaClassifierData = await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
   renderAreaClassifier();
-  if(status) status.textContent = `✅ ${saved} annunci aggiornati`;
-  toast(`✅ ${saved} annunci classificati`, 'success');
+
+  const msg = `✅ ${savedGroups} titoli aggiornati${errors ? ` | ⚠️ ${errors} errori` : ''}`;
+  if(status) status.textContent = msg;
+  toast(msg, errors ? 'warning' : 'success');
   loadDashboard();
 }
 
 async function autoClassifyAreas(){
   const status = document.getElementById('area-classifier-status');
-  if(status) status.textContent = '⏳ Classificazione AI in corso (può richiedere qualche minuto)...';
+  if(status) status.textContent = '⏳ Classificazione AI — prima applico il regex...';
 
-  // Prendi solo i non classificati
-  const unclassified = _areaClassifierData.filter(l => !l.functional_area_v2);
-  if(!unclassified.length){ if(status) status.textContent = '✅ Tutti gli annunci sono già classificati'; return; }
+  // Step 1: applica prima il regex (zero API calls)
+  const selects = document.querySelectorAll('[id^="ac-sel-"]');
+  let regexApplied = 0;
+  selects.forEach(sel => {
+    if(!sel.value){
+      const suggested = detectAreaFromTitle(sel.dataset.title || '');
+      if(suggested){ sel.value = suggested; regexApplied++; }
+    }
+  });
+
+  if(status) status.textContent = `⏳ Regex: ${regexApplied} classificati. Salvo e poi AI sui residui...`;
+
+  // Salva i risultati regex
+  await saveAreaClassifications();
+
+  // Step 2: AI solo sui residui ancora non classificati
+  const stillUnclassified = _areaClassifierData.filter(l => !l.functional_area_v2);
+  if(!stillUnclassified.length){
+    if(status) status.textContent = '✅ Tutti classificati con regex — nessuna chiamata AI necessaria';
+    return;
+  }
+
+  if(status) status.textContent = `⏳ AI su ${stillUnclassified.length} residui (2 sec/chiamata per rate limit)...`;
+
+  // Raggruppa per job_title per non fare chiamate duplicate
+  const byTitle = {};
+  stillUnclassified.forEach(l => { byTitle[l.job_title] = byTitle[l.job_title] || l; });
+  const uniqueUnclassified = Object.values(byTitle);
 
   let done = 0;
-  for(const l of unclassified){
+  for(const l of uniqueUnclassified){
     try{
       await classifyOneListing(l);
       done++;
-      if(done % 5 === 0 && status) status.textContent = `⏳ AI: ${done}/${unclassified.length}...`;
-      await new Promise(r => setTimeout(r, 300));
-    }catch(e){ console.warn('AI classify error:', l.id, e.message); }
+      if(status) status.textContent = `⏳ AI: ${done}/${uniqueUnclassified.length} titoli unici...`;
+      await new Promise(r => setTimeout(r, 2000)); // 2 sec per rispettare rate limit Groq
+    }catch(e){
+      console.warn('AI classify error:', l.job_title, e.message);
+      await new Promise(r => setTimeout(r, 5000)); // pausa più lunga se 429
+    }
   }
 
   _areaClassifierData = await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
   renderAreaClassifier();
-  if(status) status.textContent = `✅ AI ha classificato ${done} annunci`;
-  toast(`✅ AI: ${done} annunci classificati`, 'success');
+  if(status) status.textContent = `✅ Completato: regex + AI su ${done} titoli unici`;
+  toast(`✅ Classificazione completata`, 'success');
 }
 
 </script>
