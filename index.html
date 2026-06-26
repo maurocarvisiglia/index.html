@@ -4378,7 +4378,7 @@ function renderClickableBar(id, data, cls, field, allListings){
   const max=Math.max(...data.map(d=>d[1]));
   el.innerHTML=data.map(([l,n])=>`
     <div class="bar-row" style="cursor:pointer;" onclick="showDetail('${field}','${l.replace(/'/g,"\\'").replace(/"/g,'\\"')}')" title="Clicca per dettaglio">
-      <div class="bar-label" style="color:var(--text)">${l}</div>
+      <div class="bar-label" style="color:var(--text)">${toLabel(l)}</div>
       <div class="bar-track"><div class="bar-fill ${cls==='blue'?'blue':''}" style="width:${(n/max*100).toFixed(1)}%;${cls==='accent'?'background:var(--accent)':''}"></div></div>
       <div class="bar-count">${n} <span style="color:var(--accent);font-size:10px;">→</span></div>
     </div>`).join('');
@@ -4431,6 +4431,33 @@ function showDetail(field, value){
     </div>`;
 }
 
+// Dizionario label leggibili per codici interni
+const LABEL_MAP = {
+  // Aree funzionali
+  medical_affairs:'Medical Affairs', commercial:'Commercial / Sales', marketing:'Marketing',
+  market_access:'Market Access', regulatory_affairs:'Regulatory Affairs', quality:'Quality Assurance',
+  clinical_operations:'Clinical Operations', drug_safety:'Drug Safety / PV', rd:'R&D / Ricerca',
+  manufacturing:'Manufacturing / Produzione', supply_chain:'Supply Chain / Logistica',
+  finance:'Finance / Controllo', hr:'Human Resources', it:'IT / Digital',
+  business_development:'Business Development',
+  // Settori
+  pharma_rx:'Pharma RX', biotech:'Biotech', medical_devices:'Medical Devices',
+  diagnostics:'Diagnostics', cro:'CRO', cdmo:'CDMO', consumer_health:'Consumer Health',
+  cosmetics:'Cosmetics', nutraceutical:'Nutraceutical', engineering:'Engineering',
+  digital_health:'Digital Health', veterinary:'Veterinary',
+  // Seniority
+  internship:'Internship / Stage', entry_level:'Entry Level', associate:'Associate',
+  specialist:'Specialist', senior_specialist:'Senior Specialist', manager:'Manager',
+  senior_manager:'Senior Manager', head_of:'Head of', director:'Director', vp:'VP', c_level:'C-Level',
+  // Aree terapeutiche
+  oncology:'Oncology', rare_diseases:'Rare Diseases', immunology:'Immunology',
+  hematology:'Hematology', cardiovascular:'Cardiovascular', neurology:'Neurology',
+  respiratory:'Respiratory', diabetes:'Diabetes / Metabolic', dermatology:'Dermatology',
+  vaccines:'Vaccines / Infectious', not_applicable:'Non specificata',
+};
+
+function toLabel(code){ return LABEL_MAP[code] || code || 'N/D'; }
+
 function countBy(arr,key){
   const c={};arr.forEach(i=>{const v=i[key]||'N/D';c[v]=(c[v]||0)+1;});
   return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,7);
@@ -4439,7 +4466,7 @@ function renderBar(id,data,cls){
   const el=document.getElementById(id);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
   const max=Math.max(...data.map(d=>d[1]));
-  el.innerHTML=data.map(([l,n])=>`<div class="bar-row"><div class="bar-label">${l}</div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max*100).toFixed(1)}%"></div></div><div class="bar-count">${n}</div></div>`).join('');
+  el.innerHTML=data.map(([l,n])=>`<div class="bar-row"><div class="bar-label">${toLabel(l)}</div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max*100).toFixed(1)}%"></div></div><div class="bar-count">${n}</div></div>`).join('');
 }
 function renderRal(id,listings){
   const el=document.getElementById(id);
@@ -4448,7 +4475,7 @@ function renderRal(id,listings){
   const data=Object.entries(byArea).map(([a,v])=>[a,Math.round(v.reduce((x,y)=>x+y,0)/v.length)]).sort((a,b)=>b[1]-a[1]);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato RAL</div>';return;}
   const max=Math.max(...data.map(d=>d[1]));
-  el.innerHTML=data.map(([l,v])=>`<div class="bar-row"><div class="bar-label">${l}</div><div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%"></div></div><div class="bar-count" style="width:60px;font-size:11px">€${(v/1000).toFixed(0)}k</div></div>`).join('');
+  el.innerHTML=data.map(([l,v])=>`<div class="bar-row"><div class="bar-label">${toLabel(l)}</div><div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%"></div></div><div class="bar-count" style="width:60px;font-size:11px">€${(v/1000).toFixed(0)}k</div></div>`).join('');
 }
 
 /* ── LISTINGS ── */
