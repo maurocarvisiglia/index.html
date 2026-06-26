@@ -5352,9 +5352,12 @@ async function exportRoleIntelligencePDF(){
   // Usa window.print con stile dedicato
   const printContent=document.getElementById('ri-detail').innerHTML;
   const win=window.open('','_blank');
-  win.document.write(`<html><head><title>Benchmark ${role}</title>
-    <style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style>
-    </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}
+  win.document.write('<html><head><title>Benchmark '+role+'</title><style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style></head><body><h1>Benchmark — '+role+'</h1><p>MC Pharma Consulting · '+new Date().toLocaleDateString('it-IT')+'</p>'+printContent+'');
+  win.print();
+}
+
+</script>
+
 <!-- ── TALENT SCARCITY VIEW ── -->
 <div class="view" id="view-scarcity">
   <div style="padding:24px 32px;">
@@ -5568,7 +5571,7 @@ async function exportRoleIntelligencePDF(){
 .qb-btn.active{border-color:var(--accent);background:rgba(99,102,241,.12);color:var(--accent);font-weight:700;}
 </style>
 
-</body></html>`);
+`);
   win.print();
 }
 
@@ -6215,6 +6218,8 @@ async function initApp(){
   }
 }
 initApp();
+
+<script>
 
 /* ═══ LABEL MAP ═══ */
 /* (già aggiunto sopra) */
