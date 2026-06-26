@@ -570,8 +570,8 @@ a.job-link:hover{text-decoration:underline;}
       </div>
 
       <!-- ── SEZIONE 2: RUOLI & COMPETENZE ── -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
-        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-roles')">
+      <div id="section-roles-wrapper" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="sec-roles-container" onclick="toggleSection('sec-roles')">
           <div>
             <div style="font-size:13px;font-weight:700;color:var(--text);">🎯 Sezione 2 — Ruoli & Competenze</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px;">Aree funzionali, role family, seniority e profili più richiesti</div>
@@ -613,8 +613,8 @@ a.job-link:hover{text-decoration:underline;}
       </div>
 
       <!-- ── SEZIONE 3: SALARY INTELLIGENCE ── -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
-        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-salary')">
+      <div id="section-salary-wrapper" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="sec-salary-container" onclick="toggleSection('sec-salary')">
           <div>
             <div style="font-size:13px;font-weight:700;color:var(--text);">💶 Sezione 3 — Salary Intelligence</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px;">RAL media per area, percentili e distribuzione retributiva</div>
@@ -653,8 +653,8 @@ a.job-link:hover{text-decoration:underline;}
       </div>
 
       <!-- ── SEZIONE 4: COMPANY INTELLIGENCE ── -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
-        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-company')">
+      <div id="section-company-wrapper" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="sec-company-container" onclick="toggleSection('sec-company')">
           <div>
             <div style="font-size:13px;font-weight:700;color:var(--text);">🏢 Sezione 4 — Company Intelligence</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px;">Top hiring companies, settori e segnali di mercato</div>
@@ -4146,30 +4146,34 @@ async function renderQueryResults(data, analysisType, contextLabel){
     const el = document.getElementById(id);
     if(el) el.style.display = show ? '' : 'none';
   };
-  toggle('dash-scores',       cfg.scores);
-  toggle('qb-output-market',  cfg.market);
-  toggle('sec-market',        cfg.market);  // forza apertura
-  // Sezione Ruoli (sec-roles è dentro il div collassabile)
-  const secRolesParent = document.querySelector('[onclick="toggleSection('sec-roles')"]')?.parentElement?.parentElement;
-  if(secRolesParent) secRolesParent.style.display = cfg.roles ? '' : 'none';
-  // Sezione Salary
-  const secSalaryParent = document.querySelector('[onclick="toggleSection('sec-salary')"]')?.parentElement?.parentElement;
-  if(secSalaryParent) secSalaryParent.style.display = cfg.salary ? '' : 'none';
-  // Sezione Company
-  const secCompanyParent = document.querySelector('[onclick="toggleSection('sec-company')"]')?.parentElement?.parentElement;
-  if(secCompanyParent) secCompanyParent.style.display = cfg.company ? '' : 'none';
+  toggle('dash-scores',            cfg.scores);
+  toggle('qb-output-market',       cfg.market);
+  toggle('section-roles-wrapper',  cfg.roles);
+  toggle('section-salary-wrapper', cfg.salary);
+  toggle('section-company-wrapper',cfg.company);
 
-  // Per Salary: apri sezione salary e scrolla
-  if(analysisType==='salary'){
-    const sal = document.getElementById('sec-salary');
-    if(sal) sal.style.display='';
-    const salToggle = document.getElementById('sec-salary-toggle');
-    if(salToggle) salToggle.textContent='▼';
+  // Forza apertura delle sezioni visibili
+  if(cfg.salary){
+    const sal=document.getElementById('sec-salary');
+    if(sal)sal.style.display='';
+    const t=document.getElementById('sec-salary-toggle');
+    if(t)t.textContent='▼';
   }
-  // Per Company: apri sezione company
-  if(analysisType==='company'){
-    const comp = document.getElementById('sec-company');
-    if(comp) comp.style.display='';
+  if(cfg.company){
+    const comp=document.getElementById('sec-company');
+    if(comp)comp.style.display='';
+    const t=document.getElementById('sec-company-toggle');
+    if(t)t.textContent='▼';
+  }
+  if(cfg.roles){
+    const roles=document.getElementById('sec-roles');
+    if(roles)roles.style.display='';
+    const t=document.getElementById('sec-roles-toggle');
+    if(t)t.textContent='▼';
+  }
+  if(cfg.market){
+    const mkt=document.getElementById('sec-market');
+    if(mkt)mkt.style.display='';
   }
 
   // ── Charts — sempre (filtrati per tipo) ──
