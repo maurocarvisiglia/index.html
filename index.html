@@ -640,18 +640,58 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
-      <!-- Detail panel — ora posizionato qui per compatibilità -->
-      <div id="detail-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <div style="font-weight:700;font-size:16px;" id="detail-title">—</div>
-          <button onclick="document.getElementById('detail-panel').style.display='none'" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">✕</button>
+      <!-- ── SEZIONE 4: COMPANY INTELLIGENCE ── -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSection('sec-company')">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text);">🏢 Sezione 4 — Company Intelligence</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px;">Top hiring companies, settori e segnali di mercato</div>
+          </div>
+          <div style="font-size:12px;color:var(--text2);" id="sec-company-toggle">▼</div>
         </div>
-        <div id="detail-body"></div>
+        <div id="sec-company" style="padding:20px 24px;">
+
+          <!-- Market Signals cards HOT/WARNING/GROWTH -->
+          <div style="margin-bottom:20px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:12px;">Segnali di mercato</div>
+            <div id="dash-signals-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;">
+              <div style="padding:16px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);text-align:center;color:var(--text2);font-size:12px;">
+                Lancia l'analisi per vedere i segnali di mercato
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts company -->
+          <div class="chart-grid">
+            <div class="chart-card">
+              <div class="chart-card-title">Top aziende per volume</div>
+              <div id="chart-companies-s4"></div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-title">Distribuzione settori</div>
+              <div id="chart-sector-s4"></div>
+            </div>
+          </div>
+
+          <!-- Market Insights -->
+          <div style="margin-top:20px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:12px;">Market Insights</div>
+            <div id="insight-cards" class="chart-grid"></div>
+          </div>
+        </div>
       </div>
 
-      <!-- Market Insights -->
-      <div style="margin-bottom:8px;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.5px;">Market Insights</div>
-      <div id="insight-cards" class="chart-grid" style="margin-bottom:20px;"></div>
+      <!-- Detail panel — enterprise sidebar style -->
+      <div id="detail-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface2);">
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);margin-bottom:2px;">Dettaglio Segmento</div>
+            <div style="font-weight:700;font-size:15px;color:var(--text);" id="detail-title">—</div>
+          </div>
+          <button onclick="document.getElementById('detail-panel').style.display='none'" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text2);cursor:pointer;font-size:12px;">✕ Chiudi</button>
+        </div>
+        <div id="detail-body" style="padding:0;"></div>
+      </div>
 
     </div>
 
@@ -3913,6 +3953,8 @@ async function renderQueryResults(data, analysisType, contextLabel){
   renderRal('chart-ral',data);
   renderBar('chart-companies',countBy(data,'ragione_sociale').filter(d=>d[0]).slice(0,8),'blue');
   renderClickableBar('chart-sector',countBy(data.map(l=>({...l,_sec:l.sector_v2||l.sector})),'_sec').slice(0,8),'accent','sector',data);
+  // Sezione 4: company + signals
+  renderSection4(data);
 
   // Percentili RAL
   if(withRal.length>=3){
@@ -4390,44 +4432,96 @@ function showDetail(field, value){
   const panel=document.getElementById('detail-panel');
   const title=document.getElementById('detail-title');
   const body=document.getElementById('detail-body');
-  
-  const fieldLabel=field==='functional_area'?'Area':field==='seniority'?'Seniority':'Settore';
-  title.textContent=`${fieldLabel}: ${value} — ${filtered.length} annunci`;
-  panel.style.display='block';
-  panel.scrollIntoView({behavior:'smooth'});
 
-  if(!filtered.length){body.innerHTML='<div class="empty"><div class="empty-sub">Nessun annuncio</div></div>';return;}
+  const fieldLabel = {functional_area:'Area Funzionale', functional_area_v2:'Area Funzionale',
+    seniority:'Seniority', seniority_v2:'Seniority', sector_v2:'Settore', therapeutic_area:'Area Terapeutica'}[field]||field;
+  title.textContent=`${toLabel(value)} — ${filtered.length} annunci`;
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+  if(!filtered.length){body.innerHTML='<div style="padding:32px;text-align:center;color:var(--text2);">Nessun annuncio trovato</div>';return;}
 
   const withRal=filtered.filter(l=>l.ral_min||l.ral_max);
   const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b,0)/withRal.length):null;
+  const companies=new Set(filtered.map(l=>l.ragione_sociale||l.company_name).filter(Boolean));
 
-  // Breakdown per seniority
+  // Breakdown seniority
   const bySeniority={};
-  filtered.forEach(l=>{const k=l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
-  const seniorityBreakdown=Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;margin-right:6px;">${k}: <strong>${v}</strong></span>`).join('');
+  filtered.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
+
+  // Top aziende
+  const byCompany={};
+  filtered.forEach(l=>{const c=l.ragione_sociale||l.company_name||'N/D';byCompany[c]=(byCompany[c]||0)+1;});
+  const topCompanies=Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   body.innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 24px;border-bottom:1px solid var(--border);">
-      <div class="kpi-card"><div class="kpi-label">Annunci</div><div class="kpi-value" style="font-size:20px">${filtered.length}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" style="font-size:20px">${withRal.length}</div><div class="kpi-sub">${filtered.length?Math.round(withRal.length/filtered.length*100):0}%</div></div>
-      <div class="kpi-card"><div class="kpi-label">RAL media</div><div class="kpi-value" style="font-size:20px">${avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Aziende uniche</div><div class="kpi-value" style="font-size:20px">${new Set(filtered.map(l=>l.company_name)).size}</div></div>
+    <!-- KPI row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--border);">
+      <div style="padding:16px 20px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:4px;">Annunci</div>
+        <div style="font-size:24px;font-weight:800;color:var(--text);">${filtered.length}</div>
+      </div>
+      <div style="padding:16px 20px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:4px;">Aziende</div>
+        <div style="font-size:24px;font-weight:800;color:var(--text);">${companies.size}</div>
+      </div>
+      <div style="padding:16px 20px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:4px;">Con RAL</div>
+        <div style="font-size:24px;font-weight:800;color:#f59e0b;">${withRal.length} <span style="font-size:12px;font-weight:400;">(${filtered.length?Math.round(withRal.length/filtered.length*100):0}%)</span></div>
+      </div>
+      <div style="padding:16px 20px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:4px;">RAL media</div>
+        <div style="font-size:24px;font-weight:800;color:#f59e0b;">${avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'}</div>
+      </div>
     </div>
-    <div style="padding:12px 24px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);">
-      Distribuzione seniority: ${seniorityBreakdown||'—'}
+
+    <!-- Breakdown -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--border);">
+      <!-- Seniority -->
+      <div style="padding:16px 20px;border-right:1px solid var(--border);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:10px;">Distribuzione Seniority</div>
+        ${Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+          const pct=Math.round(v/filtered.length*100);
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="font-size:11px;color:var(--text);width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${toLabel(k)}</div>
+            <div style="flex:1;background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+              <div style="width:${pct}%;height:100%;background:var(--accent2);border-radius:3px;"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text2);width:24px;text-align:right;">${v}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <!-- Top aziende -->
+      <div style="padding:16px 20px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:10px;">Top Aziende</div>
+        ${topCompanies.map(([c,n],i)=>{
+          const maxN=topCompanies[0][1];
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="font-size:11px;color:var(--text);width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${c}">${c}</div>
+            <div style="flex:1;background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+              <div style="width:${Math.round(n/maxN*100)}%;height:100%;background:var(--accent);border-radius:3px;"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text2);width:24px;text-align:right;">${n}</div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>
-    <div style="overflow-x:auto;">
-    <table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th></tr></thead>
-    <tbody>${filtered.map(l=>`<tr>
-      <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
-      <td style="font-size:12px">${l.company_name}</td>
-      <td style="font-size:11px;color:var(--text2)">${l.sector||'—'}</td>
-      <td>${l.seniority||'—'}</td>
-      <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
-      <td>${l.contract_type||'—'}</td>
-      <td>${l.location||'—'}</td>
-      <td>${l.published_date||'—'}</td>
-    </tr>`).join('')}</tbody></table>
+
+    <!-- Tabella annunci -->
+    <div style="overflow-x:auto;max-height:300px;overflow-y:auto;">
+    <table style="font-size:11px;">
+      <thead><tr><th>Ruolo</th><th>Azienda</th><th>Seniority</th><th>RAL</th><th>Sede</th><th>Data</th></tr></thead>
+      <tbody>${filtered.slice(0,30).map(l=>`<tr>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
+        <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.ragione_sociale||l.company_name||'—'}</td>
+        <td>${toLabel(l.seniority_v2||l.seniority||'—')}</td>
+        <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
+        <td>${(l.location||'—').split(',')[0]}</td>
+        <td>${(l.published_date||'—').substring(5,10)}</td>
+      </tr>`).join('')}
+      ${filtered.length>30?`<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:10px;">... e altri ${filtered.length-30} annunci</td></tr>`:''}
+      </tbody>
+    </table>
     </div>`;
 }
 
@@ -7118,6 +7212,114 @@ function syncDashboardKPIs(){
 
 // Hook nel ciclo di render esistente
 const _origRunMarketQuery = typeof runMarketQuery === 'function' ? runMarketQuery : null;
+
+
+/* ═══════════════════════════════════════════════════
+   MARKET OVERVIEW — SEZIONE 4 COMPANY + SIGNALS
+═══════════════════════════════════════════════════ */
+
+function renderDashSignals(data){
+  const el = document.getElementById('dash-signals-cards');
+  if(!el) return;
+
+  const now = Date.now();
+  const d30 = new Date(now - 30*864e5);
+  const d60 = new Date(now - 60*864e5);
+  const d90 = new Date(now - 90*864e5);
+
+  const recent30 = data.filter(l => l.published_date && new Date(l.published_date) > d30);
+  const prev30   = data.filter(l => l.published_date && new Date(l.published_date) > d60 && new Date(l.published_date) <= d30);
+
+  const signals = [];
+
+  // HOT: crescita annunci > 20%
+  const growth = prev30.length > 0 ? Math.round((recent30.length - prev30.length) / prev30.length * 100) : 0;
+  if(growth > 20) signals.push({ type:'HOT', icon:'🔥', color:'#ef4444', bg:'rgba(239,68,68,0.08)', border:'rgba(239,68,68,0.3)',
+    title:`Hiring in forte crescita`, desc:`+${growth}% di annunci negli ultimi 30 giorni vs periodo precedente` });
+  else if(growth < -15) signals.push({ type:'DECLINE', icon:'📉', color:'#f59e0b', bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.3)',
+    title:`Rallentamento hiring`, desc:`${growth}% di variazione negli annunci — mercato in contrazione` });
+
+  // OPPORTUNITY: ruoli con pochi annunci ma alta RAL
+  const withRal = data.filter(l => l.ral_min && l.canonical_role);
+  const byRole = {};
+  withRal.forEach(l => {
+    if(!byRole[l.canonical_role]) byRole[l.canonical_role] = {count:0, ral:[]};
+    byRole[l.canonical_role].count++;
+    byRole[l.canonical_role].ral.push(l.ral_min);
+  });
+  const rarePremium = Object.entries(byRole)
+    .filter(([r,d]) => d.count <= 3 && d.ral.reduce((a,b)=>a+b)/d.ral.length > 80000)
+    .slice(0,2);
+  if(rarePremium.length > 0) signals.push({ type:'OPPORTUNITY', icon:'💡', color:'#10b981', bg:'rgba(16,185,129,0.08)', border:'rgba(16,185,129,0.3)',
+    title:`Nicchie premium scarsamente coperte`, desc:`${rarePremium.map(([r])=>r).join(', ')} — alta RAL, pochi annunci` });
+
+  // GROWTH: settore più in crescita
+  const sectorCount30 = {};
+  const sectorCountPrev = {};
+  recent30.forEach(l => { const s=l.sector_v2||'altro'; sectorCount30[s]=(sectorCount30[s]||0)+1; });
+  prev30.forEach(l => { const s=l.sector_v2||'altro'; sectorCountPrev[s]=(sectorCountPrev[s]||0)+1; });
+  const topGrowthSector = Object.entries(sectorCount30)
+    .map(([s,n]) => [s, n, sectorCountPrev[s]||0])
+    .filter(([,n,p]) => n > 3 && n > p)
+    .sort((a,b) => (b[1]-b[2]) - (a[1]-a[2]))[0];
+  if(topGrowthSector) signals.push({ type:'GROWTH', icon:'🚀', color:'#6366f1', bg:'rgba(99,102,241,0.08)', border:'rgba(99,102,241,0.3)',
+    title:`${toLabel(topGrowthSector[0])} in espansione`, desc:`+${topGrowthSector[1]-topGrowthSector[2]} annunci vs periodo precedente` });
+
+  // WARNING: alta % annunci senza RAL
+  const noRalPct = Math.round(data.filter(l=>!l.ral_min&&!l.ral_max).length/data.length*100);
+  if(noRalPct > 60) signals.push({ type:'WARNING', icon:'⚠️', color:'#f59e0b', bg:'rgba(245,158,11,0.08)', border:'rgba(245,158,11,0.3)',
+    title:`Bassa trasparenza retributiva`, desc:`${noRalPct}% degli annunci non riporta la RAL — dati salary parziali` });
+
+  // Segnali dal motore esistente
+  try{
+    const existing = detectMarketSignals(data, data);
+    existing.slice(0,2).forEach(s => {
+      const typeMap = {HOT:'HOT',WARNING:'WARNING',GROWTH:'GROWTH',DECLINE:'DECLINE',OPPORTUNITY:'OPPORTUNITY'};
+      const t = typeMap[s.badge]||'HOT';
+      const colorMap = {HOT:'#ef4444',WARNING:'#f59e0b',GROWTH:'#10b981',DECLINE:'#f59e0b',OPPORTUNITY:'#6366f1'};
+      const bgMap = {HOT:'rgba(239,68,68,0.08)',WARNING:'rgba(245,158,11,0.08)',GROWTH:'rgba(16,185,129,0.08)',DECLINE:'rgba(245,158,11,0.08)',OPPORTUNITY:'rgba(99,102,241,0.08)'};
+      signals.push({type:t,icon:s.icon,color:colorMap[t],bg:bgMap[t],border:colorMap[t].replace(')',',0.3)').replace('rgb','rgba'),title:s.title,desc:s.desc});
+    });
+  }catch(e){}
+
+  if(!signals.length){
+    el.innerHTML='<div style="padding:16px;border-radius:10px;background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-size:12px;">Nessun segnale significativo — aggiungi più annunci storici per attivare il motore</div>';
+    return;
+  }
+
+  const typeStyle = {
+    HOT:'🔥 HOT', WARNING:'⚠️ WARNING', GROWTH:'🚀 GROWTH', DECLINE:'📉 DECLINE', OPPORTUNITY:'💡 OPPORTUNITY'
+  };
+
+  el.innerHTML = signals.map(s => `
+    <div style="padding:14px 16px;border-radius:10px;background:${s.bg};border:1px solid ${s.border};">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:14px;">${s.icon}</span>
+        <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:${s.color};background:${s.bg};border:1px solid ${s.border};border-radius:4px;padding:2px 7px;">${s.type}</span>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;">${s.title}</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.4;">${s.desc}</div>
+    </div>`).join('');
+}
+
+// Popola anche i chart della Sezione 4 sincronizzando con i dati già caricati
+function renderSection4(data){
+  if(!data || !data.length) return;
+  // Chart companies S4
+  const byCompany = {};
+  data.forEach(l => { const c=l.ragione_sociale||l.company_name||'N/D'; byCompany[c]=(byCompany[c]||0)+1; });
+  const compData = Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  renderBar('chart-companies-s4', compData, 'blue');
+
+  // Chart sector S4
+  const bySector = {};
+  data.forEach(l => { const s=l.sector_v2||'N/D'; bySector[s]=(bySector[s]||0)+1; });
+  const sectorData = Object.entries(bySector).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  renderBar('chart-sector-s4', sectorData, 'accent');
+
+  // Signals
+  renderDashSignals(data);
+}
 
 </script>
 </body>
