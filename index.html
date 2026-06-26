@@ -517,17 +517,50 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;flex-direction:column;gap:4px;">
         <div style="font-size:22px;font-weight:800;color:var(--text);">Annunci di lavoro</div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
-        <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;">🟣 CSV Vocations</button>
-        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze">🤖 Analizza con AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="autoAnalyzeDescriptions()" id="btn-auto-analyze" style="border-color:var(--success);color:var(--success);">⚡ Auto-analisi <span id="badge-auto" style="background:var(--success);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Completa automaticamente tutti i dati mancanti">🔮 Completa dati</button>
-        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);">🏷 Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);">🧹 Pulizia</button>
+
+        <!-- 1. IMPORT -->
+        <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1 — Importa CSV Vocations">
+          📥 1. Import CSV
+        </button>
+
+        <!-- 2. NORMALIZZA RUOLI -->
+        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);" title="Step 2 — Normalizza canonical_role e role_family con regex + AI">
+          🏷 2. Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span>
+        </button>
+
+        <!-- 3. MAPPA TASSONOMIA -->
+        <button class="btn btn-secondary" onclick="openTaxonomyMapper()" id="btn-taxonomy" style="border-color:#f59e0b;color:#f59e0b;" title="Step 3 — Mappa i titoli senza role_family">
+          🗂️ 3. Mappa tassonomia <span id="badge-unmapped" style="background:#f59e0b;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span>
+        </button>
+
+        <!-- 4. COMPLETA DATI -->
+        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 4 — Completa functional_area, seniority, therapeutic_area">
+          🔮 4. Completa dati
+        </button>
+
+        <!-- 5. ANALIZZA CON AI -->
+        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze" title="Step 5 — Analisi AI approfondita">
+          🤖 5. Analizza AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span>
+        </button>
+
+        <!-- 6. PULIZIA -->
+        <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);" title="Step 6 — Rimuovi duplicati e record corrotti">
+          🧹 6. Pulizia
+        </button>
+
+        <!-- 7. ELABORAZIONE MENSILE -->
+        <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 7 — Ricalcola Scarcity, Competitor, Demand, Geographic">
+          📊 7. Elaborazione mensile
+        </button>
+
+        <div style="width:1px;height:24px;background:var(--border);margin:0 4px;"></div>
+
+        <!-- AZIONI ACCESSORIE -->
         <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
-        <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
-        <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi annuncio</button>
+        <button class="btn btn-pdf" onclick="exportPDF()" title="Esporta PDF">⬇ PDF</button>
+        <button class="btn btn-primary" onclick="openModal('modal-listing')" title="Aggiungi annuncio manuale">+ Aggiungi</button>
       </div>
     </div>
     <div class="filters">
@@ -5674,6 +5707,22 @@ async function exportRoleIntelligencePDF(){
     <style>body{font-family:Arial;padding:20px;}h1{color:#1C3557;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #ddd;padding:8px;font-size:12px;}</style>
     </head><body><h1>Benchmark — ${role}</h1><p>MC Pharma Consulting · ${new Date().toLocaleDateString('it-IT')}</p>${printContent}
 
+
+<!-- MODAL TAXONOMY MAPPER -->
+<div class="modal-overlay" id="modal-taxonomy-mapper">
+  <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🗂️ Mappa Tassonomia — Step 3</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+      Assegna <strong>Role Family</strong> e <strong>Canonical Role</strong> ai titoli non ancora classificati.
+    </div>
+    <div id="taxonomy-mapper-body" style="overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
+    </div>
+  </div>
+</div>
+
 </body></html>`);
   win.print();
 }
@@ -6669,6 +6718,145 @@ async function loadCompanyCompetitors(){
     body.innerHTML = '<div style="padding:24px;text-align:center;color:var(--danger);">Errore caricamento</div>';
     console.error('loadCompanyCompetitors error:', e);
   }
+}
+
+
+/* ═══════════════════════════════════════════════════
+   TAXONOMY MAPPER — Step 3
+═══════════════════════════════════════════════════ */
+
+async function openTaxonomyMapper(){
+  // Carica titoli senza role_family
+  const unmapped = await api('job_listings?select=job_title&role_family=is.null&canonical_role=is.null&order=job_title');
+  const counts = {};
+  unmapped.forEach(r => { counts[r.job_title] = (counts[r.job_title]||0)+1; });
+  const titles = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+
+  // Aggiorna badge
+  const badge = document.getElementById('badge-unmapped');
+  if(badge){ badge.textContent = titles.length; badge.style.display = titles.length ? '' : 'none'; }
+
+  if(!titles.length){ toast('✅ Tutti i titoli sono già mappati!','success'); return; }
+
+  // Apri modal
+  const modal = document.getElementById('modal-taxonomy-mapper');
+  if(!modal){ toast('Modal tassonomia non trovata','error'); return; }
+
+  const body = document.getElementById('taxonomy-mapper-body');
+  const roleFamilies = [
+    'ISF','MSL','Medical Advisor','Medical Manager','Key Account Manager','Area Manager',
+    'Product Manager','Brand Manager','Product Specialist','Market Access','Regulatory Affairs',
+    'QA Manager','Pharmacovigilance','Operations','Supply Chain','Production Manager',
+    'Scientific and Technical','Human Resources','Office and Administrative Support',
+    'Marketing','Marketing and Sales','Sales','IT, Engineering','Information Technology',
+    'Analytical','Laboratory and Life Sciences','Installation, Maintenance, and Repair',
+    'Production and Operations','Operations and Maintenance'
+  ];
+  const canonicalRoles = [
+    'Product Specialist','Sales Representative','Marketing and Promotion','Scientific Researcher',
+    'Operations Manager','Human Resources Generalist','Office Clerk','Quality Assurance Analyst',
+    'Data Analyst','Software System Engineer','Network Architect','Laboratory Technician',
+    'Equipment Maintenance Technician','Production and Processing Worker','Stock Clerk',
+    'Operations and Maintenance Planning Specialist','Marketing and Sales Representative',
+    'Medical Affairs Specialist'
+  ];
+
+  body.innerHTML = `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+      ${titles.length} titoli da mappare. Assegna role_family e canonical_role, poi clicca Salva tutto.
+    </div>
+    <table style="font-size:12px;width:100%;">
+      <thead><tr>
+        <th style="text-align:left;padding:6px 8px;">Titolo</th>
+        <th style="text-align:center;width:30px;">N</th>
+        <th style="text-align:left;">Role Family</th>
+        <th style="text-align:left;">Canonical Role</th>
+      </tr></thead>
+      <tbody>
+        ${titles.slice(0,60).map(([title, n], i) => `
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 8px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${title.replace(/"/g,'&quot;')}">${title}</td>
+          <td style="text-align:center;color:var(--text2);">${n}</td>
+          <td style="padding:4px;">
+            <select id="tm-rf-${i}" style="width:100%;font-size:11px;padding:3px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+              <option value="">— seleziona —</option>
+              ${roleFamilies.map(rf => `<option value="${rf}">${rf}</option>`).join('')}
+            </select>
+          </td>
+          <td style="padding:4px;">
+            <select id="tm-cr-${i}" style="width:100%;font-size:11px;padding:3px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+              <option value="">— seleziona —</option>
+              ${canonicalRoles.map(cr => `<option value="${cr}">${cr}</option>`).join('')}
+            </select>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  // Salva riferimento titoli nella modal per il save
+  modal._titles = titles.slice(0,60);
+  openModal('modal-taxonomy-mapper');
+}
+
+async function saveTaxonomyMapping(){
+  const modal = document.getElementById('modal-taxonomy-mapper');
+  const titles = modal._titles || [];
+  let saved = 0, skipped = 0;
+
+  for(let i=0; i<titles.length; i++){
+    const [title] = titles[i];
+    const rf = document.getElementById(`tm-rf-${i}`)?.value;
+    const cr = document.getElementById(`tm-cr-${i}`)?.value;
+    if(!rf) { skipped++; continue; }
+    try{
+      await api(`job_listings?job_title=eq.${encodeURIComponent(title)}&role_family=is.null`, 'PATCH', {
+        role_family: rf,
+        canonical_role: cr || null,
+      });
+      saved++;
+    }catch(e){ console.error('Taxonomy save error:', title, e.message); }
+  }
+
+  toast(`✅ Mappati ${saved} titoli${skipped?' | '+skipped+' saltati (senza selezione)':''}`, 'success');
+  closeModal('modal-taxonomy-mapper');
+  loadListings();
+  refreshPendingBadges();
+}
+
+/* ═══════════════════════════════════════════════════
+   ELABORAZIONE MENSILE — Step 7
+═══════════════════════════════════════════════════ */
+
+async function runMonthlyElaboration(){
+  const steps = [
+    { label: 'Talent Scarcity Index...', fn: async () => {
+      await api('rpc/refresh_talent_scarcity', 'POST', {});
+    }},
+    { label: 'Competitor Role Overlap...', fn: async () => {
+      await api('rpc/refresh_company_role_overlap', 'POST', {});
+    }},
+  ];
+
+  toast('📊 Elaborazione mensile avviata...');
+  for(const step of steps){
+    toast(`⏳ ${step.label}`);
+    try{ await step.fn(); }
+    catch(e){ console.warn('Elaborazione step error:', step.label, e.message); }
+  }
+  toast('✅ Elaborazione mensile completata!', 'success');
+}
+
+/* Badge aggiornamento */
+async function refreshPendingBadges(){
+  try{
+    const unmapped = await api('job_listings?select=id&role_family=is.null&canonical_role=is.null');
+    const badge = document.getElementById('badge-unmapped');
+    if(badge){ badge.textContent = unmapped.length; badge.style.display = unmapped.length ? '' : 'none'; }
+
+    const unnorm = await api('job_listings?select=id&canonical_role=is.null');
+    const badge2 = document.getElementById('badge-unnormalized');
+    if(badge2){ badge2.textContent = unnorm.length; badge2.style.display = unnorm.length ? '' : 'none'; }
+  }catch(e){}
 }
 
 </script>
