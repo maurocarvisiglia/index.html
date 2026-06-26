@@ -1498,6 +1498,7 @@ a.job-link:hover{text-decoration:underline;}
 
 <script>
 
+
 const SB_URL='https://ehrayeltqottgvkzvbdk.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocmF5ZWx0cW90dGd2a3p2YmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTEzNTgsImV4cCI6MjA5NzQyNzM1OH0.wmh0h8Xbt_gkxLwBRFHRM7yXXBw5comJbpbrotLksxE';
 
@@ -5359,7 +5360,42 @@ async function exportRoleIntelligencePDF(){
 
 
 
+
+
+/* ── EXPORT ── */
+function exportPDF(){window.print();}
+
+/* ── IMPORT EXCEL ── */
+async function initApp(){
+  try{
+    const listings=await api('job_listings?select=id,ral_min,ral_max');
+    const ral=listings.filter(l=>l.ral_min||l.ral_max).length;
+    document.getElementById('stat-total').textContent=listings.length;
+    document.getElementById('stat-ral').textContent=ral;
+    const pct=listings.length?Math.round(ral/listings.length*100):0;
+    document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
+
+    // Count companies via Supabase count header
+    const r1=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
+    const r2=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
+    const getCount=r=>{const cr=r.headers.get('Content-Range');return cr?cr.split('/')[1]:'?';};
+    document.getElementById('stat-ls').textContent=getCount(r1);
+    document.getElementById('stat-hh').textContent=getCount(r2);
+
+    ['chart-area','chart-seniority','chart-sector','chart-source','chart-companies','chart-ral'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare i grafici</div>';
+    });
+  }catch(e){
+    console.error('Init error:',e);
+    ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='err';});
+  }
+}
+initApp();
+
+
 </script>
+
 
 <!-- ── TALENT SCARCITY VIEW ── -->
 <div class="view" id="view-scarcity">
@@ -6191,38 +6227,8 @@ async function delCo(id){
   catch(e){toast('Errore','error');}
 }
 
-/* ── EXPORT ── */
-function exportPDF(){window.print();}
-
-/* ── IMPORT EXCEL ── */
-async function initApp(){
-  try{
-    const listings=await api('job_listings?select=id,ral_min,ral_max');
-    const ral=listings.filter(l=>l.ral_min||l.ral_max).length;
-    document.getElementById('stat-total').textContent=listings.length;
-    document.getElementById('stat-ral').textContent=ral;
-    const pct=listings.length?Math.round(ral/listings.length*100):0;
-    document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
-
-    // Count companies via Supabase count header
-    const r1=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
-    const r2=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
-    const getCount=r=>{const cr=r.headers.get('Content-Range');return cr?cr.split('/')[1]:'?';};
-    document.getElementById('stat-ls').textContent=getCount(r1);
-    document.getElementById('stat-hh').textContent=getCount(r2);
-
-    ['chart-area','chart-seniority','chart-sector','chart-source','chart-companies','chart-ral'].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare i grafici</div>';
-    });
-  }catch(e){
-    console.error('Init error:',e);
-    ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='err';});
-  }
-}
-initApp();
-
 <script>
+
 
 
 /* ═══ LABEL MAP ═══ */
@@ -6709,6 +6715,7 @@ function renderDemandScatter(){
 }
 
 /* ═══ PULSE ANIMATION CSS ═══ */
+
 
 
 </script>
