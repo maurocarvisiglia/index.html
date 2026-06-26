@@ -1664,7 +1664,8 @@ async function importVocationsCSV(event){
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
   loadListings();refreshPendingBadges();
-  if(ok>0){setTimeout(async()=>{toast('✅ Avvio completamento automatico...');await runPostImportEnrichment(ok);},1000);}
+  // Enrichment automatico disabilitato — usa il tasto '🔮 4. Completa dati' manualmente
+  // if(ok>0){setTimeout(async()=>{toast('✅ Avvio completamento...');await runPostImportEnrichment(ok);},1000);}
 }
 
 async function syncCompaniesFromVocations(rows){
@@ -2394,7 +2395,7 @@ function toast(msg,type){
 }
 
 /* ── MODAL ── */
-function openModal(id){document.getElementById(id).classList.add('open');}
+function openModal(id){const el=document.getElementById(id);if(el)el.classList.add('open');else console.error('Modal not found:',id);}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 /* ── DASHBOARD v2 ── */
@@ -6210,7 +6211,7 @@ async function initApp(){
     });
   }catch(e){
     console.error('Init error:',e);
-    ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>document.getElementById(id).textContent='err');
+    ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='err';});
   }
 }
 initApp();
