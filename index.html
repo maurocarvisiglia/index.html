@@ -1963,18 +1963,23 @@ async function upsertListing(record){
   }
 }
 
+let _groqRateLimitUntil=0;
 async function callAI(prompt, maxTokens=800){
+  // Rispetta rate limit
+  const waitMs=_groqRateLimitUntil-Date.now();
+  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
   const resp=await fetch(GROQ_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_API_KEY},
-    body:JSON.stringify({
-      model:GROQ_MODEL,
-      max_tokens:maxTokens,
-      messages:[{role:'user',content:prompt}],
-      temperature:0.1
-    })
+    body:JSON.stringify({model:GROQ_MODEL,max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature:0.1})
   });
-  if(!resp.ok)throw new Error('Groq API error '+resp.status);
+  if(!resp.ok){
+    if(resp.status===429){
+      _groqRateLimitUntil=Date.now()+15000; // backoff 15 secondi
+      throw new Error('Groq rate limit — attendi 15s');
+    }
+    throw new Error('Groq API error '+resp.status);
+  }
   const data=await resp.json();
   return data.choices[0].message.content.trim();
 }
@@ -2848,7 +2853,7 @@ async function runPostImportEnrichment(newCount){
         try{await classifyOneListing(listing);classified++;}catch(e){}
         if(classified%5===0){
           showEnrichmentProgress(`Step 2/4 — AI: ${classified}...`,32+Math.min(35,Math.round(classified/Math.max(totalToClassify,1)*35)));
-          await new Promise(r=>setTimeout(r,350));
+          await new Promise(r=>setTimeout(r,2500)); // rate limit Groq
         }
       }
       if(toClassify.length<PAGE_SIZE)break;
