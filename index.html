@@ -732,6 +732,9 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 4 — Completa functional_area, seniority, therapeutic_area">
           🔮 4. Completa dati
         </button>
+        <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Classifica manualmente le aree funzionali non assegnate">
+          🗂️ Classifica aree <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span>
+        </button>
 
         <!-- 5. ANALIZZA CON AI -->
         <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze" title="Step 5 — Analisi AI approfondita">
@@ -6015,6 +6018,42 @@ async function exportRoleIntelligencePDF(){
   </div>
 </div>
 
+
+<!-- MODAL AREA CLASSIFIER -->
+<div class="modal-overlay" id="modal-area-classifier">
+  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🗂️ Classificatore Aree Funzionali</div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="autoClassifyAreas()" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
+        <button class="btn btn-secondary" onclick="applyAreaRegex()" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
+      </div>
+    </div>
+
+    <!-- Filtri rapidi -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
+      <button onclick="filterAreaClassifier('')" class="qb-btn active" id="acf-all">Tutti</button>
+      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
+      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
+      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
+      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
+      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
+      <button onclick="filterAreaClassifier(null)" class="qb-btn" id="acf-unset">⚠️ Non classificati</button>
+    </div>
+
+    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
+      <button class="btn btn-primary" onclick="saveAreaClassifications()">💾 Salva classificazioni</button>
+    </div>
+  </div>
+</div>
+
 </body></html>`);
   win.print();
 }
@@ -7319,6 +7358,231 @@ function renderSection4(data){
 
   // Signals
   renderDashSignals(data);
+}
+
+
+/* ═══════════════════════════════════════════════════
+   AREA FUNCTIONAL CLASSIFIER
+═══════════════════════════════════════════════════ */
+
+let _areaClassifierData = [];
+let _areaClassifierFilter = undefined; // undefined = tutti, null = non classificati, string = area specifica
+
+const AREA_OPTIONS = [
+  {v:'',l:'— non classificato —'},
+  {v:'commercial',l:'Commercial / Sales'},
+  {v:'medical_affairs',l:'Medical Affairs'},
+  {v:'marketing',l:'Marketing'},
+  {v:'market_access',l:'Market Access'},
+  {v:'regulatory_affairs',l:'Regulatory Affairs'},
+  {v:'quality',l:'Quality Assurance'},
+  {v:'clinical_operations',l:'Clinical Operations'},
+  {v:'drug_safety',l:'Drug Safety / PV'},
+  {v:'rd',l:'R&D / Ricerca'},
+  {v:'manufacturing',l:'Manufacturing / Produzione'},
+  {v:'supply_chain',l:'Supply Chain / Logistica'},
+  {v:'finance',l:'Finance'},
+  {v:'hr',l:'Human Resources'},
+  {v:'it',l:'IT / Digital'},
+  {v:'business_development',l:'Business Development'},
+  {v:'general_management',l:'General Management'},
+];
+
+// Regex potenziato per auto-classificazione
+const AREA_REGEX_RULES = [
+  {re:/\bisf\b|informatore scientifico|informatore medico|ispettore|sales rep|sales specialist|area.*sales|sales.*area|\bkam\b|key account|account.*manager|account.*specialist|territory.*manager|district.*manager|regional.*business.*director|commercial.*director|commercial.*manager|commercial.*regional|business.*director.*field|field.*sales/i, v:'commercial'},
+  {re:/medical science liaison|\bmsl\b|medical advisor|medical.*affairs|medical.*manager|medical.*director|medical.*education|medical.*information|medical.*excellence|medical.*associate.*director|global.*medical|head.*medical|rwe|real world|medical writing/i, v:'medical_affairs'},
+  {re:/product manager|brand manager|marketing manager|marketing.*director|digital marketing|marketing.*specialist|marketing.*associate|marketing.*operativo|congresses|events.*manager|trade marketing|campaign.*developer|crm.*developer/i, v:'marketing'},
+  {re:/market access|heor|pricing|reimbursement|government affairs|value.*access|access.*manager|tender specialist/i, v:'market_access'},
+  {re:/regulatory affairs|regulatory.*manager|regulatory.*specialist|regulatory.*director|regulatory.*associate|cmc.*regulatory|labelling|registrazione/i, v:'regulatory_affairs'},
+  {re:/quality assurance|\bqa\b|\bqc\b|quality.*manager|quality.*director|quality.*specialist|quality.*associate|quality.*operations|qualified person|\bqp\b|validation|gmp|gdp|auditor|quality.*control|quality.*control/i, v:'quality'},
+  {re:/clinical research|\bcra\b|clinical.*trial|clinical.*operations|clinical.*manager|clinical.*project|clinical.*coordinator|clinical.*specialist|data management|biostatistics|clinical.*implementation/i, v:'clinical_operations'},
+  {re:/pharmacovigilance|drug safety|\bpv\b|\bqppv\b|signal detection|safety.*associate|safety.*database|farmacovigilanza/i, v:'drug_safety'},
+  {re:/research scientist|r&d|formulation|analytical.*scientist|preclinical|process development|bioinformatics|scientist|chemistry|biologo|biologa|medicinal chemistry|head.*scientific|scientific.*service/i, v:'rd'},
+  {re:/production|manufacturing|produzione|operatore|plant manager|msat|manufacturing.*manager|production.*planning|manufacturing.*specialist|sterile|assembly|pesate|integratori/i, v:'manufacturing'},
+  {re:/supply chain|logistic|logistics|planning|procurement|warehouse|magazzino|distribution|inventory|addetto.*magazzino|responsabile.*magazzino|external.*manufacturing.*planning/i, v:'supply_chain'},
+  {re:/finance|controller|financial|accounting|cfo|budget|treasury|audit|fp&a|financial.*reporting|financial.*statement|spending.*compliance|sso.*finance|procurement.*finance/i, v:'finance'},
+  {re:/\bhr\b|human resources|talent acquisition|people.*relations|labour relations|head.*people|hrbp|hr.*business.*partner|recruiting|recruiter/i, v:'hr'},
+  {re:/\bit\b|software|digital.*services|data engineer|system.*specialist|network|cybersecurity|ai engineer|mes.*engineer|full.*stack|bi.*support|functional.*analyst|information.*technology/i, v:'it'},
+  {re:/business development|licensing|partnership|m&a|alliance|franchise.*head/i, v:'business_development'},
+  {re:/general manager|country manager|\bceo\b|\bcoo\b|\bcfo\b|managing director|direttore.*generale|direzione/i, v:'general_management'},
+  {re:/manutenzione|maintenance|tecnico.*campo|tornitore|cnc|field.*service.*engineer|filter.*assembly/i, v:'manufacturing'},
+  {re:/segreteria|assistente.*direzione|front.*office|administrative|back.*office|office.*clerk/i, v:'hr'},
+];
+
+function detectAreaFromTitle(title){
+  if(!title) return '';
+  for(const rule of AREA_REGEX_RULES){
+    if(rule.re.test(title)) return rule.v;
+  }
+  return '';
+}
+
+async function openAreaClassifier(){
+  openModal('modal-area-classifier');
+  document.getElementById('area-classifier-count').textContent = 'Caricamento annunci...';
+  document.getElementById('area-classifier-body').innerHTML = '<div style="padding:32px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+
+  try{
+    // Carica tutti gli annunci (non solo quelli senza area)
+    const data = await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
+    _areaClassifierData = data;
+    _areaClassifierFilter = undefined;
+    renderAreaClassifier();
+  }catch(e){
+    document.getElementById('area-classifier-body').innerHTML = '<div style="padding:32px;text-align:center;color:var(--danger);">Errore caricamento</div>';
+  }
+}
+
+function filterAreaClassifier(filter){
+  _areaClassifierFilter = filter;
+  // Toggle active button
+  ['acf-all','acf-commercial','acf-medical','acf-manufacturing','acf-quality','acf-it','acf-unset'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('active');
+  });
+  const filterMap = {'':'acf-all','commercial':'acf-commercial','medical_affairs':'acf-medical','manufacturing':'acf-manufacturing','quality':'acf-quality','it':'acf-it'};
+  if(filter === null) document.getElementById('acf-unset')?.classList.add('active');
+  else if(filter in filterMap) document.getElementById(filterMap[filter])?.classList.add('active');
+  renderAreaClassifier();
+}
+
+function renderAreaClassifier(){
+  const body = document.getElementById('area-classifier-body');
+  const countEl = document.getElementById('area-classifier-count');
+  if(!_areaClassifierData.length){ body.innerHTML='<div style="padding:32px;text-align:center;color:var(--text2);">Nessun annuncio</div>'; return; }
+
+  // Raggruppa per job_title
+  const byTitle = {};
+  _areaClassifierData.forEach(l => {
+    const t = l.job_title || '—';
+    if(!byTitle[t]) byTitle[t] = {listings:[], current_area: l.functional_area_v2||'', suggested: detectAreaFromTitle(t)};
+    byTitle[t].listings.push(l);
+    if(!byTitle[t].current_area && l.functional_area_v2) byTitle[t].current_area = l.functional_area_v2;
+  });
+
+  // Filtra
+  let entries = Object.entries(byTitle).sort((a,b) => b[1].listings.length - a[1].listings.length);
+  if(_areaClassifierFilter === null) entries = entries.filter(([,d]) => !d.current_area);
+  else if(typeof _areaClassifierFilter === 'string' && _areaClassifierFilter) entries = entries.filter(([,d]) => d.current_area === _areaClassifierFilter);
+
+  const unclassified = Object.values(byTitle).filter(d => !d.current_area).length;
+  const badge = document.getElementById('badge-unclassified-area');
+  if(badge){ badge.textContent = unclassified; badge.style.display = unclassified ? '' : 'none'; }
+  countEl.textContent = `${entries.length} titoli mostrati | ${unclassified} non classificati | ${Object.keys(byTitle).length} titoli totali`;
+
+  body.innerHTML = `<table style="font-size:11px;width:100%;">
+    <thead><tr>
+      <th style="text-align:left;padding:8px;">Titolo (n° annunci)</th>
+      <th style="text-align:left;padding:8px;width:200px;">Area attuale</th>
+      <th style="text-align:left;padding:8px;width:220px;">Assegna area</th>
+      <th style="text-align:center;padding:8px;width:60px;">Auto</th>
+    </tr></thead>
+    <tbody>
+    ${entries.slice(0,100).map(([title, data], i) => {
+      const isUnclassified = !data.current_area;
+      const hasSuggestion = data.suggested && data.suggested !== data.current_area;
+      return `<tr style="border-bottom:1px solid var(--border);${isUnclassified?'background:rgba(239,68,68,0.04);':''}">
+        <td style="padding:7px 8px;">
+          <div style="font-weight:${isUnclassified?'600':'400'};color:${isUnclassified?'var(--text)':'var(--text2)'};">${title}</div>
+          <div style="font-size:10px;color:var(--text2);">${data.listings.length} annunci · ${data.listings[0]?.company_name||''}</div>
+        </td>
+        <td style="padding:7px 8px;">
+          <span style="font-size:10px;padding:2px 8px;border-radius:4px;background:${data.current_area?'rgba(99,102,241,0.1)':'rgba(239,68,68,0.1)'};color:${data.current_area?'#6366f1':'#ef4444'};">
+            ${data.current_area ? toLabel(data.current_area) : '⚠️ Non classificato'}
+          </span>
+        </td>
+        <td style="padding:4px 8px;">
+          <select id="ac-sel-${i}" data-title="${title.replace(/"/g,'&quot;')}" data-ids="${data.listings.map(l=>l.id).join(',')}"
+            style="width:100%;font-size:11px;padding:4px;background:var(--surface2);border:1px solid ${hasSuggestion?'#f59e0b':'var(--border)'};border-radius:4px;color:var(--text);">
+            ${AREA_OPTIONS.map(o => `<option value="${o.v}" ${(data.current_area===o.v)?'selected':''}>${o.l}</option>`).join('')}
+          </select>
+        </td>
+        <td style="text-align:center;padding:4px;">
+          ${hasSuggestion ? `<button onclick="applySuggestion(${i},'${data.suggested}')" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:10px;color:#f59e0b;" title="Suggerimento: ${toLabel(data.suggested)}">
+            ⚡ ${toLabel(data.suggested).split('/')[0].trim()}
+          </button>` : '<span style="color:var(--text2);">—</span>'}
+        </td>
+      </tr>`;
+    }).join('')}
+    ${entries.length > 100 ? `<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text2);">... e altri ${entries.length-100} titoli. Usa i filtri per navigare.</td></tr>` : ''}
+    </tbody>
+  </table>`;
+}
+
+function applySuggestion(idx, area){
+  const sel = document.getElementById(`ac-sel-${idx}`);
+  if(sel){ sel.value = area; sel.style.borderColor = '#10b981'; }
+}
+
+async function applyAreaRegex(){
+  const status = document.getElementById('area-classifier-status');
+  if(status) status.textContent = '⏳ Applicazione regex...';
+
+  // Trova tutti i select con valore cambiato (applicazione regex automatica)
+  const selects = document.querySelectorAll('[id^="ac-sel-"]');
+  let applied = 0;
+  selects.forEach(sel => {
+    if(!sel.value){
+      const title = sel.dataset.title;
+      const suggested = detectAreaFromTitle(title);
+      if(suggested){ sel.value = suggested; sel.style.borderColor = '#10b981'; applied++; }
+    }
+  });
+  if(status) status.textContent = `✅ Regex applicato a ${applied} titoli — clicca Salva per confermare`;
+}
+
+async function saveAreaClassifications(){
+  const status = document.getElementById('area-classifier-status');
+  if(status) status.textContent = '⏳ Salvataggio...';
+
+  const selects = document.querySelectorAll('[id^="ac-sel-"]');
+  let saved = 0;
+
+  for(const sel of selects){
+    const ids = sel.dataset.ids ? sel.dataset.ids.split(',') : [];
+    const area = sel.value;
+    if(!ids.length) continue;
+
+    for(const id of ids){
+      if(!id) continue;
+      try{
+        await api(`job_listings?id=eq.${id}`, 'PATCH', { functional_area_v2: area || null });
+        saved++;
+      }catch(e){ console.warn('Area save error:', id, e.message); }
+    }
+  }
+
+  // Aggiorna dati locali
+  _areaClassifierData = await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
+  renderAreaClassifier();
+  if(status) status.textContent = `✅ ${saved} annunci aggiornati`;
+  toast(`✅ ${saved} annunci classificati`, 'success');
+  loadDashboard();
+}
+
+async function autoClassifyAreas(){
+  const status = document.getElementById('area-classifier-status');
+  if(status) status.textContent = '⏳ Classificazione AI in corso (può richiedere qualche minuto)...';
+
+  // Prendi solo i non classificati
+  const unclassified = _areaClassifierData.filter(l => !l.functional_area_v2);
+  if(!unclassified.length){ if(status) status.textContent = '✅ Tutti gli annunci sono già classificati'; return; }
+
+  let done = 0;
+  for(const l of unclassified){
+    try{
+      await classifyOneListing(l);
+      done++;
+      if(done % 5 === 0 && status) status.textContent = `⏳ AI: ${done}/${unclassified.length}...`;
+      await new Promise(r => setTimeout(r, 300));
+    }catch(e){ console.warn('AI classify error:', l.id, e.message); }
+  }
+
+  _areaClassifierData = await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
+  renderAreaClassifier();
+  if(status) status.textContent = `✅ AI ha classificato ${done} annunci`;
+  toast(`✅ AI: ${done} annunci classificati`, 'success');
 }
 
 </script>
