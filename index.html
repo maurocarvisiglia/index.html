@@ -4960,51 +4960,51 @@ function renderListingsTable(data){
   const thStyle=`style="cursor:pointer;user-select:none;" title="Clicca per ordinare"`;
   const arrow=f=>_sortField===f?(_sortDir==='asc'?' ↑':' ↓'):'';
 
-  body.innerHTML=`<table><thead><tr>
-    <th style="width:36px;"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" style="width:auto;cursor:pointer;"></th>
+  body.innerHTML=`<div style="overflow-x:auto;"><table style="font-size:11px;width:100%;table-layout:fixed;"><colgroup>
+    <col style="width:28px"><col style="width:18%"><col style="width:12%"><col style="width:7%">
+    <col style="width:9%"><col style="width:8%"><col style="width:4%"><col style="width:7%">
+    <col style="width:6%"><col style="width:6%"><col style="width:9%"><col style="width:6%"><col style="width:8%">
+  </colgroup><thead><tr>
+    <th style="padding:8px 4px;"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" style="width:auto;cursor:pointer;"></th>
     <th ${thStyle} onclick="sortListings('job_title')">Ruolo${arrow('job_title')}</th>
     <th ${thStyle} onclick="sortListings('ragione_sociale')">Azienda${arrow('ragione_sociale')}</th>
     <th ${thStyle} onclick="sortListings('sector_v2')">Settore${arrow('sector_v2')}</th>
     <th ${thStyle} onclick="sortListings('functional_area_v2')">Area${arrow('functional_area_v2')}</th>
     <th ${thStyle} onclick="sortListings('seniority_v2')">Seniority${arrow('seniority_v2')}</th>
-    <th>Benefit</th>
+    <th>Ben.</th>
     <th ${thStyle} onclick="sortListings('ral_min')">RAL${arrow('ral_min')}</th>
-    <th ${thStyle} onclick="sortListings('fixed_monthly')">Fisso/mese${arrow('fixed_monthly')}</th>
-    <th ${thStyle} onclick="sortListings('contract_type')">Contratto${arrow('contract_type')}</th>
+    <th ${thStyle} onclick="sortListings('fixed_monthly')">Fisso/m${arrow('fixed_monthly')}</th>
+    <th ${thStyle} onclick="sortListings('contract_type')">Contr.${arrow('contract_type')}</th>
     <th ${thStyle} onclick="sortListings('location')">Sede${arrow('location')}</th>
     <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
     <th></th>
   </tr></thead><tbody>${data.map(l=>{
-    // Benefit tooltip
     const benefitCell=l.benefits?
       `<div class="benefit-badge">⭐<div class="benefit-tooltip">${l.benefits.split(',').map(b=>`• ${b.trim()}`).join('<br>')}</div></div>`
-      :'<span style="color:var(--text2);font-size:11px;">—</span>';
-
-    // Azienda: mostra ragione sociale se disponibile
+      :'<span style="color:var(--text2);">—</span>';
     const aziendaDisplay=l.ragione_sociale||l.company_name||'—';
-
-    // Settore: usa sector_v2 se disponibile
     const settoreDisplay=l.sector_v2||l.sector||'—';
-
+    const locationShort=(l.location||'—').split(',')[0].trim();
+    const dateShort=(l.published_date||'—').substring(5,10);
     return `<tr>
-    <td><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
-    <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;border-bottom:1px solid var(--border);" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span title="Analizzato con AI" style="font-size:10px;">🤖</span>':''}</td>
-    <td style="font-size:12px;">${aziendaDisplay}</td>
-    <td><span style="font-size:11px;color:var(--text2)">${settoreDisplay}</span></td>
-    <td style="font-size:11px;">${l.functional_area_v2||l.functional_area||'—'}</td>
-    <td style="font-size:11px;">${l.seniority_v2||l.seniority||'—'}</td>
-    <td>${benefitCell}</td>
+    <td style="padding:6px 4px;"><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
+    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(l.job_title||'').replace(/"/g,'&quot;')}">${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}${l.ai_analyzed?' <span style="font-size:9px;">🤖</span>':''}</td>
+    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(aziendaDisplay).replace(/"/g,'&quot;')}">${aziendaDisplay}</td>
+    <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${settoreDisplay}</td>
+    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.functional_area_v2||l.functional_area||'—'}</td>
+    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.seniority_v2||l.seniority||'—'}</td>
+    <td style="text-align:center;">${benefitCell}</td>
     <td id="ral-cell-${l.id}">${ralCell(l)}</td>
-    <td style="font-size:11px;color:var(--accent);">${l.fixed_monthly?'€'+l.fixed_monthly.toLocaleString('it-IT')+'/m':'—'}</td>
-    <td style="font-size:11px;">${l.contract_type||'—'}</td>
-    <td style="font-size:11px;">${l.location||'—'}</td>
-    <td style="font-size:11px;">${l.published_date||'—'}</td>
-    <td style="white-space:nowrap;">
-      <button onclick="pasteDescription('${l.id}','${(l.job_title||'').replace(/'/g,"\\'").replace(/"/g,'\\"')}',this)" title="Incolla descrizione annuncio" style="background:none;border:none;cursor:pointer;font-size:13px;">📋</button>
-      <button onclick="analyzeOneListing('${l.id}','${(l.url||'').replace(/'/g,"\\'")}','${(l.job_title||'').replace(/'/g,"\\'")}',this)" title="Analizza con AI" style="background:none;border:none;cursor:pointer;font-size:13px;opacity:${l.ai_analyzed?'0.4':'1'}">🤖</button>
+    <td style="color:var(--accent);">${l.fixed_monthly?'€'+Math.round(l.fixed_monthly/1000)+'k/m':'—'}</td>
+    <td>${l.contract_type||'—'}</td>
+    <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(l.location||'').replace(/"/g,'&quot;')}">${locationShort}</td>
+    <td>${dateShort}</td>
+    <td style="white-space:nowrap;padding:4px 2px;">
+      <button onclick="pasteDescription('${l.id}','${(l.job_title||'').replace(/'/g,"\'").replace(/"/g,'\"')}',this)" title="Incolla descrizione" style="background:none;border:none;cursor:pointer;font-size:12px;">📋</button>
+      <button onclick="analyzeOneListing('${l.id}','${(l.url||'').replace(/'/g,"\'")}','${(l.job_title||'').replace(/'/g,"\'")}',this)" title="Analizza AI" style="background:none;border:none;cursor:pointer;font-size:12px;opacity:${l.ai_analyzed?'0.4':'1'}">🤖</button>
       <button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button>
     </td>
-  </tr>`;}).join('')}</tbody></table>`;
+  </tr>`;}).join('')}</tbody></table></div>`;
 }
 
 function onContractChange(val){
