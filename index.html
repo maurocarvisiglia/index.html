@@ -757,6 +757,9 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);" title="Step 6 — Rimuovi duplicati e record corrotti">
           🧹 6. Pulizia
         </button>
+        <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Controlla e rimuovi aziende non pertinenti">
+          🏭 Filtra aziende
+        </button>
 
         <!-- 7. ELABORAZIONE MENSILE -->
         <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 7 — Ricalcola Scarcity, Competitor, Demand, Geographic">
@@ -6238,6 +6241,44 @@ async function exportRoleIntelligencePDF(){
 
 </div>
 
+
+<!-- MODAL COMPANY FILTER -->
+<div class="modal-overlay" id="modal-company-filter">
+  <div class="modal" style="width:860px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🏭 Filtra Aziende — Controlla e rimuovi annunci non pertinenti</div>
+
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <input type="text" id="company-filter-search" placeholder="Cerca azienda..." oninput="filterCompanyList(this.value)"
+        style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;width:220px;">
+      <select id="company-filter-sector" onchange="filterCompanyList()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+        <option value="">Tutti i settori</option>
+        <option value="pharma_rx">Pharma RX</option>
+        <option value="biotech">Biotech</option>
+        <option value="medical_devices">Medical Devices</option>
+        <option value="cdmo">CDMO</option>
+        <option value="cro">CRO</option>
+      </select>
+      <button onclick="selectAllCompanies(true)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☑ Seleziona tutti</button>
+      <button onclick="selectAllCompanies(false)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☐ Deseleziona tutti</button>
+      <div style="margin-left:auto;font-size:12px;color:var(--text2);" id="company-filter-count">—</div>
+    </div>
+
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);">
+      ⚠️ Le aziende <strong>spuntate</strong> verranno <strong>eliminate</strong> dal database. Lascia deselezionate quelle da conservare.
+    </div>
+
+    <div id="company-filter-body" style="overflow-y:auto;flex:1;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text2);align-self:center;" id="company-filter-status"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-company-filter')">Chiudi</button>
+      <button class="btn btn-danger" onclick="deleteSelectedCompanies()" style="background:#ef4444;color:white;border-color:#ef4444;">
+        🗑️ Elimina aziende selezionate
+      </button>
+    </div>
+  </div>
+</div>
+
 </body></html>`);
   win.print();
 }
@@ -8166,6 +8207,155 @@ async function runMonthlyElaboration(){
     catch(e){ console.warn('Elaborazione error:', s.label, e.message); }
   }
   toast('✅ Elaborazione mensile completata!','success');
+}
+
+
+/* ═══════════════════════════════════════════════════
+   COMPANY FILTER — Pulizia aziende non pertinenti
+═══════════════════════════════════════════════════ */
+
+let _companyFilterData = [];
+let _companyFilterFiltered = [];
+
+async function openCompanyFilter(){
+  openModal('modal-company-filter');
+  const body = document.getElementById('company-filter-body');
+  body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text2);">⏳ Caricamento aziende...</div>';
+
+  try{
+    // Carica tutte le aziende con conteggio annunci
+    const data = await api('job_listings?select=ragione_sociale,company_name,sector_v2,functional_area_v2&order=ragione_sociale');
+
+    // Aggrega per azienda
+    const byCompany = {};
+    data.forEach(l => {
+      const key = l.ragione_sociale || l.company_name || '—';
+      if(!byCompany[key]) byCompany[key] = {
+        name: key,
+        company_name: l.company_name,
+        sector_v2: l.sector_v2,
+        count: 0,
+        classified: 0,
+      };
+      byCompany[key].count++;
+      if(l.functional_area_v2) byCompany[key].classified++;
+    });
+
+    _companyFilterData = Object.values(byCompany).sort((a,b) => b.count - a.count);
+    _companyFilterFiltered = [..._companyFilterData];
+    renderCompanyFilterList();
+
+  }catch(e){
+    body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--danger);">Errore caricamento</div>';
+  }
+}
+
+function filterCompanyList(searchVal){
+  const search = (searchVal || document.getElementById('company-filter-search')?.value || '').toLowerCase();
+  const sector = document.getElementById('company-filter-sector')?.value || '';
+
+  _companyFilterFiltered = _companyFilterData.filter(c => {
+    const matchSearch = !search || c.name.toLowerCase().includes(search);
+    const matchSector = !sector || c.sector_v2 === sector;
+    return matchSearch && matchSector;
+  });
+  renderCompanyFilterList();
+}
+
+function renderCompanyFilterList(){
+  const body = document.getElementById('company-filter-body');
+  const countEl = document.getElementById('company-filter-count');
+  if(!body) return;
+
+  const total = _companyFilterFiltered.reduce((s,c)=>s+c.count,0);
+  if(countEl) countEl.textContent = `${_companyFilterFiltered.length} aziende · ${total} annunci`;
+
+  // Categorie di settore per color coding
+  const sectorColor = {
+    pharma_rx:'#10b981', biotech:'#6366f1', medical_devices:'#3b82f6',
+    cdmo:'#f59e0b', cro:'#8b5cf6', cosmetics:'#ec4899', nutraceutical:'#f97316',
+  };
+
+  body.innerHTML = `<table style="font-size:12px;width:100%;">
+    <thead><tr style="position:sticky;top:0;background:var(--surface2);z-index:1;">
+      <th style="padding:8px;text-align:center;width:36px;">❌</th>
+      <th style="padding:8px;text-align:left;">Azienda</th>
+      <th style="padding:8px;text-align:center;width:70px;">Annunci</th>
+      <th style="padding:8px;text-align:center;width:80px;">Classificati</th>
+      <th style="padding:8px;text-align:left;width:120px;">Settore</th>
+    </tr></thead>
+    <tbody>
+    ${_companyFilterFiltered.map((c, i) => {
+      const classifiedPct = c.count ? Math.round(c.classified/c.count*100) : 0;
+      const secColor = sectorColor[c.sector_v2] || 'var(--text2)';
+      const isLifeSciences = c.sector_v2 && ['pharma_rx','biotech','medical_devices','cdmo','cro','cosmetics','nutraceutical','consumer_health','digital_health','veterinary'].includes(c.sector_v2);
+      return `<tr style="border-bottom:1px solid var(--border);${!isLifeSciences&&c.count>0?'':''}">
+        <td style="text-align:center;padding:6px;">
+          <input type="checkbox" class="company-cb" data-company="${c.name.replace(/"/g,'&quot;')}"
+            style="width:auto;cursor:pointer;" ${!isLifeSciences&&!c.classified?'':''}
+            id="ccb-${i}">
+        </td>
+        <td style="padding:6px 8px;">
+          <div style="font-weight:500;color:var(--text);">${c.name}</div>
+          ${c.company_name&&c.company_name!==c.name?`<div style="font-size:10px;color:var(--text2);">${c.company_name}</div>`:''}
+        </td>
+        <td style="text-align:center;font-weight:700;color:var(--text);">${c.count}</td>
+        <td style="text-align:center;">
+          <span style="font-size:10px;color:${classifiedPct>50?'#10b981':'#f59e0b'};">${classifiedPct}%</span>
+        </td>
+        <td style="padding:6px 8px;">
+          <span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${secColor}20;color:${secColor};">
+            ${c.sector_v2 ? toLabel(c.sector_v2) : '⚠️ N/D'}
+          </span>
+        </td>
+      </tr>`;
+    }).join('')}
+    </tbody>
+  </table>`;
+}
+
+function selectAllCompanies(checked){
+  document.querySelectorAll('.company-cb').forEach(cb => cb.checked = checked);
+}
+
+async function deleteSelectedCompanies(){
+  const checked = [...document.querySelectorAll('.company-cb:checked')];
+  if(!checked.length){
+    toast('Nessuna azienda selezionata','error');
+    return;
+  }
+
+  const companies = checked.map(cb => cb.dataset.company);
+  const totalAnnunci = companies.reduce((s,c) => {
+    const d = _companyFilterData.find(x=>x.name===c);
+    return s + (d?.count||0);
+  }, 0);
+
+  // Conferma
+  if(!confirm(`Stai per eliminare ${companies.length} aziende e ${totalAnnunci} annunci. Confermi?`)){
+    return;
+  }
+
+  const status = document.getElementById('company-filter-status');
+  if(status) status.textContent = '⏳ Eliminazione in corso...';
+
+  let deleted = 0;
+  for(const company of companies){
+    try{
+      await fetch(SB_URL+'/rest/v1/job_listings?ragione_sociale=eq.'+encodeURIComponent(company), {
+        method:'DELETE', headers:H
+      });
+      deleted++;
+      if(status) status.textContent = `⏳ ${deleted}/${companies.length} aziende eliminate...`;
+    }catch(e){ console.warn('Delete error:', company, e.message); }
+  }
+
+  // Ricarica
+  await openCompanyFilter();
+  if(status) status.textContent = `✅ ${deleted} aziende eliminate`;
+  toast(`✅ Eliminati annunci di ${deleted} aziende`, 'success');
+  loadListings();
+  refreshPendingBadges();
 }
 
 </script>
