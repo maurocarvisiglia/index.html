@@ -526,14 +526,10 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
         <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
-        <button class="btn btn-secondary" onclick="normalizeAllRoles()" id="btn-normalize" style="border-color:var(--accent2);color:var(--accent2);" title="Step 2">🏷 2. Normalizza ruoli <span id="badge-unnormalized" style="background:var(--accent2);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="openTaxonomyMapper()" id="btn-taxonomy" style="border-color:#f59e0b;color:#f59e0b;" title="Step 3">🗂️ 3. Mappa tassonomia <span id="badge-unmapped" style="background:#f59e0b;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 4">🔮 4. Completa dati</button>
-        <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Classifica aree funzionali">🗂️ Classifica aree <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="analyzeListings()" id="btn-analyze" title="Step 5">🤖 5. Analizza AI <span id="badge-unclassified" style="background:var(--danger);color:white;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="cleanupListings()" style="border-color:var(--text2);color:var(--text2);" title="Step 6">🧹 6. Pulizia</button>
-        <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Filtra aziende non pertinenti">🏭 Filtra aziende</button>
-        <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 7">📊 7. Elaborazione mensile</button>
+        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza, classifica e completa tutti i campi">🔮 2. Completa dati</button>
+        <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
+        <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
+        <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
         <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
         <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
