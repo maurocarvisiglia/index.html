@@ -2090,7 +2090,7 @@ async function callAI(prompt, maxTokens=800){
   });
   if(!resp.ok){
     if(resp.status===429){
-      _groqRateLimitUntil=Date.now()+15000; // backoff 15 secondi
+      _groqRateLimitUntil=Date.now()+30000; // backoff 15 secondi
       throw new Error('Groq rate limit — attendi 15s');
     }
     throw new Error('Groq API error '+resp.status);
@@ -2946,7 +2946,7 @@ async function runPostImportEnrichment(newCount){
             normalized++;
           }
         }catch(e){}
-        await new Promise(r=>setTimeout(r,200));
+        await new Promise(r=>setTimeout(r,3000));
       }
       console.log(`Step 1: ${normalized}/${unnormalized.length} ruoli normalizzati`);
     }
@@ -4165,7 +4165,7 @@ async function analyzeListings(){
         failed++;
       }
       btn.textContent=`⏳ ${analyzed+failed}/${listings.length}...`;
-      await new Promise(r=>setTimeout(r,300));
+      await new Promise(r=>setTimeout(r,3000));
     }
 
     btn.textContent='🤖 Analizza con AI';
@@ -4217,7 +4217,7 @@ async function analyzeListings(){
       failed++;
     }
     btn.textContent=`⏳ ${analyzed+failed}/${Math.min(needsAnalysis.length,50)}...`;
-    await new Promise(r=>setTimeout(r,300));
+    await new Promise(r=>setTimeout(r,3000));
   }
 
   btn.textContent='🤖 Analizza con AI';
@@ -4664,7 +4664,7 @@ async function normalizeAllRoles(){
           await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
           ok++;
         }else{failed++;}
-        await new Promise(r=>setTimeout(r,300));
+        await new Promise(r=>setTimeout(r,3000));
       }catch(e){failed++;}
     }
     toast(`Normalizzati ${ok} ruoli${failed?`, ${failed} non trovati`:''}`, 'success');
@@ -4704,7 +4704,7 @@ async function normalizeAllRoles(){
           await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
           ok++;
         }else{failed++;}
-        await new Promise(r=>setTimeout(r,300));
+        await new Promise(r=>setTimeout(r,3000));
       }catch(e){failed++;}
     }
     toast(`Normalizzati ${ok} ruoli${failed?`, ${failed} non trovati`:''}`, 'success');
