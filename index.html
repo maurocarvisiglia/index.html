@@ -1688,20 +1688,71 @@ async function importVocationsCSV(event){
     else if(/\bhead\b|head of/.test(tl))seniority_v2='head_of';
     else if(/\bvp\b|vice president/.test(tl))seniority_v2='vp';
     else if(/\bassociate\b/.test(tl))seniority_v2='associate';
+    // ── CLASSIFICAZIONE AREA TERAPEUTICA (2 livelli) ──
     let therapeutic_area=null;
-    const combined=tl+' '+(row['Settori']||'').toLowerCase();
-    if(/oncol|tumor|cancer|leucem/.test(combined))therapeutic_area='oncology';
+    let therapeutic_area_sub=null;
+    // combined: titolo + settori + competenze + target (tutto lowercase)
+    const combined=[
+      tl,
+      (row['Settori']||'').toLowerCase(),
+      (row['Competenze']||'').toLowerCase(),
+      (row['Target']||'').toLowerCase(),
+      (row['Nome posizione']||'').toLowerCase(),
+    ].join();
+
+    // Livello 2 sub-area (prima, più specifica)
+    if(/leucem|leukemia|aml|cml|all\b|cll\b/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='leukemia';}
+    else if(/linfom|lymphoma|hodgkin|nhl\b/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='lymphoma';}
+    else if(/mielom|myeloma/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='myeloma';}
+    else if(/prostata|prostate cancer|prostate/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='prostate_cancer';}
+    else if(/cancro al seno|breast cancer|mammella/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='breast_cancer';}
+    else if(/polmon|lung cancer|nsclc|sclc/.test(combined)){therapeutic_area='oncology';therapeutic_area_sub='lung_cancer';}
+    else if(/emofil|haemophil|hemophil/.test(combined)){therapeutic_area='hematology';therapeutic_area_sub='hemophilia';}
+    else if(/talassem|thalassem/.test(combined)){therapeutic_area='hematology';therapeutic_area_sub='thalassemia';}
+    else if(/sickle cell|anemia falciforme/.test(combined)){therapeutic_area='hematology';therapeutic_area_sub='sickle_cell';}
+    else if(/trombo|thrombos|trombosi/.test(combined)){therapeutic_area='hematology';therapeutic_area_sub='thrombosis';}
+    else if(/sclerosi multipla|multiple sclerosis|\bsm\b|\bms\b/.test(combined)){therapeutic_area='neurology';therapeutic_area_sub='multiple_sclerosis';}
+    else if(/alzheimer|demenz/.test(combined)){therapeutic_area='neurology';therapeutic_area_sub='alzheimer';}
+    else if(/parkinson/.test(combined)){therapeutic_area='neurology';therapeutic_area_sub='parkinson';}
+    else if(/epiless|epilep/.test(combined)){therapeutic_area='neurology';therapeutic_area_sub='epilepsy';}
+    else if(/psichiatr|psychiatr|bipolar|schizofreni|schizophren/.test(combined)){therapeutic_area='neurology';therapeutic_area_sub='psychiatry';}
+    else if(/scompenso|heart failure|insufficienza cardiaca/.test(combined)){therapeutic_area='cardiovascular';therapeutic_area_sub='heart_failure';}
+    else if(/colesterol|dislipidem|dyslipid|statina/.test(combined)){therapeutic_area='cardiovascular';therapeutic_area_sub='dyslipidemia';}
+    else if(/ipertens|hypertens/.test(combined)){therapeutic_area='cardiovascular';therapeutic_area_sub='hypertension';}
+    else if(/asma|asthma/.test(combined)){therapeutic_area='respiratory';therapeutic_area_sub='asthma';}
+    else if(/bpco|copd|broncopneumo/.test(combined)){therapeutic_area='respiratory';therapeutic_area_sub='copd';}
+    else if(/ipertensione polmonare|pulmonary hypertension/.test(combined)){therapeutic_area='respiratory';therapeutic_area_sub='pulmonary_hypertension';}
+    else if(/morbo di crohn|colite ulcerosa|ibd|inflammatory bowel/.test(combined)){therapeutic_area='gastroenterology';therapeutic_area_sub='ibd';}
+    else if(/epatit|hepatit|cirrosi|nash|nafld|fegato/.test(combined)){therapeutic_area='gastroenterology';therapeutic_area_sub='hepatology';}
+    else if(/obesit|obesity/.test(combined)){therapeutic_area='diabetes';therapeutic_area_sub='obesity';}
+    else if(/psoriasi|psoriasis/.test(combined)){therapeutic_area='immunology';therapeutic_area_sub='psoriasis';}
+    else if(/dermatite atopica|atopic dermatitis/.test(combined)){therapeutic_area='dermatology';therapeutic_area_sub='atopic_dermatitis';}
+    else if(/gaucher|fabry|pompe|sma\b|duchenne|spinal muscular/.test(combined)){therapeutic_area='rare_diseases';therapeutic_area_sub='neuromuscular';}
+    else if(/fertilit|fertility|ginecolog|gynecolog/.test(combined)){therapeutic_area='womens_health';therapeutic_area_sub='fertility';}
+    else if(/osteoporos/.test(combined)){therapeutic_area='pain';therapeutic_area_sub='osteoporosis';}
+    else if(/\bhiv\b|aids|antiretrovir/.test(combined)){therapeutic_area='vaccines';therapeutic_area_sub='hiv';}
+    else if(/autoimmun|reumatol|rheumatol/.test(combined)){therapeutic_area='immunology';therapeutic_area_sub='autoimmune';}
+
+    // Livello 1 macro (se sub non trovata)
+    else if(/oncol|tumor|cancer|cancro/.test(combined))therapeutic_area='oncology';
+    else if(/ematol|hematol/.test(combined))therapeutic_area='hematology';
     else if(/rare disease|malattia rara|orfan/.test(combined))therapeutic_area='rare_diseases';
-    else if(/immuno|autoimmun|reumat/.test(combined))therapeutic_area='immunology';
-    else if(/hematol|ematol/.test(combined))therapeutic_area='hematology';
-    else if(/cardiovasc|cardiac/.test(combined))therapeutic_area='cardiovascular';
-    else if(/neurolog|alzheimer|parkinson/.test(combined))therapeutic_area='neurology';
-    else if(/respirator|asthma/.test(combined))therapeutic_area='respiratory';
-    else if(/diabet|insulina/.test(combined))therapeutic_area='diabetes';
-    else if(/dermatolog/.test(combined))therapeutic_area='dermatology';
-    else if(/vaccin|infettivo/.test(combined))therapeutic_area='vaccines';
+    else if(/immuno/.test(combined))therapeutic_area='immunology';
+    else if(/cardiovasc|cardiac|cardiol/.test(combined))therapeutic_area='cardiovascular';
+    else if(/neurolog|neurosci/.test(combined))therapeutic_area='neurology';
+    else if(/respirator/.test(combined))therapeutic_area='respiratory';
+    else if(/diabet|insulina|glicemi/.test(combined))therapeutic_area='diabetes';
+    else if(/dermatolog|cutane/.test(combined))therapeutic_area='dermatology';
+    else if(/oftalmol|ophtalmol|oculist|retin/.test(combined))therapeutic_area='ophthalmology';
+    else if(/gastroenterol|gastroint/.test(combined))therapeutic_area='gastroenterology';
+    else if(/vaccin/.test(combined))therapeutic_area='vaccines';
+    else if(/infettiv|infectious|antibiot|antimicro/.test(combined))therapeutic_area='infectious_diseases';
+    else if(/urolog|vescica|bladder/.test(combined))therapeutic_area='urology';
+    else if(/dolor|pain|analges|antidolor/.test(combined))therapeutic_area='pain';
+    else if(/salute femminile|women.s health|menopausa|endometrios/.test(combined))therapeutic_area='womens_health';
+    else if(/consumer health|otc|automedicaz|nutraceut|integratori/.test(combined))therapeutic_area='consumer_health';
     const desc=[row['Competenze']?'Competenze: '+row['Competenze']:'',row['Target']?'Profilo: '+row['Target']:''].filter(Boolean).join('\n').substring(0,2000)||null;
-    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,seniority_v2,therapeutic_area,ral_min:isAgenzia?null:ral,ral_max:isAgenzia?null:ral,fixed_monthly:isAgenzia?ral:null,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
+    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min:isAgenzia?null:ral,ral_max:isAgenzia?null:ral,fixed_monthly:isAgenzia?ral:null,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
     try{
       const r=await fetch(SB_URL+'/rest/v1/job_listings',{method:'POST',headers:{...H,'Prefer':'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(record)});
       if(r.status===201||r.status===200)ok++;
@@ -4267,7 +4318,21 @@ FIELD_HQ:
 - Hybrid: ruoli misti esplicitamente indicati come hybrid/ibrido
 
 THERAPEUTIC_AREA — solo se menzionata esplicitamente nel titolo o descrizione:
-oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, neuroscience, dermatology, ophthalmology, vaccines, infectious_diseases, gastroenterology, womens_health, urology, pain, ta_consumer_health, multiple, not_applicable
+THERAPEUTIC_AREA (livello 1) — solo se menzionata esplicitamente:
+oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, consumer_health, multiple, not_applicable
+
+THERAPEUTIC_AREA_SUB (livello 2, più specifica) — usa se riconosci:
+leukemia, lymphoma, myeloma, prostate_cancer, breast_cancer, lung_cancer (sotto oncology)
+hemophilia, thalassemia, sickle_cell, thrombosis (sotto hematology)
+multiple_sclerosis, alzheimer, parkinson, epilepsy, psychiatry (sotto neurology)
+heart_failure, dyslipidemia, hypertension (sotto cardiovascular)
+asthma, copd, pulmonary_hypertension (sotto respiratory)
+ibd, hepatology (sotto gastroenterology)
+psoriasis, atopic_dermatitis (sotto dermatology o immunology)
+neuromuscular, gaucher, fabry (sotto rare_diseases)
+fertility (sotto womens_health)
+hiv (sotto vaccines)
+obesity (sotto diabetes)
 
 COMPANY_TYPE:
 - Big Pharma: fatturato >10B, brand globale (Roche, Novartis, Pfizer, AstraZeneca, MSD, Lilly, GSK, BMS, J&J, Sanofi, Bayer, AbbVie, Amgen)
@@ -4290,6 +4355,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
   "seniority_v2": "<valore>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<valore>",
+  "therapeutic_area_sub": "<valore_sub o null>",
   "company_type": "<valore>",
   "location": "<città italiana estratta dal titolo o descrizione, null se non trovata>",
   "canonical_role": "<ruolo canonico es: Informatore Scientifico del Farmaco, Medical Science Liaison, Key Account Manager, Medical Advisor, ecc>"
@@ -4313,6 +4379,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.seniority_v2)patch.seniority_v2=result.seniority_v2;
       if(result.field_hq)patch.field_hq=result.field_hq;
       if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
+      if(result.therapeutic_area_sub)patch.therapeutic_area_sub=result.therapeutic_area_sub;
       if(result.company_type)patch.company_type=result.company_type;
 
       // Location — sovrascrive se trovata nel titolo/descrizione
@@ -6269,11 +6336,16 @@ async function delCo(id){
 <!-- ── MODAL AREA CLASSIFIER ── -->
 <div class="modal-overlay" id="modal-area-classifier">
   <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
-    <div class="modal-title">🗂️ Classificatore Aree Funzionali</div>
+    <div class="modal-title">📋 Revisione dati — Fase 2</div>
+    <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px;">
+      <button onclick="setReviewTab('area')" id="rtab-area" class="qb-btn active">🗂️ Area Funzionale <span id="badge-rtab-area" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+      <button onclick="setReviewTab('location')" id="rtab-location" class="qb-btn">📍 Location <span id="badge-rtab-location" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+    </div>
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
       <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
       <div style="margin-left:auto;display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="autoClassifyAreas()" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
+        <button class="btn btn-secondary" onclick="autoClassifyAreas()" id="btn-auto-classify" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
+        <button class="btn btn-secondary" onclick="applyAreaRegex()" id="btn-apply-regex" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
         <button class="btn btn-secondary" onclick="applyAreaRegex()" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
       </div>
     </div>
@@ -6291,7 +6363,7 @@ async function delCo(id){
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
       <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
       <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
-      <button class="btn btn-primary" onclick="saveAreaClassifications()">💾 Salva classificazioni</button>
+      <button class="btn btn-primary" onclick="saveReviewData()">💾 Salva</button>
     </div>
   </div>
 </div>
@@ -6392,15 +6464,109 @@ const AREA_REGEX_RULES=[
 ];
 function detectAreaFromTitle(title){if(!title)return '';for(const rule of AREA_REGEX_RULES){if(rule.re.test(title))return rule.v;}return '';}
 
+let _reviewTab = "area";
+let _locationData = [];
+
 async function openAreaClassifier(){
   openModal('modal-area-classifier');
+  _reviewTab = "area";
   document.getElementById('area-classifier-count').textContent='Caricamento...';
   document.getElementById('area-classifier-body').innerHTML='<div style="padding:32px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
   try{
-    _areaClassifierData=await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
+    // Carica annunci per area funzionale
+    _areaClassifierData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,functional_area_v2,seniority_v2,sector_v2,location,published_date&order=published_date.desc&limit=2000');
+    // Carica annunci senza location
+    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
     _areaClassifierFilter=undefined;
-    renderAreaClassifier();
+    // Aggiorna badge tab
+    const noArea=_areaClassifierData.filter(l=>!l.functional_area_v2).length;
+    const noLoc=_locationData.length;
+    const ba=document.getElementById('badge-rtab-area');
+    const bl=document.getElementById('badge-rtab-location');
+    if(ba){ba.textContent=noArea;ba.style.display=noArea?'':' none';}
+    if(bl){bl.textContent=noLoc;bl.style.display=noLoc?'':' none';}
+    setReviewTab('area');
   }catch(e){document.getElementById('area-classifier-body').innerHTML='<div style="padding:32px;text-align:center;color:var(--danger);">Errore</div>';}
+}
+
+function setReviewTab(tab){
+  _reviewTab = tab;
+  ['rtab-area','rtab-location'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.classList.toggle('active', id==='rtab-'+tab);
+  });
+  // Mostra/nascondi bottoni area-specific
+  const btnRegex=document.getElementById('btn-apply-regex');
+  const btnAuto=document.getElementById('btn-auto-classify');
+  const filterBar=document.querySelector('#modal-area-classifier [id^="acf-all"]')?.closest('div');
+  if(btnRegex)btnRegex.style.display=tab==='area'?'':' none';
+  if(btnAuto)btnAuto.style.display=tab==='area'?'':' none';
+  if(filterBar)filterBar.style.display=tab==='area'?'':' none';
+  if(tab==='area')renderAreaClassifier();
+  else renderLocationReview();
+}
+
+function renderLocationReview(){
+  const body=document.getElementById('area-classifier-body');
+  const countEl=document.getElementById('area-classifier-count');
+  if(!_locationData.length){
+    body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2);">✅ Tutte le location sono compilate</div>';
+    if(countEl)countEl.textContent='0 annunci senza location';
+    return;
+  }
+  if(countEl)countEl.textContent=_locationData.length+' annunci senza location';
+  body.innerHTML=`<table style="font-size:11px;width:100%;">
+    <thead><tr>
+      <th style="padding:8px;text-align:left;">Titolo</th>
+      <th style="padding:8px;text-align:left;">Azienda</th>
+      <th style="padding:8px;width:200px;">Inserisci città</th>
+    </tr></thead>
+    <tbody>${_locationData.map((l,i)=>`
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 8px;font-weight:500;">${l.job_title||'—'}</td>
+        <td style="padding:6px 8px;color:var(--text2);font-size:10px;">${l.ragione_sociale||l.company_name||'—'}</td>
+        <td style="padding:4px 8px;">
+          <input type="text" id="loc-inp-${i}" data-id="${l.id}"
+            placeholder="es. Milano, Lombardia"
+            style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">
+        </td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function saveReviewData(){
+  if(_reviewTab==='area'){
+    await saveAreaClassifications();
+  } else {
+    await saveLocationData();
+  }
+}
+
+async function saveLocationData(){
+  const status=document.getElementById('area-classifier-status');
+  if(status)status.textContent='⏳ Salvataggio location...';
+  const inputs=document.querySelectorAll('[id^="loc-inp-"]');
+  let saved=0, errors=0;
+  for(const inp of inputs){
+    const val=(inp.value||"").trim();
+    if(!val)continue;
+    try{
+      const r=await fetch(SB_URL+'/rest/v1/job_listings?id=eq.'+inp.dataset.id,{
+        method:'PATCH',
+        headers:{...H,'Prefer':'return=minimal'},
+        body:JSON.stringify({location:val})
+      });
+      if(r.ok)saved++; else errors++;
+    }catch(e){errors++;}
+  }
+  // Ricarica location data
+  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
+  const bl=document.getElementById('badge-rtab-location');
+  if(bl){bl.textContent=_locationData.length;bl.style.display=_locationData.length?'':' none';}
+  renderLocationReview();
+  const msg='✅ '+saved+' location salvate'+(errors?' | '+errors+' errori':'');
+  if(status)status.textContent=msg;
+  toast(msg,errors?'warning':'success');
 }
 
 function filterAreaClassifier(filter){
