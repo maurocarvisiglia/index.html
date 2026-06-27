@@ -6343,18 +6343,17 @@ async function delCo(id){
       <div style="margin-left:auto;display:flex;gap:8px;">
         <button class="btn btn-secondary" onclick="autoClassifyAreas()" id="btn-auto-classify" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
         <button class="btn btn-secondary" onclick="applyAreaRegex()" id="btn-apply-regex" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
-        <button class="btn btn-secondary" onclick="applyAreaRegex()" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+    <div id="filter-bar-area" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
       <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
-      <button onclick="filterAreaClassifier('')" class="qb-btn active" id="acf-all">Tutti</button>
+      <button onclick="filterAreaClassifier('')" class="qb-btn" id="acf-all">Tutti</button>
       <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
       <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
       <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
       <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
       <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
-      <button onclick="filterAreaClassifier(null)" class="qb-btn" id="acf-unset">⚠️ Non classificati</button>
+      <button onclick="filterAreaClassifier(null)" class="qb-btn active" id="acf-unset">⚠️ Non classificati</button>
     </div>
     <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
@@ -6511,7 +6510,7 @@ async function openAreaClassifier(){
     _areaClassifierData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,functional_area_v2,seniority_v2,sector_v2,location,published_date&order=published_date.desc&limit=2000');
     // Carica annunci senza location
     _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
-    _areaClassifierFilter=undefined;
+    _areaClassifierFilter=null; // default: mostra solo non classificati
     // Aggiorna badge tab
     const noArea=_areaClassifierData.filter(l=>!l.functional_area_v2).length;
     const noLoc=_locationData.length;
@@ -6532,10 +6531,10 @@ function setReviewTab(tab){
   // Mostra/nascondi bottoni area-specific
   const btnRegex=document.getElementById('btn-apply-regex');
   const btnAuto=document.getElementById('btn-auto-classify');
-  const filterBar=document.querySelector('#modal-area-classifier [id^="acf-all"]')?.closest('div');
-  if(btnRegex)btnRegex.style.display=tab==='area'?'':' none';
-  if(btnAuto)btnAuto.style.display=tab==='area'?'':' none';
-  if(filterBar)filterBar.style.display=tab==='area'?'':' none';
+  const filterBar=document.getElementById('filter-bar-area');
+  if(btnRegex)btnRegex.style.display=tab==='area'?'':'none';
+  if(btnAuto)btnAuto.style.display=tab==='area'?'':'none';
+  if(filterBar)filterBar.style.display=tab==='area'?'':'none';
   if(tab==='area')renderAreaClassifier();
   else renderLocationReview();
 }
