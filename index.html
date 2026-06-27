@@ -5515,18 +5515,16 @@ async function initApp(){
   try{
     const listings=await api('job_listings?select=id,ral_min,ral_max');
     const ral=listings.filter(l=>l.ral_min||l.ral_max).length;
-    document.getElementById('stat-total').textContent=listings.length;
-    document.getElementById('stat-ral').textContent=ral;
     const pct=listings.length?Math.round(ral/listings.length*100):0;
-    document.getElementById('stat-ral-pct').textContent=`${pct}% degli annunci`;
-
-    // Count companies via Supabase count header
-    const r1=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.life_sciences&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
-    const r2=await fetch(`${SB_URL}/rest/v1/companies?entity_type=eq.headhunter&select=id&limit=1`,{headers:{...H,'Prefer':'count=exact'}});
+    const _s=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+    _s('stat-total',listings.length);
+    _s('stat-ral',ral);
+    _s('stat-ral-pct',pct+'% degli annunci');
+    const r1=await fetch(SB_URL+'/rest/v1/companies?entity_type=eq.life_sciences&select=id&limit=1',{headers:{...H,'Prefer':'count=exact'}});
+    const r2=await fetch(SB_URL+'/rest/v1/companies?entity_type=eq.headhunter&select=id&limit=1',{headers:{...H,'Prefer':'count=exact'}});
     const getCount=r=>{const cr=r.headers.get('Content-Range');return cr?cr.split('/')[1]:'?';};
-    document.getElementById('stat-ls').textContent=getCount(r1);
-    document.getElementById('stat-hh').textContent=getCount(r2);
-
+    _s('stat-ls',getCount(r1));
+    _s('stat-hh',getCount(r2));
     ['chart-area','chart-seniority','chart-sector','chart-source','chart-companies','chart-ral'].forEach(id=>{
       const el=document.getElementById(id);
       if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;" onclick="loadDashboard()">▶ Clicca per caricare i grafici</div>';
