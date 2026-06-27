@@ -1013,6 +1013,50 @@ a.job-link:hover{text-decoration:underline;}
     </div>
 
     <!-- AI Summary Commercial -->
+    <!-- Filtri interattivi Commercial Intelligence -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px;padding:14px 16px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
+      <span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Filtri</span>
+      <select id="ci-filter-area" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+        <option value="">Tutte le aree</option>
+        <option value="commercial">Commercial / Sales</option>
+        <option value="medical_affairs">Medical Affairs</option>
+        <option value="marketing">Marketing</option>
+        <option value="market_access">Market Access</option>
+        <option value="regulatory_affairs">Regulatory Affairs</option>
+        <option value="quality">Quality</option>
+        <option value="clinical_operations">Clinical Operations</option>
+        <option value="rd">R&D</option>
+        <option value="manufacturing">Manufacturing</option>
+      </select>
+      <select id="ci-filter-ta" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+        <option value="">Tutte le aree terapeutiche</option>
+        <option value="oncology">Oncology</option>
+        <option value="rare_diseases">Rare Diseases</option>
+        <option value="immunology">Immunology</option>
+        <option value="cardiovascular">Cardiovascular</option>
+        <option value="neurology">Neurology</option>
+        <option value="respiratory">Respiratory</option>
+        <option value="diabetes">Diabetes</option>
+        <option value="dermatology">Dermatology</option>
+      </select>
+      <select id="ci-filter-period" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+        <option value="0">Tutto il periodo</option>
+        <option value="30">Ultimi 30 giorni</option>
+        <option value="90">Ultimi 90 giorni</option>
+        <option value="180">Ultimi 6 mesi</option>
+        <option value="365">Ultimo anno</option>
+      </select>
+      <select id="ci-filter-sector" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+        <option value="">Tutti i settori</option>
+        <option value="pharma_rx">Pharma RX</option>
+        <option value="biotech">Biotech</option>
+        <option value="medical_devices">Medical Devices</option>
+        <option value="cdmo">CDMO</option>
+        <option value="cro">CRO</option>
+      </select>
+      <button onclick="resetCIFilters()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;">↺ Reset</button>
+      <div id="ci-filter-count" style="margin-left:auto;font-size:11px;color:var(--text2);"></div>
+    </div>
     <div class="ai-summary-card" id="commercial-ai-card" style="margin-bottom:24px;">
       <div class="ai-summary-header">🤖 AI Commercial Intelligence</div>
       <div class="ai-summary-text" id="commercial-ai-text">Clicca "Aggiorna analisi" per generare le opportunità commerciali.</div>
@@ -3110,7 +3154,17 @@ JSON ESATTO:
 
 async function loadCommercialIntelligence(){
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=1000');
+    const ciArea=document.getElementById('ci-filter-area')?.value||'';
+    const ciTa=document.getElementById('ci-filter-ta')?.value||'';
+    const ciPeriod=parseInt(document.getElementById('ci-filter-period')?.value||'0');
+    const ciSector=document.getElementById('ci-filter-sector')?.value||'';
+    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
+    if(ciArea)ciQ+=`&functional_area_v2=eq.${encodeURIComponent(ciArea)}`;
+    if(ciTa)ciQ+=`&therapeutic_area=eq.${encodeURIComponent(ciTa)}`;
+    if(ciSector)ciQ+=`&sector_v2=eq.${encodeURIComponent(ciSector)}`;
+    if(ciPeriod>0){const cut=new Date(Date.now()-ciPeriod*864e5).toISOString().split('T')[0];ciQ+=`&published_date=gte.${cut}`;}
+    const data=await api(ciQ);
+    const ciCountEl=document.getElementById('ci-filter-count');if(ciCountEl)ciCountEl.textContent=data.length+' annunci';
     const now=Date.now();
 
     // Helper: ranking aziende per criterio
@@ -3177,10 +3231,10 @@ async function loadCommercialIntelligence(){
     renderRank('ci-rare',rankCompanies(l=>l.therapeutic_area==='rare_diseases'),'#a78bfa');
 
     // MSL
-    renderRank('ci-msl',rankCompanies(l=>(l.canonical_role||l.job_title||'').toLowerCase().includes('msl')||(l.canonical_role||'').includes('Medical Science Liaison')),'var(--accent2)');
+    renderRank('ci-msl',rankCompanies(l=>{ const t=(l.job_title||'').toLowerCase(); const c=(l.canonical_role||'').toLowerCase(); const rf=(l.role_family||'').toLowerCase(); return t.includes('msl')||t.includes('medical science liaison')||c.includes('msl')||c.includes('medical science liaison')||rf.includes('msl'); }),'var(--accent2)');
 
     // Medical Advisor
-    renderRank('ci-medical-advisor',rankCompanies(l=>(l.canonical_role||l.job_title||'').toLowerCase().includes('medical advisor')),'var(--success)');
+    renderRank('ci-medical-advisor',rankCompanies(l=>{ const t=(l.job_title||'').toLowerCase(); const c=(l.canonical_role||'').toLowerCase(); return t.includes('medical advisor')||c.includes('medical advisor'); }),'var(--success)');
 
     // Market Access
     renderRank('ci-market-access',rankCompanies(l=>l.functional_area_v2==='market_access'),'var(--accent)');
@@ -3244,6 +3298,13 @@ JSON ESATTO:
     toast('Errore Commercial Intelligence: '+e.message,'error');
     console.error(e);
   }
+}
+
+function resetCIFilters(){
+  ['ci-filter-area','ci-filter-ta','ci-filter-period','ci-filter-sector'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.value=id==='ci-filter-period'?'0':'';
+  });
+  loadCommercialIntelligence();
 }
 
 /* ══════════════════════════════════════════════
