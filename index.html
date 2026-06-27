@@ -5463,7 +5463,7 @@ async function loadRoleIntelligence(){
 
   try{
     // 1. Carica benchmark pre-calcolati
-    let bq='salary_benchmarks?select=*&order=total_listings.desc&limit=50';
+    let bq='salary_benchmarks?select=*&order=total_listings.desc&limit=200';
     if(search)bq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
     if(area)bq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)bq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
@@ -5471,8 +5471,8 @@ async function loadRoleIntelligence(){
 
     // 2. Carica annunci grezzi per grafici dettagliati
     const riRal=document.getElementById('ri-ral')?.value||'';
-    let lq='job_listings?select=*&order=published_date.desc.nullslast&limit=500';
-    if(search)lq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
+    let lq='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
+    if(search)lq+=`&or=(canonical_role.ilike.*${encodeURIComponent(search)}*,job_title.ilike.*${encodeURIComponent(search)}*,role_family.ilike.*${encodeURIComponent(search)}*)`;
     if(area)lq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)lq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
     if(riRal==='only')lq+=`&or=(ral_min.not.is.null,ral_max.not.is.null)`;
