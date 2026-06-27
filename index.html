@@ -6059,35 +6059,8 @@ async function delCo(id){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
       <div><div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Analizza quali aziende competono per gli stessi profili</div></div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:24px;">
-      <button id="comp-mode-role" onclick="setCompetitorMode('role')" style="padding:8px 20px;border-radius:8px;border:2px solid #06b6d4;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🎯 Per Ruolo</button>
-      <button id="comp-mode-company" onclick="setCompetitorMode('company')" style="padding:8px 20px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;">🏢 Per Azienda</button>
-      <button id="comp-mode-positioning" onclick="setCompetitorMode('positioning')" style="padding:8px 20px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;">📊 Posizionamento vs Mercato</button>
-    </div>
-    <div id="comp-panel-role">
-      <div style="display:flex;gap:12px;margin-bottom:20px;">
-        <select id="comp-role-select" onchange="loadRoleCompetitors()" style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona un ruolo —</option></select>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;">
-        <div class="stat-card"><div class="stat-label">Aziende</div><div class="stat-value" id="cr-kpi-companies">—</div></div>
-        <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="cr-kpi-listings">—</div></div>
-        <div class="stat-card"><div class="stat-label">Ultimi 90gg</div><div class="stat-value" id="cr-kpi-90d">—</div></div>
-      </div>
-      <div class="table-wrap"><div class="table-header"><div class="table-title">🏢 Aziende in competizione</div><div class="table-count" id="cr-table-count">—</div></div><div id="cr-table-body"></div></div>
-    </div>
-    <div id="comp-panel-company" style="display:none;">
-      <div style="display:flex;gap:12px;margin-bottom:20px;">
-        <select id="comp-company-select" onchange="loadCompanyCompetitors()" style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona un'azienda —</option></select>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-        <div class="stat-card"><div class="stat-label">Competitor</div><div class="stat-value" id="cc-kpi-competitors">—</div></div>
-        <div class="stat-card"><div class="stat-label">Ruoli overlap</div><div class="stat-value" id="cc-kpi-roles">—</div></div>
-      </div>
-      <div class="table-wrap"><div class="table-header"><div class="table-title">⚔️ Competitor diretti</div><div class="table-count" id="cc-table-count">—</div></div><div id="cc-table-body"></div></div>
-    </div>
-
     <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
-    <div id="comp-panel-positioning" style="display:none;">
+    <div id="comp-panel-positioning">
       <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;">
           <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Posizione / Ruolo (testo libero)</div>
@@ -6578,29 +6551,11 @@ function renderScarcityBubble(data){
 }
 
 /* ═══ COMPETITOR MONITOR ═══ */
-let _competitorMode='role';
-function setCompetitorMode(mode){
-  _competitorMode=mode;
-  document.getElementById('comp-panel-role').style.display=mode==='role'?'':'none';
-  document.getElementById('comp-panel-company').style.display=mode==='company'?'':'none';
-  document.getElementById('comp-panel-positioning').style.display=mode==='positioning'?'':'none';
-  const btns={role:'comp-mode-role',company:'comp-mode-company',positioning:'comp-mode-positioning'};
-  Object.entries(btns).forEach(([m,id])=>{
-    const btn=document.getElementById(id);if(!btn)return;
-    if(m===mode){btn.style.background='#06b6d4';btn.style.color='white';btn.style.borderColor='#06b6d4';}
-    else{btn.style.background='transparent';btn.style.color='var(--text2)';btn.style.borderColor='var(--border)';}
-  });
-}
 async function initCompetitorMonitor(){
   try{
     const roles=await api('job_listings?select=canonical_role&canonical_role=not.is.null&order=canonical_role');
-    const uniqueRoles=[...new Set(roles.map(r=>r.canonical_role))].sort();
-    const roleOpts='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
-    document.getElementById('comp-role-select').innerHTML=roleOpts;
     const companies=await api('job_listings?select=ragione_sociale&ragione_sociale=not.is.null&order=ragione_sociale');
     const uniqueCompanies=[...new Set(companies.map(c=>c.ragione_sociale))].sort();
-    const compOpts='<option value="">— Seleziona un\'azienda —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
-    document.getElementById('comp-company-select').innerHTML=compOpts;
     document.getElementById('pos-company-select').innerHTML='<option value="">— Seleziona l\'azienda da analizzare —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
   }catch(e){console.error('initCompetitorMonitor error:',e);}
 }
@@ -6697,39 +6652,6 @@ async function loadPositioningAnalysis(){
     console.error('loadPositioningAnalysis error:',e);
   }
 }
-async function loadRoleCompetitors(){
-  const role=document.getElementById('comp-role-select').value;if(!role)return;
-  const body=document.getElementById('cr-table-body');
-  body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
-  try{
-    const data=await api('rpc/get_role_competitors','POST',{p_role:role});
-    if(!data.length){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessuna azienda trovata</div>';return;}
-    const totListings=data.reduce((s,r)=>s+parseInt(r.annunci||0),0);
-    const tot90d=data.reduce((s,r)=>s+parseInt(r.annunci_90d||0),0);
-    document.getElementById('cr-kpi-companies').textContent=data.length;
-    document.getElementById('cr-kpi-listings').textContent=totListings;
-    document.getElementById('cr-kpi-90d').textContent=tot90d;
-    document.getElementById('cr-table-count').textContent=data.length+' aziende';
-    const maxAnnunci=Math.max(...data.map(r=>parseInt(r.annunci||0)));
-    body.innerHTML=`<table><thead><tr><th>Azienda</th><th style="text-align:center;">Annunci</th><th style="text-align:center;">90gg</th><th style="text-align:center;">Ruoli</th><th style="width:120px;">Volume</th></tr></thead><tbody>${data.map((r,i)=>{const ann=parseInt(r.annunci||0);const pct=Math.round(ann/maxAnnunci*100);return`<tr style="${i===0?'background:rgba(6,182,212,0.06);':''}"><td style="font-weight:${i===0?700:500};color:${i===0?'#06b6d4':'var(--text)'};">${i===0?'🥇 ':''}${r.ragione_sociale}</td><td style="text-align:center;font-weight:700;">${ann}</td><td style="text-align:center;color:${r.annunci_90d>0?'#10b981':'var(--text2)'};">${r.annunci_90d||0}</td><td style="text-align:center;">${r.ruoli_distinti||1}</td><td><div style="background:var(--surface2);border-radius:3px;height:6px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:#06b6d4;border-radius:3px;"></div></div></td></tr>`;}).join('')}</tbody></table>`;
-  }catch(e){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--danger);">Errore</div>';}
-}
-async function loadCompanyCompetitors(){
-  const company=document.getElementById('comp-company-select').value;if(!company)return;
-  const body=document.getElementById('cc-table-body');
-  body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
-  try{
-    const data=await api('rpc/get_company_competitors','POST',{p_company:company});
-    if(!data.length){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun competitor trovato</div>';document.getElementById('cc-kpi-competitors').textContent='0';document.getElementById('cc-kpi-roles').textContent='0';return;}
-    const totalSharedRoles=new Set(data.flatMap(r=>(r.shared_role_names||'').split(', '))).size;
-    document.getElementById('cc-kpi-competitors').textContent=data.length;
-    document.getElementById('cc-kpi-roles').textContent=totalSharedRoles;
-    document.getElementById('cc-table-count').textContent=data.length+' competitor';
-    const maxShared=Math.max(...data.map(r=>parseInt(r.shared_roles||0)));
-    body.innerHTML=`<table><thead><tr><th>Competitor</th><th style="text-align:center;">Ruoli</th><th>Overlap</th><th style="text-align:center;">Annunci</th><th style="width:120px;">Overlap</th></tr></thead><tbody>${data.map((r,i)=>{const shared=parseInt(r.shared_roles||0);const pct=Math.round(shared/maxShared*100);return`<tr style="${i===0?'background:rgba(6,182,212,0.06);':''}"><td style="font-weight:${i===0?700:500};color:${i===0?'#06b6d4':'var(--text)'};">${i===0?'⚔️ ':''}${r.competitor}</td><td style="text-align:center;font-weight:700;color:#06b6d4;">${shared}</td><td style="font-size:11px;color:var(--text2);max-width:200px;">${r.shared_role_names||'—'}</td><td style="text-align:center;">${r.competitor_total_listings||0}</td><td><div style="background:var(--surface2);border-radius:3px;height:6px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:#06b6d4;border-radius:3px;"></div></div></td></tr>`;}).join('')}</tbody></table>`;
-  }catch(e){body.innerHTML='<div style="padding:24px;text-align:center;color:var(--danger);">Errore</div>';}
-}
-
 /* ═══ GEOGRAPHIC HEATMAP ═══ */
 let _geoData=[];let _geoTab='regione';
 async function loadGeoModule(){
