@@ -6088,11 +6088,22 @@ async function delCo(id){
 
     <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
     <div id="comp-panel-positioning" style="display:none;">
-      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-        <select id="pos-role-select" style="flex:1;min-width:200px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona un ruolo —</option></select>
-        <select id="pos-company-select" style="flex:1;min-width:200px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona l'azienda da analizzare —</option></select>
-        <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
+      <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Posizione / Ruolo (testo libero)</div>
+          <input type="text" id="pos-role-input" placeholder="es. Medical Advisor, ISF, KAM, MSL..."
+            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+            onkeydown="if(event.key==='Enter')loadPositioningAnalysis()">
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Azienda da analizzare</div>
+          <select id="pos-company-select" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona —</option></select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
+        </div>
       </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">💡 Scrivi parte del titolo — es. "advisor", "informatore", "key account"</div>
 
       <!-- Risultato posizionamento -->
       <div id="pos-result" style="display:none;">
@@ -6586,8 +6597,6 @@ async function initCompetitorMonitor(){
     const uniqueRoles=[...new Set(roles.map(r=>r.canonical_role))].sort();
     const roleOpts='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
     document.getElementById('comp-role-select').innerHTML=roleOpts;
-    document.getElementById('pos-role-select').innerHTML='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
-
     const companies=await api('job_listings?select=ragione_sociale&ragione_sociale=not.is.null&order=ragione_sociale');
     const uniqueCompanies=[...new Set(companies.map(c=>c.ragione_sociale))].sort();
     const compOpts='<option value="">— Seleziona un\'azienda —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
@@ -6597,7 +6606,7 @@ async function initCompetitorMonitor(){
 }
 
 async function loadPositioningAnalysis(){
-  const role=document.getElementById('pos-role-select').value;
+  const role=document.getElementById('pos-role-input').value.trim();
   const company=document.getElementById('pos-company-select').value;
   if(!role||!company){alert('Seleziona sia il ruolo che l\'azienda');return;}
 
