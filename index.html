@@ -1675,17 +1675,34 @@ async function importVocationsCSV(event){
 }
 
 async function syncCompaniesFromVocations(rows){
+  const seen=new Set();
   for(const row of rows){
-    const company=(row['Nome azienda']||'').trim();if(!company)continue;
+    const company=(row['Nome azienda']||'').trim();
+    if(!company||seen.has(company))continue;
+    seen.add(company);
     try{
-      const coData={name:company,ragione_sociale:(row['Ragione sociale']||'').trim()||null,website:(row['URL azienda']||'').trim()||null,is_active:true,entity_type:'life_sciences',last_updated_vocations:new Date().toISOString()};
+      const coData={
+        name:company,
+        ragione_sociale:(row['Ragione sociale']||'').trim()||null,
+        website:(row['URL azienda']||'').trim()||null,
+        iva:(row['IVA']||'').trim()||null,
+        dipendenti:row['Dipendenti']?parseInt(row['Dipendenti'])||null:null,
+        posizioni_aperte:row['Posizioni aperte']?parseInt(row['Posizioni aperte'])||null:null,
+        sectors:(row['Settori']||'').trim()||null,
+        province:(row['Province']||'').split(',')[0].trim()||null,
+        region:(row['Regioni']||'').split(',')[0].trim()||null,
+        collar:(row['Collar']||'').trim()||null,
+        orario:(row['Orario']||'').trim()||null,
+        categorie_protette:(row['Categorie protette']||'').trim()||null,
+        is_active:true,entity_type:'life_sciences',
+        last_updated_vocations:new Date().toISOString()
+      };
       const existing=await api('companies?name=eq.'+encodeURIComponent(company)+'&select=id');
       if(existing.length)await api('companies?id=eq.'+existing[0].id,'PATCH',coData);
       else await api('companies','POST',coData);
-    }catch(e){console.warn('Company sync error:',e.message);}
+    }catch(e){console.warn('Company sync error:',company,e.message);}
   }
 }
-
 
 async function importVocations(){
   const key=getVocKey();
