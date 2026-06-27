@@ -6062,6 +6062,7 @@ async function delCo(id){
     <div style="display:flex;gap:8px;margin-bottom:24px;">
       <button id="comp-mode-role" onclick="setCompetitorMode('role')" style="padding:8px 20px;border-radius:8px;border:2px solid #06b6d4;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🎯 Per Ruolo</button>
       <button id="comp-mode-company" onclick="setCompetitorMode('company')" style="padding:8px 20px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;">🏢 Per Azienda</button>
+      <button id="comp-mode-positioning" onclick="setCompetitorMode('positioning')" style="padding:8px 20px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;">📊 Posizionamento vs Mercato</button>
     </div>
     <div id="comp-panel-role">
       <div style="display:flex;gap:12px;margin-bottom:20px;">
@@ -6084,6 +6085,47 @@ async function delCo(id){
       </div>
       <div class="table-wrap"><div class="table-header"><div class="table-title">⚔️ Competitor diretti</div><div class="table-count" id="cc-table-count">—</div></div><div id="cc-table-body"></div></div>
     </div>
+
+    <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
+    <div id="comp-panel-positioning" style="display:none;">
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <select id="pos-role-select" style="flex:1;min-width:200px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona un ruolo —</option></select>
+        <select id="pos-company-select" style="flex:1;min-width:200px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona l'azienda da analizzare —</option></select>
+        <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
+      </div>
+
+      <!-- Risultato posizionamento -->
+      <div id="pos-result" style="display:none;">
+
+        <!-- Hero: posizione azienda vs mercato -->
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Posizionamento</div>
+            <div id="pos-badge" style="font-size:28px;font-weight:800;margin-bottom:6px;">—</div>
+            <div id="pos-label" style="font-size:13px;color:var(--text2);">—</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="stat-card"><div class="stat-label">Annunci 90gg (azienda)</div><div class="stat-value" id="pos-kpi-own">—</div></div>
+            <div class="stat-card"><div class="stat-label">Media mercato 90gg</div><div class="stat-value" id="pos-kpi-avg">—</div></div>
+            <div class="stat-card"><div class="stat-label">Aziende nel mercato</div><div class="stat-value" id="pos-kpi-count">—</div></div>
+          </div>
+        </div>
+
+        <!-- Tabella competitor con indicatore -->
+        <div class="table-wrap">
+          <div class="table-header">
+            <div class="table-title">📊 Mercato — <span id="pos-role-label">—</span></div>
+            <div class="table-count" id="pos-table-count">—</div>
+          </div>
+          <div id="pos-table-body"></div>
+        </div>
+      </div>
+
+      <div id="pos-empty" style="padding:40px;text-align:center;color:var(--text2);font-size:13px;">
+        Seleziona un ruolo e un'azienda, poi clicca Analizza
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -6528,24 +6570,123 @@ function renderScarcityBubble(data){
 let _competitorMode='role';
 function setCompetitorMode(mode){
   _competitorMode=mode;
-  const isRole=mode==='role';
-  document.getElementById('comp-panel-role').style.display=isRole?'':'none';
-  document.getElementById('comp-panel-company').style.display=isRole?'none':'';
-  const btnRole=document.getElementById('comp-mode-role');const btnCompany=document.getElementById('comp-mode-company');
-  if(isRole){btnRole.style.background='#06b6d4';btnRole.style.color='white';btnRole.style.borderColor='#06b6d4';btnCompany.style.background='transparent';btnCompany.style.color='var(--text2)';btnCompany.style.borderColor='var(--border)';}
-  else{btnCompany.style.background='#06b6d4';btnCompany.style.color='white';btnCompany.style.borderColor='#06b6d4';btnRole.style.background='transparent';btnRole.style.color='var(--text2)';btnRole.style.borderColor='var(--border)';}
+  document.getElementById('comp-panel-role').style.display=mode==='role'?'':'none';
+  document.getElementById('comp-panel-company').style.display=mode==='company'?'':'none';
+  document.getElementById('comp-panel-positioning').style.display=mode==='positioning'?'':'none';
+  const btns={role:'comp-mode-role',company:'comp-mode-company',positioning:'comp-mode-positioning'};
+  Object.entries(btns).forEach(([m,id])=>{
+    const btn=document.getElementById(id);if(!btn)return;
+    if(m===mode){btn.style.background='#06b6d4';btn.style.color='white';btn.style.borderColor='#06b6d4';}
+    else{btn.style.background='transparent';btn.style.color='var(--text2)';btn.style.borderColor='var(--border)';}
+  });
 }
 async function initCompetitorMonitor(){
   try{
     const roles=await api('job_listings?select=canonical_role&canonical_role=not.is.null&order=canonical_role');
     const uniqueRoles=[...new Set(roles.map(r=>r.canonical_role))].sort();
-    const roleSelect=document.getElementById('comp-role-select');
-    roleSelect.innerHTML='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+    const roleOpts='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+    document.getElementById('comp-role-select').innerHTML=roleOpts;
+    document.getElementById('pos-role-select').innerHTML='<option value="">— Seleziona un ruolo —</option>'+uniqueRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+
     const companies=await api('job_listings?select=ragione_sociale&ragione_sociale=not.is.null&order=ragione_sociale');
     const uniqueCompanies=[...new Set(companies.map(c=>c.ragione_sociale))].sort();
-    const compSelect=document.getElementById('comp-company-select');
-    compSelect.innerHTML='<option value="">— Seleziona un\'azienda —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
+    const compOpts='<option value="">— Seleziona un\'azienda —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
+    document.getElementById('comp-company-select').innerHTML=compOpts;
+    document.getElementById('pos-company-select').innerHTML='<option value="">— Seleziona l\'azienda da analizzare —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
   }catch(e){console.error('initCompetitorMonitor error:',e);}
+}
+
+async function loadPositioningAnalysis(){
+  const role=document.getElementById('pos-role-select').value;
+  const company=document.getElementById('pos-company-select').value;
+  if(!role||!company){alert('Seleziona sia il ruolo che l\'azienda');return;}
+
+  document.getElementById('pos-result').style.display='none';
+  document.getElementById('pos-empty').textContent='⏳ Caricamento...';
+  document.getElementById('pos-empty').style.display='';
+
+  try{
+    // Carica tutti i competitor per quel ruolo
+    const data=await api('rpc/get_role_competitors','POST',{p_role:role});
+    if(!data.length){
+      document.getElementById('pos-empty').textContent='Nessun dato disponibile per questo ruolo';
+      return;
+    }
+
+    // Calcola media di mercato (annunci_90d)
+    const all90d=data.map(r=>parseInt(r.annunci_90d||0));
+    const avg90d=all90d.reduce((a,b)=>a+b,0)/all90d.length;
+
+    // Trova l'azienda selezionata
+    const own=data.find(r=>r.ragione_sociale===company);
+    const own90d=own?parseInt(own.annunci_90d||0):0;
+
+    // Posizionamento
+    let badge,label,badgeColor;
+    if(!own){
+      badge='❓'; label='Azienda non trovata per questo ruolo'; badgeColor='var(--text2)';
+    } else if(own90d>avg90d*1.2){
+      badge='🟢'; label='Sopra mercato'; badgeColor='#10b981';
+    } else if(own90d<avg90d*0.8){
+      badge='🔴'; label='Sotto mercato'; badgeColor='#ef4444';
+    } else {
+      badge='🟡'; label='In linea con il mercato'; badgeColor='#f59e0b';
+    }
+
+    // Aggiorna KPI
+    document.getElementById('pos-kpi-own').textContent=own90d;
+    document.getElementById('pos-kpi-avg').textContent=avg90d.toFixed(1);
+    document.getElementById('pos-kpi-count').textContent=data.length;
+    document.getElementById('pos-badge').textContent=badge;
+    document.getElementById('pos-badge').style.color=badgeColor;
+    document.getElementById('pos-label').textContent=label;
+    document.getElementById('pos-role-label').textContent=role;
+    document.getElementById('pos-table-count').textContent=data.length+' aziende';
+
+    // Tabella: ordina per annunci_90d desc, evidenzia l'azienda selezionata
+    const sorted=[...data].sort((a,b)=>parseInt(b.annunci_90d||0)-parseInt(a.annunci_90d||0));
+    const max90d=Math.max(...sorted.map(r=>parseInt(r.annunci_90d||0)),1);
+
+    document.getElementById('pos-table-body').innerHTML=`<table>
+      <thead><tr>
+        <th>Azienda</th>
+        <th style="text-align:center;width:80px;">Annunci 90gg</th>
+        <th style="text-align:center;width:80px;">Totale</th>
+        <th style="width:140px;">vs Media</th>
+        <th style="width:100px;">Posizione</th>
+      </tr></thead>
+      <tbody>${sorted.map(r=>{
+        const r90=parseInt(r.annunci_90d||0);
+        const isOwn=r.ragione_sociale===company;
+        const pct=Math.round(r90/max90d*100);
+        const diff=avg90d>0?((r90-avg90d)/avg90d*100):0;
+        const diffLabel=diff>20?'↑ Sopra':diff<-20?'↓ Sotto':'→ In linea';
+        const diffColor=diff>20?'#10b981':diff<-20?'#ef4444':'#f59e0b';
+        return `<tr style="background:${isOwn?'rgba(6,182,212,0.08)':''};">
+          <td style="font-weight:${isOwn?700:400};color:${isOwn?'#06b6d4':'var(--text)'};">
+            ${isOwn?'★ ':''}${r.ragione_sociale}
+          </td>
+          <td style="text-align:center;font-weight:700;">${r90}</td>
+          <td style="text-align:center;color:var(--text2);">${r.annunci||0}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="flex:1;background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:${isOwn?'#06b6d4':'var(--accent)'};border-radius:3px;"></div>
+              </div>
+              <span style="font-size:10px;color:var(--text2);width:24px;text-align:right;">${r90}</span>
+            </div>
+          </td>
+          <td style="font-size:12px;font-weight:600;color:${diffColor};">${diffLabel}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+
+    document.getElementById('pos-empty').style.display='none';
+    document.getElementById('pos-result').style.display='';
+  }catch(e){
+    document.getElementById('pos-empty').textContent='Errore: '+e.message;
+    console.error('loadPositioningAnalysis error:',e);
+  }
 }
 async function loadRoleCompetitors(){
   const role=document.getElementById('comp-role-select').value;if(!role)return;
