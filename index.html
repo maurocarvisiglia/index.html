@@ -1660,21 +1660,24 @@ async function importVocationsCSV(event){
     const isAgenzia=contract_type==='Agenzia';
     const tl=title.toLowerCase();
     let functional_area_v2=null;
-    if(/\bisf\b|informatore scientifico|sales rep|area manager|kam\b|key account|territory|district manager/.test(tl))functional_area_v2='commercial';
-    else if(/medical advisor|msl\b|medical science|medical manager|medical affairs/.test(tl))functional_area_v2='medical_affairs';
-    else if(/regulatory|registrazione/.test(tl))functional_area_v2='regulatory_affairs';
-    else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b/.test(tl))functional_area_v2='quality';
+    // Healthcare PRIMA degli altri per evitare conflitti
+    if(/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|direttore.*farmacia|direttric.*farmacia/.test(tl))functional_area_v2='healthcare_services';
+    else if(/\bisf\b|informatore scientifico|informatore medico|sales rep|key account|\bkam\b|territory|district manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|addett.*vendite|field.*reimbursement/.test(tl))functional_area_v2='commercial';
+    else if(/medical advisor|\bmsl\b|medical science liaison|medical manager|medical affairs|field.*medical/.test(tl))functional_area_v2='medical_affairs';
+    else if(/regulatory|registrazione|global.*labeling|trade compliance/.test(tl))functional_area_v2='regulatory_affairs';
+    else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b|serialization|instrumentation.*calibration/.test(tl))functional_area_v2='quality';
     else if(/market access|pricing|tender/.test(tl))functional_area_v2='market_access';
-    else if(/pharmacovigilance|drug safety|farmacovigilanza/.test(tl))functional_area_v2='drug_safety';
-    else if(/clinical research|\bcra\b|clinical operations/.test(tl))functional_area_v2='clinical_operations';
-    else if(/marketing|brand manager|product manager/.test(tl))functional_area_v2='marketing';
-    else if(/produzione|production|manufacturing|operatore/.test(tl))functional_area_v2='manufacturing';
-    else if(/supply chain|logistic|warehouse|magazzino/.test(tl))functional_area_v2='supply_chain';
-    else if(/ricerca|research|\br&d\b|scientist/.test(tl))functional_area_v2='rd';
-    else if(/\bhr\b|human resource|talent|recruiter/.test(tl))functional_area_v2='hr';
-    else if(/finance|controller|budget|accounting/.test(tl))functional_area_v2='finance';
-    else if(/\bit\b|software|digital|data engineer/.test(tl))functional_area_v2='it';
-    else if(/fisioterapista|infermier|medico|farmacista|sanitario/.test(tl))functional_area_v2='healthcare_services';
+    else if(/pharmacovigilance|drug safety|farmacovigilanza|patient safety/.test(tl))functional_area_v2='drug_safety';
+    else if(/clinical research|\bcra\b|clinical operations|clinical.*project|clinical.*science|clinical.*quality/.test(tl))functional_area_v2='clinical_operations';
+    else if(/marketing|brand manager|product manager|new product commercialization/.test(tl))functional_area_v2='marketing';
+    else if(/production planning|plant manager|manufacturing.*manager|confezionamento|pesate|opex|lean|\brspp\b/.test(tl))functional_area_v2='manufacturing';
+    else if(/supply chain|logistic|warehouse|magazzino|procurement|approvvigionament|material buyer/.test(tl))functional_area_v2='supply_chain';
+    else if(/\br&d\b|ricerca.*sviluppo|analytical.*development|post.?doc|medicinal chemistry/.test(tl))functional_area_v2='rd';
+    else if(/\bhr\b|human resource|talent.*acquisition|recruiter|selezione.*recruiting|talent.*development/.test(tl))functional_area_v2='hr';
+    else if(/finance|controller|budget|accounting|\bsso\b/.test(tl))functional_area_v2='finance';
+    else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
+    else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
+    else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
     let seniority_v2='specialist';
     if(/\bstage\b|\bintern\b|tirocinio/.test(tl))seniority_v2='internship';
     else if(/\bjunior\b|\bentry\b|neolaure/.test(tl))seniority_v2='entry_level';
@@ -6436,25 +6439,62 @@ let _areaClassifierData=[];
 let _areaClassifierFilter=undefined;
 const AREA_OPTIONS=[{v:'',l:'— non classificato —'},{v:'commercial',l:'Commercial / Sales'},{v:'medical_affairs',l:'Medical Affairs'},{v:'marketing',l:'Marketing'},{v:'market_access',l:'Market Access'},{v:'regulatory_affairs',l:'Regulatory Affairs'},{v:'quality',l:'Quality Assurance'},{v:'clinical_operations',l:'Clinical Operations'},{v:'drug_safety',l:'Drug Safety / PV'},{v:'rd',l:'R&D / Ricerca'},{v:'manufacturing',l:'Manufacturing / Produzione'},{v:'supply_chain',l:'Supply Chain / Logistica'},{v:'finance',l:'Finance'},{v:'hr',l:'Human Resources'},{v:'it',l:'IT / Digital'},{v:'business_development',l:'Business Development'},{v:'healthcare_services',l:'Healthcare Services'},{v:'general_management',l:'General Management'}];
 const AREA_REGEX_RULES=[
-  {re:/\bisf\b|informatore scientifico|informatore medico|ispettore|sales rep|account.*manager|account.*specialist|territory.*manager|district.*manager|regional.*business.*director|commercial.*director|commercial.*manager|key account|\bkam\b|customer manager/i,v:'commercial'},
-  {re:/medical science liaison|\bmsl\b|medical advisor|medical.*affairs|medical.*manager|medical.*director|medical.*education|medical.*writing|medical.*associate.*director|global.*medical/i,v:'medical_affairs'},
-  {re:/product manager|brand manager|marketing manager|marketing.*director|digital marketing|marketing.*specialist|trade marketing|campaign.*developer|crm.*developer|congresses|events.*manager/i,v:'marketing'},
+  // ── HEALTHCARE SERVICES (prima, per evitare conflitti con altri pattern) ──
+  {re:/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|biologo.*clinico|health.*professional|operatore.*sanitario|direttore.*farmacia|direttric.*farmacia/i,v:'healthcare_services'},
+
+  // ── COMMERCIAL / SALES ──
+  {re:/\bisf\b|informatore scientifico|informatore medico|sales rep|territory.*manager|district.*manager|regional.*business.*director|commercial.*director|commercial.*manager|key account|\bkam\b|customer manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|business account|field.*reimbursement|addetti.*vendite|addetto.*vendite|commerciale.*front|front.*office.*commerciale/i,v:'commercial'},
+
+  // ── MEDICAL AFFAIRS ──
+  {re:/medical science liaison|\bmsl\b|medical advisor|medical.*affairs|medical.*manager|medical.*director|medical.*education|medical.*writing|medical.*associate.*director|global.*medical|field.*medical/i,v:'medical_affairs'},
+
+  // ── MARKETING ──
+  {re:/product manager|brand manager|marketing manager|marketing.*director|digital marketing|marketing.*specialist|trade marketing|campaign.*developer|crm.*developer|congresses|events.*manager|new product commercialization/i,v:'marketing'},
+
+  // ── MARKET ACCESS ──
   {re:/market access|heor|pricing|reimbursement|tender specialist/i,v:'market_access'},
-  {re:/regulatory affairs|regulatory.*manager|regulatory.*specialist|regulatory.*director|regulatory.*associate|registrazione/i,v:'regulatory_affairs'},
-  {re:/quality assurance|\bqa\b|\bqc\b|quality.*manager|quality.*director|quality.*specialist|quality.*associate|quality.*operations|qualified person|\bqp\b|validation|gmp|gdp/i,v:'quality'},
-  {re:/clinical research|\bcra\b|clinical.*trial|clinical.*operations|clinical.*manager|clinical.*project|clinical.*coordinator|clinical.*specialist|data management|biostatistics/i,v:'clinical_operations'},
-  {re:/pharmacovigilance|drug safety|\bpv\b|\bqppv\b|safety.*associate|safety.*database|farmacovigilanza/i,v:'drug_safety'},
-  {re:/research scientist|r&d|formulation|analytical.*scientist|preclinical|process development|scientist|chemistry|biologo|medicinal chemistry|head.*scientific/i,v:'rd'},
-  {re:/production|manufacturing|produzione|operatore|plant manager|msat|manufacturing.*manager|production.*planning|sterile|assembly|pesate/i,v:'manufacturing'},
-  {re:/supply chain|logistic|planning|procurement|warehouse|magazzino|distribution|inventory|responsabile.*magazz/i,v:'supply_chain'},
-  {re:/finance|controller|financial|accounting|budget|treasury|fp&a|financial.*reporting|financial.*statement|spending.*compliance/i,v:'finance'},
-  {re:/\bhr\b|human resources|talent acquisition|people.*relations|labour relations|head.*people|hrbp|hr.*business.*partner|recruiter/i,v:'hr'},
-  {re:/\bit\b|software|digital.*services|data engineer|system.*specialist|network|cybersecurity|ai engineer|mes.*engineer|full.*stack|bi.*support|functional.*analyst/i,v:'it'},
+
+  // ── REGULATORY AFFAIRS ──
+  {re:/regulatory affairs|regulatory.*manager|regulatory.*specialist|regulatory.*director|regulatory.*associate|registrazione|global.*labeling|trade compliance/i,v:'regulatory_affairs'},
+
+  // ── QUALITY ──
+  {re:/quality assurance|\bqa\b|\bqc\b|quality.*manager|quality.*director|quality.*specialist|quality.*associate|quality.*operations|qualified person|\bqp\b|validation|gmp|gdp|serialization|instrumentation.*calibration|lab.*application/i,v:'quality'},
+
+  // ── CLINICAL OPERATIONS ──
+  {re:/clinical research|\bcra\b|clinical.*trial|clinical.*operations|clinical.*manager|clinical.*project|clinical.*coordinator|data management|biostatistics|clinical.*science|clinical.*quality/i,v:'clinical_operations'},
+
+  // ── DRUG SAFETY ──
+  {re:/pharmacovigilance|drug safety|\bpv\b|\bqppv\b|safety.*associate|safety.*database|farmacovigilanza|patient safety/i,v:'drug_safety'},
+
+  // ── R&D ──
+  {re:/research scientist|\br&d\b|formulation|analytical.*scientist|preclinical|process development|medicinal chemistry|head.*scientific|analytical.*development|post.?doc/i,v:'rd'},
+
+  // ── MANUFACTURING (solo ruoli chiaramente produttivi, non operatori sanitari) ──
+  {re:/production planning|plant manager|manufacturing.*manager|msat|sterile.*fill|assembly.*line|operatore.*confezionamento|addetto.*confezionamento|confezionamento|pesate|operatore.*produzione|produzione.*farmaceutica|opex|lean|\brspp\b/i,v:'manufacturing'},
+
+  // ── SUPPLY CHAIN ──
+  {re:/supply chain|logistic|procurement|warehouse|magazzino|distribution|inventory|responsabile.*magazz|material buyer|project expeditor|approvvigionament/i,v:'supply_chain'},
+
+  // ── FINANCE ──
+  {re:/finance|controller|financial|accounting|budget|treasury|fp&a|financial.*reporting|spending.*compliance|\bsso\b.*finance/i,v:'finance'},
+
+  // ── HR ──
+  {re:/\bhr\b|human resources|talent acquisition|people.*relations|labour relations|head.*people|hrbp|hr.*business.*partner|recruiter|selezione.*recruiting|talent.*development|leadership.*development/i,v:'hr'},
+
+  // ── IT ──
+  {re:/software|digital.*services|data engineer|system.*specialist|cybersecurity|ai engineer|mes.*engineer|full.*stack|bi.*support|functional.*analyst/i,v:'it'},
+
+  // ── BUSINESS DEVELOPMENT ──
   {re:/business development|licensing|partnership|m&a|alliance|franchise.*head/i,v:'business_development'},
-  {re:/fisioterapista|infermier|medico|biologo.*clinico|farmacista|health.*professional|operatore.*sanitario|tecnico.*radiolog|igienista|logopedista|nutrizionista|soccorritore/i,v:'healthcare_services'},
-  {re:/general manager|country manager|\bceo\b|\bcoo\b|\bcfo\b|managing director|direttore.*generale/i,v:'general_management'},
-  {re:/manutenzione|maintenance|tecnico.*campo|tornitore|cnc|field.*service.*engineer/i,v:'manufacturing'},
-  {re:/segreteria|assistente.*direzione|front.*office|administrative|back.*office/i,v:'hr'},
+
+  // ── GENERAL MANAGEMENT ──
+  {re:/general manager|country manager|\bceo\b|\bcoo\b|\bcfo\b|managing director|direttore.*generale|direttore.*direttrice(?!.*farmacia)/i,v:'general_management'},
+
+  // ── ADMIN / BACK OFFICE ──
+  {re:/segreteria|assistente.*direzione|administrative(?!.*director)|back.*office(?!.*commerciale)|front.*office(?!.*commerciale|.*retail)/i,v:'hr'},
+
+  // ── CUSTOMER SERVICE ──
+  {re:/customer service|customer support|assistenza clienti|supporto clienti|help desk/i,v:'commercial'},
 ];
 function detectAreaFromTitle(title){if(!title)return '';for(const rule of AREA_REGEX_RULES){if(rule.re.test(title))return rule.v;}return '';}
 
