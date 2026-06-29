@@ -1808,6 +1808,8 @@ async function importVocationsCSV(event){
     await syncCompaniesFromVocations(rows);
     // Collega automaticamente gli annunci alle aziende
     try{await api('rpc/link_listings_to_companies','POST',{});}catch(e){}
+    // Risolvi location (city/province/region)
+    try{await api('rpc/resolve_locations','POST',{});}catch(e){}
   },1000);
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
@@ -6915,7 +6917,7 @@ async function runGeoAnalysis(){
   if(resultsEl)resultsEl.style.display='none';
   toast('⏳ Analisi geografica...');
   try{
-    let q='job_listings?select=id,job_title,ragione_sociale,location,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&location=not.is.null&order=published_date.desc&limit=2000';
+    let q='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&region=not.is.null&order=published_date.desc&limit=2000';
     if(role)q+='&or=(job_title.ilike.*'+encodeURIComponent(role)+'*,canonical_role.ilike.*'+encodeURIComponent(role)+'*,role_family.ilike.*'+encodeURIComponent(role)+'*)';
     if(area)q+='&functional_area_v2=eq.'+encodeURIComponent(area);
     if(seniority)q+='&seniority_v2=eq.'+encodeURIComponent(seniority);
@@ -6925,17 +6927,17 @@ async function runGeoAnalysis(){
       if(emptyEl)emptyEl.style.display='';
       return;
     }
-    // Aggrega per regione
+    // Aggrega per regione usando campo region
     const byRegion={};
     _geoRoleData.forEach(l=>{
-      const parts=(l.location||'').split(',');
-      const region=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+      const region=l.region||null;
       if(!region)return;
-      if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{}};
+      if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{},provinces:{}};
       byRegion[region].count++;
       if(l.ral_min||l.ral_max)byRegion[region].ral.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
       const sen=l.seniority_v2||'n/d';byRegion[region].seniority[sen]=(byRegion[region].seniority[sen]||0)+1;
       const co=l.ragione_sociale||'—';byRegion[region].companies[co]=(byRegion[region].companies[co]||0)+1;
+      const prov=l.province||'—';byRegion[region].provinces[prov]=(byRegion[region].provinces[prov]||0)+1;
     });
     const regions=Object.values(byRegion).sort((a,b)=>b.count-a.count);
     const allRal=_geoRoleData.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
@@ -6970,14 +6972,14 @@ async function runGeoAnalysis(){
 function showGeoRegionDetail(idx){
   const byRegion={};
   _geoRoleData.forEach(l=>{
-    const parts=(l.location||'').split(',');
-    const region=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+    const region=l.region||null;
     if(!region)return;
-    if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{}};
+    if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{},provinces:{}};
     byRegion[region].count++;
     if(l.ral_min||l.ral_max)byRegion[region].ral.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
     const sen=l.seniority_v2||'n/d';byRegion[region].seniority[sen]=(byRegion[region].seniority[sen]||0)+1;
     const co=l.ragione_sociale||'—';byRegion[region].companies[co]=(byRegion[region].companies[co]||0)+1;
+    const prov=l.province||'—';byRegion[region].provinces[prov]=(byRegion[region].provinces[prov]||0)+1;
   });
   const regions=Object.values(byRegion).sort((a,b)=>b.count-a.count);
   const r=regions[idx];if(!r)return;
@@ -6985,11 +6987,7 @@ function showGeoRegionDetail(idx){
   const row=document.getElementById('geo-row-'+idx);if(row)row.style.background='var(--surface2)';
   const avgRal=r.ral.length?Math.round(r.ral.reduce((a,b)=>a+b)/r.ral.length):null;
   const d90=new Date(Date.now()-90*864e5);
-  const recent=_geoRoleData.filter(l=>{
-    const parts=(l.location||'').split(',');
-    const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
-    return reg===r.name&&l.published_date&&new Date(l.published_date)>d90;
-  }).length;
+  const recent=_geoRoleData.filter(l=>l.region===r.name&&l.published_date&&new Date(l.published_date)>d90).length;
   document.getElementById('geo-detail-title').textContent='📊 '+r.name;
   document.getElementById('geo-detail-empty').style.display='none';
   document.getElementById('geo-detail-content').style.display='';
@@ -6998,6 +6996,13 @@ function showGeoRegionDetail(idx){
     {l:'RAL media',v:avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'},{l:'Aziende',v:Object.keys(r.companies).length},
   ].map(k=>'<div style="background:var(--surface2);border-radius:8px;padding:10px;"><div style="font-size:10px;color:var(--text2);">'+k.l+'</div><div style="font-size:16px;font-weight:700;">'+k.v+'</div></div>').join('');
   const senEntries=Object.entries(r.seniority).sort((a,b)=>b[1]-a[1]);
+  // Province nella regione
+  const provEntries=Object.entries(r.provinces||{}).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const provEl=document.getElementById('geo-det-provinces');
+  if(provEl){
+    provEl.innerHTML=provEntries.length?provEntries.map(([p,n])=>'<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);"><span>'+p+'</span><strong>'+n+'</strong></div>').join(''):'<div style="color:var(--text2);font-size:12px;">—</div>';
+  }
+
   document.getElementById('geo-det-seniority').innerHTML=senEntries.map(([s,n])=>{
     const pct=Math.round(n/r.count*100);
     return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
@@ -7016,11 +7021,7 @@ function runGeoCompare(){
   const b=document.getElementById('geo-compare-b')?.value;
   if(!a||!b||a===b){toast('Seleziona due zone diverse','error');return;}
   const getData=region=>{
-    const listings=_geoRoleData.filter(l=>{
-      const parts=(l.location||'').split(',');
-      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
-      return reg===region;
-    });
+    const listings=_geoRoleData.filter(l=>l.region===region);
     const ral=listings.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
     const avgRal=ral.length?Math.round(ral.reduce((a,b)=>a+b)/ral.length):null;
     const companies=new Set(listings.map(l=>l.ragione_sociale).filter(Boolean)).size;
@@ -7052,16 +7053,8 @@ function renderGeoReadiness(regions){
   const el=document.getElementById('geo-readiness-body');if(!el)return;
   const d90=new Date(Date.now()-90*864e5);
   el.innerHTML=regions.map(r=>{
-    const recent=_geoRoleData.filter(l=>{
-      const parts=(l.location||'').split(',');
-      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
-      return reg===r.name&&l.published_date&&new Date(l.published_date)>d90;
-    }).length;
-    const companies=new Set(_geoRoleData.filter(l=>{
-      const parts=(l.location||'').split(',');
-      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
-      return reg===r.name;
-    }).map(l=>l.ragione_sociale).filter(Boolean)).size;
+    const recent=_geoRoleData.filter(l=>l.region===r.name&&l.published_date&&new Date(l.published_date)>d90).length;
+    const companies=new Set(_geoRoleData.filter(l=>l.region===r.name).map(l=>l.ragione_sociale).filter(Boolean)).size;
     let badge,color,desc;
     if(recent>=5&&companies>=3){badge='🟢';color='#10b981';desc='Mercato attivo — '+recent+' annunci recenti, '+companies+' aziende';}
     else if(recent>=2||r.count>=3){badge='🟡';color='#f59e0b';desc='Mercato limitato — '+r.count+' annunci totali, '+recent+' recenti';}
@@ -7321,6 +7314,8 @@ function renderDemandScatter(){
           <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:32px 0;text-align:center;">← Seleziona una regione</div>
           <div id="geo-detail-content" style="display:none;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Province</div>
+            <div id="geo-det-provinces" style="margin-bottom:12px;"></div>
             <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Seniority richiesta</div>
             <div id="geo-det-seniority" style="margin-bottom:12px;"></div>
             <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Top Aziende</div>
