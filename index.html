@@ -6460,34 +6460,118 @@ async function delCo(id){
 <!-- ── GEOGRAPHIC VIEW ── -->
 <div class="view" id="view-geo">
   <div style="padding:24px 32px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🗺️ Geographic Hiring Heatmap</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Concentrazione geografica della domanda Life Sciences</div></div>
-      <button onclick="refreshGeoData()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
+
+    <!-- Header -->
+    <div style="margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:700;color:var(--text);">🗺️ Analisi Geografica per Figura</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px;">Cerca una figura professionale e analizza come viene ricercata nelle diverse zone d'Italia</div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-      <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
-      <div class="stat-card"><div class="stat-label">Città attive</div><div class="stat-value" id="geo-kpi-cities">—</div></div>
-      <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
-      <div class="stat-card"><div class="stat-label">% Milano/Roma</div><div class="stat-value" id="geo-kpi-concentration">—</div></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:20px;">
-      <button onclick="setGeoTab('regione',this)" id="geo-tab-regione" class="qb-btn active">📍 Per Regione</button>
-      <button onclick="setGeoTab('citta',this)" id="geo-tab-citta" class="qb-btn">🏙️ Per Città</button>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-      <div class="table-wrap"><div class="table-header"><div class="table-title" id="geo-ranking-title">Ranking Regioni</div><div class="table-count" id="geo-ranking-count">—</div></div><div id="geo-ranking-body"></div></div>
-      <div class="table-wrap" style="padding:20px;">
-        <div style="font-size:13px;font-weight:600;margin-bottom:16px;">📊 Dettaglio area</div>
-        <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un'area</div>
-        <div id="geo-detail-content" style="display:none;">
-          <div style="font-size:18px;font-weight:800;margin-bottom:12px;" id="geo-det-name">—</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
-          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-bottom:8px;">Top Ruoli</div><div id="geo-det-roles"></div>
-          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;margin-top:12px;margin-bottom:8px;">Top Aziende</div><div id="geo-det-companies"></div>
+
+    <!-- Barra di ricerca -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:2;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
+          <input type="text" id="geo-search-role" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
+            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+            onkeydown="if(event.key==='Enter')runGeoAnalysis()">
         </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">AREA FUNZIONALE</div>
+          <select id="geo-filter-area" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="">Tutte le aree</option>
+            <option value="commercial">Commercial / Sales</option>
+            <option value="medical_affairs">Medical Affairs</option>
+            <option value="marketing">Marketing</option>
+            <option value="market_access">Market Access</option>
+            <option value="regulatory_affairs">Regulatory Affairs</option>
+            <option value="quality">Quality</option>
+            <option value="rd">R&D</option>
+            <option value="manufacturing">Manufacturing</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">SENIORITY</div>
+          <select id="geo-filter-seniority" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="">Tutte</option>
+            <option value="entry_level">Entry Level</option>
+            <option value="specialist">Specialist</option>
+            <option value="senior_specialist">Senior Specialist</option>
+            <option value="manager">Manager</option>
+            <option value="director">Director</option>
+          </select>
+        </div>
+        <button onclick="runGeoAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#10b981;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
       </div>
     </div>
-    <div class="table-wrap" style="padding:20px;"><div style="font-size:13px;font-weight:600;margin-bottom:16px;">🇮🇹 Distribuzione geografica</div><div id="geo-map-container" style="text-align:center;"></div></div>
+
+    <!-- Empty state -->
+    <div id="geo-empty" style="padding:60px;text-align:center;color:var(--text2);">
+      <div style="font-size:32px;margin-bottom:12px;">🗺️</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Cerca una figura professionale</div>
+      <div style="font-size:13px;">Scrivi il nome di un ruolo e clicca Analizza per vedere la distribuzione geografica</div>
+    </div>
+
+    <!-- Risultati -->
+    <div id="geo-results" style="display:none;">
+
+      <!-- KPI -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+        <div class="stat-card"><div class="stat-label">Annunci trovati</div><div class="stat-value" id="geo-kpi-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
+        <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
+        <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="geo-kpi-ral">—</div></div>
+      </div>
+
+      <!-- Sezione 1: Distribuzione per regione -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+
+        <div class="table-wrap">
+          <div class="table-header">
+            <div class="table-title">📍 Distribuzione per Regione</div>
+            <div class="table-count" id="geo-region-count">—</div>
+          </div>
+          <div id="geo-region-body"></div>
+        </div>
+
+        <div class="table-wrap" style="padding:20px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;" id="geo-detail-title">📊 Dettaglio regione</div>
+          <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:32px 0;text-align:center;">← Seleziona una regione</div>
+          <div id="geo-detail-content" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Seniority richiesta</div>
+            <div id="geo-det-seniority" style="margin-bottom:12px;"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Top Aziende</div>
+            <div id="geo-det-companies"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sezione 2: Confronto zone -->
+      <div class="table-wrap" style="padding:20px;margin-bottom:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">⚖️ Confronto tra zone</div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+          <select id="geo-compare-a" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+            <option value="">Zona A</option>
+          </select>
+          <span style="color:var(--text2);font-weight:700;">vs</span>
+          <select id="geo-compare-b" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+            <option value="">Zona B</option>
+          </select>
+          <button onclick="runGeoCompare()" style="padding:8px 16px;border-radius:8px;border:1px solid #10b981;background:transparent;color:#10b981;font-size:12px;font-weight:600;cursor:pointer;">Confronta</button>
+        </div>
+        <div id="geo-compare-result" style="color:var(--text2);font-size:13px;text-align:center;padding:16px 0;">Seleziona due zone e clicca Confronta</div>
+      </div>
+
+      <!-- Sezione 3: Market readiness -->
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🎯 Market Readiness per zona</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">Valutazione del mercato locale per la figura ricercata</div>
+        <div id="geo-readiness-body"></div>
+      </div>
+
+    </div>
   </div>
 </div>
 
@@ -7132,68 +7216,185 @@ async function loadPositioningAnalysis(){
   }
 }
 /* ═══ GEOGRAPHIC HEATMAP ═══ */
-let _geoData=[];let _geoTab='regione';
-async function loadGeoModule(){
-  const body=document.getElementById('geo-ranking-body');
-  if(body)body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+let _geoRoleData=[];
+
+function loadGeoModule(){
+  // Pagina vuota - aspetta ricerca utente
+}
+
+async function runGeoAnalysis(){
+  const roleEl=document.getElementById('geo-search-role');
+  const areaEl=document.getElementById('geo-filter-area');
+  const senEl=document.getElementById('geo-filter-seniority');
+  const role=(roleEl?.value||'').trim();
+  const area=areaEl?.value||'';
+  const seniority=senEl?.value||'';
+  const emptyEl=document.getElementById('geo-empty');
+  const resultsEl=document.getElementById('geo-results');
+  if(!role&&!area){toast('Inserisci almeno una figura o area','error');return;}
+  if(emptyEl)emptyEl.style.display='none';
+  if(resultsEl)resultsEl.style.display='none';
+  toast('⏳ Analisi geografica...');
   try{
-    _geoData=await api('geographic_metrics?order=total_jobs.desc');
-    if(!_geoData.length){if(body)body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato — clicca 🔄 Ricalcola</div>';return;}
-    renderGeoModule();
-  }catch(e){console.error('Geo error:',e);}
+    let q='job_listings?select=id,job_title,ragione_sociale,location,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&location=not.is.null&order=published_date.desc&limit=2000';
+    if(role)q+='&or=(job_title.ilike.*'+encodeURIComponent(role)+'*,canonical_role.ilike.*'+encodeURIComponent(role)+'*,role_family.ilike.*'+encodeURIComponent(role)+'*)';
+    if(area)q+='&functional_area_v2=eq.'+encodeURIComponent(area);
+    if(seniority)q+='&seniority_v2=eq.'+encodeURIComponent(seniority);
+    _geoRoleData=await api(q);
+    if(!_geoRoleData.length){
+      toast('Nessun annuncio trovato','warning');
+      if(emptyEl)emptyEl.style.display='';
+      return;
+    }
+    // Aggrega per regione
+    const byRegion={};
+    _geoRoleData.forEach(l=>{
+      const parts=(l.location||'').split(',');
+      const region=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+      if(!region)return;
+      if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{}};
+      byRegion[region].count++;
+      if(l.ral_min||l.ral_max)byRegion[region].ral.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const sen=l.seniority_v2||'n/d';byRegion[region].seniority[sen]=(byRegion[region].seniority[sen]||0)+1;
+      const co=l.ragione_sociale||'—';byRegion[region].companies[co]=(byRegion[region].companies[co]||0)+1;
+    });
+    const regions=Object.values(byRegion).sort((a,b)=>b.count-a.count);
+    const allRal=_geoRoleData.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    const avgRal=allRal.length?Math.round(allRal.reduce((a,b)=>a+b)/allRal.length):null;
+    const _s=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    _s('geo-kpi-total',_geoRoleData.length);
+    _s('geo-kpi-regions',regions.length);
+    _s('geo-kpi-top',regions[0]?.name||'—');
+    _s('geo-kpi-ral',avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—');
+    const countEl=document.getElementById('geo-region-count');
+    if(countEl)countEl.textContent=regions.length+' regioni';
+    const maxCount=regions[0]?.count||1;
+    document.getElementById('geo-region-body').innerHTML=regions.map((r,i)=>{
+      const pct=Math.round(r.count/maxCount*100);
+      const avgR=r.ral.length?Math.round(r.ral.reduce((a,b)=>a+b)/r.ral.length):null;
+      return '<div onclick="showGeoRegionDetail('+i+')" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''" id="geo-row-'+i+'">'
+        +'<div style="font-size:12px;font-weight:700;color:var(--text2);width:20px;">'+(i+1)+'</div>'
+        +'<div style="flex:1;"><div style="font-size:13px;font-weight:600;">'+r.name+'</div>'
+        +'<div style="background:var(--surface2);border-radius:3px;height:4px;margin-top:4px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:#10b981;border-radius:3px;"></div></div></div>'
+        +'<div style="text-align:right;"><div style="font-size:15px;font-weight:700;">'+r.count+'</div>'
+        +'<div style="font-size:10px;color:#f59e0b;">'+(avgR?'€'+(avgR/1000).toFixed(0)+'k':'—')+'</div></div></div>';
+    }).join('');
+    const opts='<option value="">Seleziona</option>'+regions.map(r=>'<option value="'+r.name+'">'+r.name+' ('+r.count+')</option>').join('');
+    const ca=document.getElementById('geo-compare-a');if(ca)ca.innerHTML=opts;
+    const cb=document.getElementById('geo-compare-b');if(cb)cb.innerHTML=opts;
+    renderGeoReadiness(regions);
+    if(resultsEl)resultsEl.style.display='';
+    toast('✅ Analisi completata','success');
+  }catch(e){toast('Errore: '+e.message,'error');console.error(e);}
 }
-async function refreshGeoData(){
-  toast('⏳ Ricalcolo geografico...');
-  try{await api('rpc/refresh_geographic_metrics','POST',{});toast('✅ Metriche geografiche aggiornate','success');await loadGeoModule();}
-  catch(e){toast('Errore: '+e.message,'error');}
-}
-function setGeoTab(tab,btn){
-  _geoTab=tab;
-  document.querySelectorAll('[id^="geo-tab-"]').forEach(b=>b.classList.remove('active'));
-  if(btn)btn.classList.add('active');
-  const t=document.getElementById('geo-ranking-title');if(t)t.textContent=tab==='regione'?'Ranking Regioni':'Ranking Città';
-  renderGeoRanking();
-}
-function renderGeoModule(){
-  const regioni=_geoData.filter(d=>d.area_type==='regione');
-  const citta=_geoData.filter(d=>d.area_type==='citta');
-  const _s=id=>document.getElementById(id);
-  if(_s('geo-kpi-regions'))_s('geo-kpi-regions').textContent=regioni.length;
-  if(_s('geo-kpi-cities'))_s('geo-kpi-cities').textContent=citta.length;
-  if(_s('geo-kpi-top'))_s('geo-kpi-top').textContent=regioni[0]?.area_name||'—';
-  const totalCitta=citta.reduce((s,d)=>s+d.total_jobs,0);
-  const milRom=citta.filter(d=>['Milano','Roma','Rome'].includes(d.area_name)).reduce((s,d)=>s+d.total_jobs,0);
-  if(_s('geo-kpi-concentration'))_s('geo-kpi-concentration').textContent=totalCitta?Math.round(milRom/totalCitta*100)+'%':'—';
-  renderGeoRanking();renderGeoMap(regioni);
-}
-function renderGeoRanking(){
-  const body=document.getElementById('geo-ranking-body');const countEl=document.getElementById('geo-ranking-count');if(!body)return;
-  const data=_geoData.filter(d=>d.area_type===_geoTab).sort((a,b)=>b.total_jobs-a.total_jobs);
-  const maxJobs=Math.max(...data.map(d=>d.total_jobs));
-  if(countEl)countEl.textContent=data.length+' aree';
-  body.innerHTML=data.map((d,i)=>{const pct=Math.round(d.total_jobs/maxJobs*100);const growth=d.hiring_growth;const growthEl=growth!=null?`<span style="font-size:10px;color:${growth>0?'#10b981':growth<0?'#ef4444':'var(--text2)'};">${growth>0?'↑':'↓'}${Math.abs(growth).toFixed(0)}%</span>`:'';const avgSal=d.avg_salary?'€'+(d.avg_salary/1000).toFixed(0)+'k':'—';return`<div onclick="showGeoDetail(${i})" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><div style="font-size:12px;font-weight:700;color:var(--text2);width:20px;">${i+1}</div><div style="flex:1;"><div style="font-size:13px;font-weight:600;color:var(--text);">${d.area_name} ${growthEl}</div><div style="background:var(--surface2);border-radius:3px;height:4px;margin-top:4px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:#10b981;border-radius:3px;"></div></div></div><div style="text-align:right;"><div style="font-size:15px;font-weight:700;color:var(--text);">${d.total_jobs}</div><div style="font-size:10px;color:#f59e0b;">${avgSal}</div></div></div>`;}).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';
-}
-function showGeoDetail(idx){
-  const data=_geoData.filter(d=>d.area_type===_geoTab).sort((a,b)=>b.total_jobs-a.total_jobs);
-  const d=data[idx];if(!d)return;
+
+function showGeoRegionDetail(idx){
+  const byRegion={};
+  _geoRoleData.forEach(l=>{
+    const parts=(l.location||'').split(',');
+    const region=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+    if(!region)return;
+    if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{}};
+    byRegion[region].count++;
+    if(l.ral_min||l.ral_max)byRegion[region].ral.push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    const sen=l.seniority_v2||'n/d';byRegion[region].seniority[sen]=(byRegion[region].seniority[sen]||0)+1;
+    const co=l.ragione_sociale||'—';byRegion[region].companies[co]=(byRegion[region].companies[co]||0)+1;
+  });
+  const regions=Object.values(byRegion).sort((a,b)=>b.count-a.count);
+  const r=regions[idx];if(!r)return;
+  document.querySelectorAll('[id^="geo-row-"]').forEach(el=>el.style.background='');
+  const row=document.getElementById('geo-row-'+idx);if(row)row.style.background='var(--surface2)';
+  const avgRal=r.ral.length?Math.round(r.ral.reduce((a,b)=>a+b)/r.ral.length):null;
+  const d90=new Date(Date.now()-90*864e5);
+  const recent=_geoRoleData.filter(l=>{
+    const parts=(l.location||'').split(',');
+    const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+    return reg===r.name&&l.published_date&&new Date(l.published_date)>d90;
+  }).length;
+  document.getElementById('geo-detail-title').textContent='📊 '+r.name;
   document.getElementById('geo-detail-empty').style.display='none';
   document.getElementById('geo-detail-content').style.display='';
-  document.getElementById('geo-det-name').textContent=d.area_name;
-  const kpis=[{l:'Annunci',v:d.total_jobs},{l:'RAL media',v:d.avg_salary?'€'+(d.avg_salary/1000).toFixed(0)+'k':'—'},{l:'RAL mediana',v:d.median_salary?'€'+(d.median_salary/1000).toFixed(0)+'k':'—'},{l:'Crescita 90gg',v:d.hiring_growth!=null?(d.hiring_growth>0?'+':'')+d.hiring_growth.toFixed(1)+'%':'—'}];
-  document.getElementById('geo-det-kpis').innerHTML=kpis.map(k=>`<div style="background:var(--surface2);border-radius:8px;padding:10px;"><div style="font-size:10px;color:var(--text2);">${k.l}</div><div style="font-size:15px;font-weight:700;color:var(--text);">${k.v}</div></div>`).join('');
-  const roles=d.top_roles||[];
-  document.getElementById('geo-det-roles').innerHTML=roles.length?roles.map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);"><span>${r.role||'—'}</span><strong>${r.n}</strong></div>`).join(''):'<div style="color:var(--text2);font-size:12px;">—</div>';
-  const companies=d.top_companies||[];
-  document.getElementById('geo-det-companies').innerHTML=companies.length?companies.map(c=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);"><span>${c.company||'—'}</span><strong>${c.n}</strong></div>`).join(''):'<div style="color:var(--text2);font-size:12px;">—</div>';
+  document.getElementById('geo-det-kpis').innerHTML=[
+    {l:'Annunci totali',v:r.count},{l:'Ultimi 90gg',v:recent},
+    {l:'RAL media',v:avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'},{l:'Aziende',v:Object.keys(r.companies).length},
+  ].map(k=>'<div style="background:var(--surface2);border-radius:8px;padding:10px;"><div style="font-size:10px;color:var(--text2);">'+k.l+'</div><div style="font-size:16px;font-weight:700;">'+k.v+'</div></div>').join('');
+  const senEntries=Object.entries(r.seniority).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('geo-det-seniority').innerHTML=senEntries.map(([s,n])=>{
+    const pct=Math.round(n/r.count*100);
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+      +'<div style="font-size:11px;width:120px;">'+toLabel(s)+'</div>'
+      +'<div style="flex:1;background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:var(--accent);border-radius:3px;"></div></div>'
+      +'<div style="font-size:11px;color:var(--text2);width:24px;">'+n+'</div></div>';
+  }).join('');
+  const topCo=Object.entries(r.companies).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById('geo-det-companies').innerHTML=topCo.map(([c,n])=>
+    '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);"><span>'+c+'</span><strong>'+n+'</strong></div>'
+  ).join('');
 }
-function renderGeoMap(regioni){
-  const el=document.getElementById('geo-map-container');if(!el)return;
-  const maxJobs=Math.max(...regioni.map(d=>d.total_jobs),1);
-  const regionData={};regioni.forEach(d=>regionData[d.area_name]=d.total_jobs);
-  const cols=['Lombardia','Piemonte','Veneto','Emilia-Romagna','Toscana','Lazio','Campania','Puglia','Sicilia','Sardegna','Liguria','Friuli-Venezia Giulia','Marche','Umbria','Abruzzo','Calabria','Basilicata','Molise','Valle d\'Aosta','Trentino-Alto Adige'];
-  const getColor=n=>{if(!n)return 'rgba(99,102,241,0.08)';const p=n/maxJobs;if(p>0.6)return '#6366f1';if(p>0.4)return 'rgba(99,102,241,0.7)';if(p>0.2)return 'rgba(99,102,241,0.45)';if(p>0.05)return 'rgba(99,102,241,0.25)';return 'rgba(99,102,241,0.1)';};
-  el.innerHTML=`<div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:700px;margin:0 auto;">${cols.map(r=>{const n=regionData[r]||0;const size=60+Math.round(n/maxJobs*60);return`<div style="background:${getColor(n)};border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:8px 12px;min-width:${size}px;text-align:center;" title="${r}: ${n}"><div style="font-size:10px;font-weight:600;color:var(--text);">${r.replace('Emilia-Romagna','Em.-Rom.').replace('Friuli-Venezia Giulia','Friuli').replace('Trentino-Alto Adige','Trentino')}</div><div style="font-size:14px;font-weight:800;color:#6366f1;">${n||'—'}</div></div>`;}).join('')}</div>`;
+
+function runGeoCompare(){
+  const a=document.getElementById('geo-compare-a')?.value;
+  const b=document.getElementById('geo-compare-b')?.value;
+  if(!a||!b||a===b){toast('Seleziona due zone diverse','error');return;}
+  const getData=region=>{
+    const listings=_geoRoleData.filter(l=>{
+      const parts=(l.location||'').split(',');
+      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+      return reg===region;
+    });
+    const ral=listings.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    const avgRal=ral.length?Math.round(ral.reduce((a,b)=>a+b)/ral.length):null;
+    const companies=new Set(listings.map(l=>l.ragione_sociale).filter(Boolean)).size;
+    const d90=new Date(Date.now()-90*864e5);
+    const recent=listings.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
+    return{count:listings.length,avgRal,companies,recent};
+  };
+  const dA=getData(a);const dB=getData(b);
+  const col=(va,vb)=>va>vb?'#10b981':va<vb?'#ef4444':'var(--text)';
+  document.getElementById('geo-compare-result').innerHTML=
+    '<table style="width:100%;font-size:12px;">'
+    +'<thead><tr><th style="padding:8px;text-align:left;color:var(--text2);">Metrica</th>'
+    +'<th style="padding:8px;text-align:center;color:#10b981;">'+a+'</th>'
+    +'<th style="padding:8px;text-align:center;color:#6366f1;">'+b+'</th></tr></thead><tbody>'
+    +[
+      {l:'Annunci totali',va:dA.count,vb:dB.count,fmt:v=>v},
+      {l:'Ultimi 90gg',va:dA.recent,vb:dB.recent,fmt:v=>v},
+      {l:'RAL media',va:dA.avgRal,vb:dB.avgRal,fmt:v=>v?'€'+(v/1000).toFixed(0)+'k':'—'},
+      {l:'Aziende attive',va:dA.companies,vb:dB.companies,fmt:v=>v},
+    ].map(m=>'<tr style="border-top:1px solid var(--border);">'
+      +'<td style="padding:8px;">'+m.l+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:700;color:'+col(m.va,m.vb)+';">'+m.fmt(m.va)+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:700;color:'+col(m.vb,m.va)+';">'+m.fmt(m.vb)+'</td>'
+      +'</tr>').join('')
+    +'</tbody></table>';
 }
+
+function renderGeoReadiness(regions){
+  const el=document.getElementById('geo-readiness-body');if(!el)return;
+  const d90=new Date(Date.now()-90*864e5);
+  el.innerHTML=regions.map(r=>{
+    const recent=_geoRoleData.filter(l=>{
+      const parts=(l.location||'').split(',');
+      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+      return reg===r.name&&l.published_date&&new Date(l.published_date)>d90;
+    }).length;
+    const companies=new Set(_geoRoleData.filter(l=>{
+      const parts=(l.location||'').split(',');
+      const reg=parts.length>1?parts[parts.length-1].trim():parts[0].trim();
+      return reg===r.name;
+    }).map(l=>l.ragione_sociale).filter(Boolean)).size;
+    let badge,color,desc;
+    if(recent>=5&&companies>=3){badge='🟢';color='#10b981';desc='Mercato attivo — '+recent+' annunci recenti, '+companies+' aziende';}
+    else if(recent>=2||r.count>=3){badge='🟡';color='#f59e0b';desc='Mercato limitato — '+r.count+' annunci totali, '+recent+' recenti';}
+    else{badge='🔴';color='#ef4444';desc='Mercato scarso — meno di 2 annunci recenti';}
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">'
+      +'<div style="font-size:18px;">'+badge+'</div>'
+      +'<div style="font-weight:600;font-size:13px;min-width:120px;">'+r.name+'</div>'
+      +'<div style="font-size:12px;color:var(--text2);">'+desc+'</div>'
+      +'<div style="margin-left:auto;font-size:12px;font-weight:700;color:'+color+';">'+r.count+' annunci</div></div>';
+  }).join('');
+}
+
 
 /* ═══ EMPLOYER DEMAND SCORE ═══ */
 let _demandData=[];
