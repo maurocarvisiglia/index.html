@@ -1003,104 +1003,129 @@ a.job-link:hover{text-decoration:underline;}
 
   <!-- COMMERCIAL INTELLIGENCE -->
   <div class="view" id="view-commercial">
-    <div class="section-header">
-      <div class="section-title">💼 Commercial Intelligence <span style="font-size:13px;color:var(--text2);font-weight:400;">Opportunità per MC Pharma Consulting</span></div>
-      <button class="btn btn-primary" onclick="loadCommercialIntelligence()" style="background:#7c3aed;border-color:#7c3aed;">🔄 Aggiorna analisi</button>
-    </div>
-
-    <!-- AI Summary Commercial -->
-    <!-- Filtri interattivi Commercial Intelligence -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:20px;padding:14px 16px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);">
-      <span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Filtri</span>
-      <select id="ci-filter-area" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
-        <option value="">Tutte le aree</option>
-        <option value="commercial">Commercial / Sales</option>
-        <option value="medical_affairs">Medical Affairs</option>
-        <option value="marketing">Marketing</option>
-        <option value="market_access">Market Access</option>
-        <option value="regulatory_affairs">Regulatory Affairs</option>
-        <option value="quality">Quality</option>
-        <option value="clinical_operations">Clinical Operations</option>
-        <option value="rd">R&D</option>
-        <option value="manufacturing">Manufacturing</option>
-      </select>
-      <select id="ci-filter-ta" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
-        <option value="">Tutte le aree terapeutiche</option>
-        <option value="oncology">Oncology</option>
-        <option value="rare_diseases">Rare Diseases</option>
-        <option value="immunology">Immunology</option>
-        <option value="cardiovascular">Cardiovascular</option>
-        <option value="neurology">Neurology</option>
-        <option value="respiratory">Respiratory</option>
-        <option value="diabetes">Diabetes</option>
-        <option value="dermatology">Dermatology</option>
-      </select>
-      <select id="ci-filter-period" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
-        <option value="0">Tutto il periodo</option>
-        <option value="30">Ultimi 30 giorni</option>
-        <option value="90">Ultimi 90 giorni</option>
-        <option value="180">Ultimi 6 mesi</option>
-        <option value="365">Ultimo anno</option>
-      </select>
-      <select id="ci-filter-sector" onchange="loadCommercialIntelligence()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
-        <option value="">Tutti i settori</option>
-        <option value="pharma_rx">Pharma RX</option>
-        <option value="biotech">Biotech</option>
-        <option value="medical_devices">Medical Devices</option>
-        <option value="cdmo">CDMO</option>
-        <option value="cro">CRO</option>
-      </select>
-      <button onclick="resetCIFilters()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;">↺ Reset</button>
-      <div id="ci-filter-count" style="margin-left:auto;font-size:11px;color:var(--text2);"></div>
-    </div>
-    <div class="ai-summary-card" id="commercial-ai-card" style="margin-bottom:24px;">
-      <div class="ai-summary-header">🤖 AI Commercial Intelligence</div>
-      <div class="ai-summary-text" id="commercial-ai-text">Clicca "Aggiorna analisi" per generare le opportunità commerciali.</div>
-      <div class="ai-insights-grid" id="commercial-ai-insights"></div>
-    </div>
-
-    <!-- Rankings -->
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">🚀 Aziende con maggior Hiring Momentum</div>
-        <div id="ci-hiring-momentum"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">📈 Aziende in maggiore crescita</div>
-        <div id="ci-growth"></div>
+    <div class="section-header" style="margin-bottom:16px;">
+      <div>
+        <div class="section-title">💼 Commercial Intelligence</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Raccomandazioni AI per MC Pharma Consulting</div>
       </div>
     </div>
 
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">🧬 Aziende che investono in Oncology</div>
-        <div id="ci-oncology"></div>
+    <!-- Filtri + Periodo -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;padding:16px 20px;background:var(--surface2);border-radius:12px;border:1px solid var(--border);">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;flex:1;">
+        <span style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;align-self:center;">Filtri</span>
+        <select id="ci-filter-area" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">Tutte le aree</option>
+          <option value="commercial">Commercial / Sales</option>
+          <option value="medical_affairs">Medical Affairs</option>
+          <option value="marketing">Marketing</option>
+          <option value="market_access">Market Access</option>
+          <option value="regulatory_affairs">Regulatory Affairs</option>
+          <option value="quality">Quality</option>
+          <option value="clinical_operations">Clinical Operations</option>
+          <option value="rd">R&amp;D</option>
+          <option value="manufacturing">Manufacturing</option>
+        </select>
+        <select id="ci-filter-ta" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">Tutte le aree terapeutiche</option>
+          <option value="oncology">Oncology</option>
+          <option value="rare_diseases">Rare Diseases</option>
+          <option value="immunology">Immunology</option>
+          <option value="cardiovascular">Cardiovascular</option>
+          <option value="neurology">Neurology</option>
+          <option value="respiratory">Respiratory</option>
+          <option value="diabetes">Diabetes</option>
+          <option value="dermatology">Dermatology</option>
+        </select>
+        <select id="ci-filter-sector" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
+          <option value="">Tutti i settori</option>
+          <option value="pharma_rx">Pharma RX</option>
+          <option value="biotech">Biotech</option>
+          <option value="medical_devices">Medical Devices</option>
+          <option value="cdmo">CDMO</option>
+          <option value="cro">CRO</option>
+        </select>
       </div>
-      <div class="chart-card">
-        <div class="chart-card-title">🦋 Aziende che investono in Rare Diseases</div>
-        <div id="ci-rare"></div>
+
+      <!-- Selettore periodo -->
+      <div style="display:flex;flex-direction:column;gap:6px;min-width:320px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Periodo</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button onclick="setCIPeriodPreset('week_current',this)" class="ci-period-btn"
+            style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s;">
+            Settimana corrente
+          </button>
+          <button onclick="setCIPeriodPreset('week_prev',this)" class="ci-period-btn"
+            style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s;">
+            Settimana scorsa
+          </button>
+          <button onclick="setCIPeriodPreset('month',this)" class="ci-period-btn"
+            style="padding:5px 12px;border-radius:6px;border:1px solid var(--accent);background:rgba(201,169,110,.12);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s;">
+            Ultimo mese ✓
+          </button>
+          <button onclick="toggleCICalendar()" id="btn-ci-calendar"
+            style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:12px;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s;">
+            📅 Personalizzato
+          </button>
+        </div>
+        <div id="ci-calendar-picker" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+          <input type="date" id="ci-date-from" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;" />
+          <span style="color:var(--text2);font-size:12px;">→</span>
+          <input type="date" id="ci-date-to" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;" />
+          <button onclick="applyCICustomPeriod()"
+            style="padding:5px 12px;border-radius:6px;border:none;background:var(--accent);color:#0f1117;font-size:12px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;">
+            Applica
+          </button>
+        </div>
+        <div id="ci-period-label" style="font-size:11px;color:var(--text2);">Predefinito: ultimi 30 giorni</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+        <button onclick="resetCIFilters()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;">&#x21BA; Reset tutto</button>
+        <div id="ci-filter-count" style="font-size:11px;color:var(--text2);"></div>
       </div>
     </div>
 
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">🎯 Aziende che assumono MSL</div>
-        <div id="ci-msl"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">💊 Aziende che assumono Medical Advisor</div>
-        <div id="ci-medical-advisor"></div>
-      </div>
+    <!-- CTA -->
+    <div style="text-align:center;padding:8px 0 28px;">
+      <button onclick="generateCommercialBriefing()" id="btn-ci-generate"
+        style="padding:15px 52px;font-size:15px;font-weight:700;border-radius:14px;border:none;cursor:pointer;background:#7c3aed;color:white;font-family:Inter,sans-serif;box-shadow:0 4px 20px rgba(124,58,237,.35);transition:all .15s;">
+        &#x1F916; Genera Briefing Commerciale
+      </button>
+      <div style="margin-top:10px;font-size:12px;color:var(--text2);">Analizza il database e produce raccomandazioni AI personalizzate</div>
     </div>
 
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">🏥 Aziende che investono in Market Access</div>
-        <div id="ci-market-access"></div>
+    <!-- Empty state -->
+    <div id="ci-empty" style="text-align:center;padding:48px 24px;color:var(--text2);">
+      <div style="font-size:56px;margin-bottom:18px;">&#x1F4BC;</div>
+      <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px;">Nessun briefing generato</div>
+      <div style="font-size:13px;max-width:460px;margin:0 auto;line-height:1.6;">Imposta i filtri, scegli il periodo e clicca il bottone per ricevere raccomandazioni concrete su aziende da contattare, segmenti prioritari e piano d&#39;azione settimanale.</div>
+    </div>
+
+    <!-- Loading -->
+    <div id="ci-loading" style="display:none;text-align:center;padding:64px 24px;">
+      <div style="font-size:52px;margin-bottom:20px;animation:pulse 1.5s ease-in-out infinite;">&#x1F916;</div>
+      <div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;">Analisi in corso...</div>
+      <div style="font-size:13px;color:var(--text2);" id="ci-loading-step">Recupero dati dal database...</div>
+    </div>
+
+    <!-- Risultati -->
+    <div id="ci-results" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 18px;background:var(--surface2);border-radius:8px;margin-bottom:20px;font-size:12px;">
+        <span style="color:var(--text2);" id="ci-meta-label">&#x2014;</span>
+        <span style="color:var(--text2);" id="ci-meta-date">&#x2014;</span>
       </div>
-      <div class="chart-card">
-        <div class="chart-card-title">⭐ Company Opportunity Score — Top 10</div>
-        <div id="ci-opportunity"></div>
+      <div class="ai-summary-card" style="margin-bottom:24px;">
+        <div class="ai-summary-header">&#x1F4CB; Executive Brief</div>
+        <div style="font-size:14px;line-height:1.8;color:var(--text);" id="ci-brief-text"></div>
+      </div>
+      <div style="margin-bottom:12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">&#x1F3AF; Aziende da contattare in priorit&#xE0;</div>
+      <div id="ci-company-targets" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:28px;"></div>
+      <div style="margin-bottom:12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">&#x1F525; Segmenti prioritari</div>
+      <div id="ci-hot-segments" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:28px;"></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 28px;margin-bottom:24px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;">&#x1F4C5; Piano d&#39;azione suggerito</div>
+        <div id="ci-action-plan"></div>
       </div>
     </div>
   </div>
@@ -2327,7 +2352,7 @@ function showView(name,btn){
   if(name==='dashboard')loadDashboard();
   if(name==='role-intel'){loadRoleIntelligence();loadRoleList();}
   if(name==='signals')generateMarketSignals();
-  if(name==='commercial')loadCommercialIntelligence();
+  // commercial: no auto-load
   if(name==='compliance')loadCompliance();
   if(name==='scarcity')loadScarcityIndex();
   if(name==='competitor')initCompetitorMonitor();
@@ -3202,159 +3227,187 @@ JSON ESATTO:
    COMMERCIAL INTELLIGENCE
    ══════════════════════════════════════════════ */
 
-async function loadCommercialIntelligence(){
+// ── CI PERIOD STATE ───────────────────────────────────────────────────────
+let _ciPeriodFrom=null,_ciPeriodTo=null,_ciPeriodMode='month';
+function fmtD(d){return d.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});}
+function setCIPeriodPreset(mode,btn){
+  _ciPeriodMode=mode;
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(mode==='week_current'){
+    const dow=today.getDay()||7;
+    _ciPeriodFrom=new Date(today); _ciPeriodFrom.setDate(today.getDate()-(dow-1));
+    _ciPeriodTo=new Date(_ciPeriodFrom); _ciPeriodTo.setDate(_ciPeriodFrom.getDate()+6);
+    document.getElementById('ci-period-label').textContent='Da '+fmtD(_ciPeriodFrom)+' a '+fmtD(_ciPeriodTo);
+  }else if(mode==='week_prev'){
+    const dow=today.getDay()||7;
+    _ciPeriodFrom=new Date(today); _ciPeriodFrom.setDate(today.getDate()-(dow-1)-7);
+    _ciPeriodTo=new Date(_ciPeriodFrom); _ciPeriodTo.setDate(_ciPeriodFrom.getDate()+6);
+    document.getElementById('ci-period-label').textContent='Da '+fmtD(_ciPeriodFrom)+' a '+fmtD(_ciPeriodTo);
+  }else if(mode==='month'){
+    _ciPeriodFrom=new Date(today); _ciPeriodFrom.setDate(today.getDate()-30);
+    _ciPeriodTo=today;
+    document.getElementById('ci-period-label').textContent='Ultimi 30 giorni';
+  }
+  document.querySelectorAll('.ci-period-btn').forEach(b=>{
+    b.style.borderColor='var(--border)';b.style.background='var(--surface)';b.style.color='var(--text2)';b.style.fontWeight='400';
+    b.textContent=b.textContent.replace(' ✓','');
+  });
+  if(btn){btn.style.borderColor='var(--accent)';btn.style.background='rgba(201,169,110,.12)';btn.style.color='var(--accent)';btn.style.fontWeight='600';btn.textContent+=' ✓';}
+  document.getElementById('ci-calendar-picker').style.display='none';
+}
+function toggleCICalendar(){
+  const el=document.getElementById('ci-calendar-picker');
+  const vis=el.style.display!=='none'&&el.style.display!=='';
+  el.style.display=vis?'none':'flex';
+  if(!vis){
+    const now=new Date(),from=new Date(now);from.setDate(now.getDate()-30);
+    document.getElementById('ci-date-from').value=from.toISOString().split('T')[0];
+    document.getElementById('ci-date-to').value=now.toISOString().split('T')[0];
+  }
+}
+function applyCICustomPeriod(){
+  const from=document.getElementById('ci-date-from').value;
+  const to=document.getElementById('ci-date-to').value;
+  if(!from||!to){alert('Seleziona entrambe le date');return;}
+  _ciPeriodFrom=new Date(from);_ciPeriodTo=new Date(to);_ciPeriodMode='custom';
+  document.getElementById('ci-period-label').textContent='Personalizzato: '+fmtD(_ciPeriodFrom)+' → '+fmtD(_ciPeriodTo);
+  document.querySelectorAll('.ci-period-btn').forEach(b=>{b.style.borderColor='var(--border)';b.style.background='var(--surface)';b.style.color='var(--text2)';b.style.fontWeight='400';b.textContent=b.textContent.replace(' ✓','');});
+  const calBtn=document.getElementById('btn-ci-calendar');
+  if(calBtn){calBtn.style.borderColor='var(--accent)';calBtn.style.color='var(--accent)';}
+  document.getElementById('ci-calendar-picker').style.display='none';
+}
+(function initCIPeriod(){
+  const today=new Date();today.setHours(0,0,0,0);
+  _ciPeriodTo=today;_ciPeriodFrom=new Date(today);_ciPeriodFrom.setDate(today.getDate()-30);
+})();
+
+// ── MAIN BRIEFING ─────────────────────────────────────────────────────────
+async function generateCommercialBriefing(){
+  const loadEl=document.getElementById('ci-loading');
+  const emptyEl=document.getElementById('ci-empty');
+  const resultsEl=document.getElementById('ci-results');
+  const stepEl=document.getElementById('ci-loading-step');
+  emptyEl.style.display='none';resultsEl.style.display='none';loadEl.style.display='block';
+  if(stepEl)stepEl.textContent='Recupero dati dal database...';
   try{
     const ciArea=document.getElementById('ci-filter-area')?.value||'';
     const ciTa=document.getElementById('ci-filter-ta')?.value||'';
-    const ciPeriod=parseInt(document.getElementById('ci-filter-period')?.value||'0');
     const ciSector=document.getElementById('ci-filter-sector')?.value||'';
-    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
+    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=3000';
     if(ciArea)ciQ+=`&functional_area_v2=eq.${encodeURIComponent(ciArea)}`;
     if(ciTa)ciQ+=`&therapeutic_area=eq.${encodeURIComponent(ciTa)}`;
     if(ciSector)ciQ+=`&sector_v2=eq.${encodeURIComponent(ciSector)}`;
-    if(ciPeriod>0){const cut=new Date(Date.now()-ciPeriod*864e5).toISOString().split('T')[0];ciQ+=`&published_date=gte.${cut}`;}
+    if(_ciPeriodFrom)ciQ+=`&published_date=gte.${_ciPeriodFrom.toISOString().split('T')[0]}`;
+    if(_ciPeriodTo)ciQ+=`&published_date=lte.${_ciPeriodTo.toISOString().split('T')[0]}`;
     const data=await api(ciQ);
-    const ciCountEl=document.getElementById('ci-filter-count');if(ciCountEl)ciCountEl.textContent=data.length+' annunci';
+    const countEl=document.getElementById('ci-filter-count');
+    if(countEl)countEl.textContent=data.length+' annunci';
+    if(data.length===0){loadEl.style.display='none';emptyEl.style.display='block';toast('Nessun annuncio trovato','error');return;}
+    if(stepEl)stepEl.textContent='Calcolo segnali di mercato...';
     const now=Date.now();
-
-    // Helper: ranking aziende per criterio
-    const rankCompanies=(filterFn,limit=8)=>{
-      const byCompany={};
-      data.filter(filterFn).forEach(l=>{
-        const c=l.ragione_sociale||l.company_name;
-        if(c)byCompany[c]=(byCompany[c]||0)+1;
-      });
-      return Object.entries(byCompany).sort((a,b)=>b[1]-a[1]).slice(0,limit);
-    };
-
-    const renderRank=(elId,entries,color='var(--accent2)')=>{
-      const el=document.getElementById(elId);
-      if(!el)return;
-      const max=Math.max(...entries.map(d=>d[1]),1);
-      el.innerHTML=entries.length?entries.map(([c,n],i)=>`
-        <div class="bar-row">
-          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
-          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/max*100)}%;background:${color}"></div></div>
-          <div class="bar-count">${n}</div>
-        </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text2);">Dati insufficienti</div>';
-    };
-
-    // Hiring Momentum per azienda
-    const d30=new Date(now-30*864e5);
-    const d30_60=new Date(now-60*864e5);
-    const momentumMap={};
+    const d30=new Date(now-30*864e5),d60=new Date(now-60*864e5);
+    // momentum
+    const momMap={};
     data.forEach(l=>{
       const c=l.ragione_sociale||l.company_name;if(!c)return;
-      if(!momentumMap[c])momentumMap[c]={d30:0,d60:0};
-      if(l.published_date&&new Date(l.published_date)>d30)momentumMap[c].d30++;
-      else if(l.published_date&&new Date(l.published_date)>d30_60)momentumMap[c].d60++;
+      if(!momMap[c])momMap[c]={total:0,recent:0,d60:0};
+      momMap[c].total++;
+      if(l.published_date&&new Date(l.published_date)>d30)momMap[c].recent++;
+      else if(l.published_date&&new Date(l.published_date)>d60)momMap[c].d60++;
     });
-    const momentumRank=Object.entries(momentumMap)
-      .map(([c,v])=>[c,v.d30])
-      .sort((a,b)=>b[1]-a[1]).slice(0,8);
-    renderRank('ci-hiring-momentum',momentumRank,'var(--success)');
+    const topMom=Object.entries(momMap).sort((a,b)=>b[1].recent-a[1].recent).slice(0,8)
+      .map(([c,v])=>({company:c,...v}));
+    // TA
+    const taMap={};data.forEach(l=>{if(l.therapeutic_area)taMap[l.therapeutic_area]=(taMap[l.therapeutic_area]||0)+1;});
+    const topTA=Object.entries(taMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    // ruoli
+    const roleMap={};data.forEach(l=>{const r=l.canonical_role||l.role_family;if(r)roleMap[r]=(roleMap[r]||0)+1;});
+    const topRoles=Object.entries(roleMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    // specializzazioni
+    const mslCos=[...new Set(data.filter(l=>(l.job_title||'').toLowerCase().includes('msl')||(l.job_title||'').toLowerCase().includes('medical science liaison')).map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
+    const maCos=[...new Set(data.filter(l=>(l.job_title||'').toLowerCase().includes('medical advisor')).map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
+    const oncoMap={};data.filter(l=>l.therapeutic_area==='oncology').forEach(l=>{const c=l.ragione_sociale||l.company_name;if(c)oncoMap[c]=(oncoMap[c]||0)+1;});
+    const oncoCos=Object.entries(oncoMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c])=>c);
+    // opp score
+    const byCoAll={};data.forEach(l=>{const c=l.ragione_sociale||l.company_name;if(!c)return;if(!byCoAll[c])byCoAll[c]=[];byCoAll[c].push(l);});
+    const oppScores=Object.entries(byCoAll).map(([c,lst])=>({company:c,score:calcOpportunityScore(lst),total:lst.length})).sort((a,b)=>b.score-a.score).slice(0,8);
+    if(stepEl)stepEl.textContent='Generazione raccomandazioni AI...';
+    const periodStr=_ciPeriodFrom&&_ciPeriodTo?`dal ${fmtD(_ciPeriodFrom)} al ${fmtD(_ciPeriodTo)}`:'ultimo mese';
+    const aiPrompt=`Sei un esperto di business development per MC Pharma Consulting, studio di executive search Life Sciences italiano.
+Analizza questi dati di hiring e genera un briefing commerciale concreto.
 
-    // Growth (crescita % 30gg vs 30gg prec)
-    const growthRank=Object.entries(momentumMap)
-      .filter(([,v])=>v.d60>0)
-      .map(([c,v])=>[c,Math.round((v.d30-v.d60)/v.d60*100)])
-      .filter(([,pct])=>pct>0)
-      .sort((a,b)=>b[1]-a[1]).slice(0,8)
-      .map(([c,pct])=>[c,pct]);
-    const growthEl=document.getElementById('ci-growth');
-    if(growthEl){
-      const max=Math.max(...growthRank.map(d=>d[1]),1);
-      growthEl.innerHTML=growthRank.length?growthRank.map(([c,pct],i)=>`
-        <div class="bar-row">
-          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
-          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(pct/max*100)}%;background:var(--success)"></div></div>
-          <div class="bar-count" style="color:var(--success)">+${pct}%</div>
-        </div>`).join(''):'<div style="padding:16px;text-align:center;color:var(--text2);">Dati insufficienti</div>';
-    }
+DATI (${periodStr}, ${data.length} annunci):
+- Top momentum: ${topMom.slice(0,5).map(x=>x.company+'('+x.recent+'ann.recenti)').join(', ')||'n.d.'}
+- Top opportunity score: ${oppScores.slice(0,5).map(x=>x.company+'('+x.score+')').join(', ')||'n.d.'}
+- Aree terapeutiche attive: ${topTA.map(([ta,n])=>ta+'('+n+')').join(', ')||'n.d.'}
+- Ruoli richiesti: ${topRoles.slice(0,5).map(([r,n])=>r+'('+n+')').join(', ')||'n.d.'}
+- Aziende che assumono MSL: ${mslCos.join(', ')||'n.d.'}
+- Aziende che assumono Medical Advisor: ${maCos.join(', ')||'n.d.'}
+- Aziende attive in Oncology: ${oncoCos.join(', ')||'n.d.'}
 
-    // Oncology
-    renderRank('ci-oncology',rankCompanies(l=>l.therapeutic_area==='oncology'),'#f97316');
-
-    // Rare diseases
-    renderRank('ci-rare',rankCompanies(l=>l.therapeutic_area==='rare_diseases'),'#a78bfa');
-
-    // MSL
-    renderRank('ci-msl',rankCompanies(l=>{ const t=(l.job_title||'').toLowerCase(); const c=(l.canonical_role||'').toLowerCase(); const rf=(l.role_family||'').toLowerCase(); return t.includes('msl')||t.includes('medical science liaison')||c.includes('msl')||c.includes('medical science liaison')||rf.includes('msl'); }),'var(--accent2)');
-
-    // Medical Advisor
-    renderRank('ci-medical-advisor',rankCompanies(l=>{ const t=(l.job_title||'').toLowerCase(); const c=(l.canonical_role||'').toLowerCase(); return t.includes('medical advisor')||c.includes('medical advisor'); }),'var(--success)');
-
-    // Market Access
-    renderRank('ci-market-access',rankCompanies(l=>l.functional_area_v2==='market_access'),'var(--accent)');
-
-    // Opportunity Score ranking
-    const byCoAll={};
-    data.forEach(l=>{
-      const c=l.ragione_sociale||l.company_name;if(!c)return;
-      if(!byCoAll[c])byCoAll[c]=[];
-      byCoAll[c].push(l);
-    });
-    const oppRank=Object.entries(byCoAll)
-      .map(([c,listings])=>[c,calcOpportunityScore(listings)])
-      .sort((a,b)=>b[1]-a[1]).slice(0,8);
-    const oppEl=document.getElementById('ci-opportunity');
-    if(oppEl){
-      const max=Math.max(...oppRank.map(d=>d[1]),1);
-      oppEl.innerHTML=oppRank.map(([c,score],i)=>`
-        <div class="bar-row">
-          <div style="width:20px;font-size:10px;color:var(--text2);text-align:right;margin-right:4px;">${i+1}</div>
-          <div class="bar-label" style="font-size:11px;">${c.substring(0,22)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${score}%;background:${score>60?'var(--success)':score>30?'var(--accent)':'var(--text2)'}"></div></div>
-          <div class="bar-count" style="color:${score>60?'var(--success)':score>30?'var(--accent)':'var(--text2)'};">${score}</div>
-        </div>`).join('');
-    }
-
-    // AI Summary Commercial
-    const topMomentum=momentumRank.slice(0,3).map(([c])=>c).join(', ');
-    const topOpp=oppRank.slice(0,3).map(([c,s])=>`${c} (${s})`).join(', ');
-    const ciPrompt=`Sei un esperto di business development per uno studio di executive search Life Sciences. Genera 3 opportunità commerciali concrete basate su questi dati.
-
-- Aziende con maggior momentum: ${topMomentum}
-- Top opportunity score: ${topOpp}
-- Aziende che assumono MSL: ${rankCompanies(l=>(l.canonical_role||'').includes('MSL')).slice(0,3).map(([c])=>c).join(', ')||'n.d.'}
-- Aziende in Oncology: ${rankCompanies(l=>l.therapeutic_area==='oncology').slice(0,3).map(([c])=>c).join(', ')||'n.d.'}
-
-JSON ESATTO:
-{
-  "summary": "<2 frasi: panoramica opportunità di business development per MC Pharma Consulting>",
-  "insights": [
-    {"text": "<opportunità 1: azienda specifica + motivo>", "type": "positive"},
-    {"text": "<opportunità 2: azienda specifica + motivo>", "type": "positive"},
-    {"text": "<opportunità 3: area terapeutica o trend da presidiare>", "type": "positive"}
-  ]
-}`;
-
+Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
+{"brief":"<2-3 frasi executive summary>","priority_companies":[{"company":"<nome>","reason":"<perche contattarla ADESSO — segnale specifico>","signal":"<momentum|expansion|new_role|ta_investment>","urgency":"<high|medium>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"}],"hot_segments":[{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>},{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>},{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>}],"action_plan":[{"step":1,"timing":"Questa settimana","action":"<azione concreta>","target":"<azienda o segmento specifico>"},{"step":2,"timing":"Prossima settimana","action":"<azione concreta>","target":"<azienda o segmento specifico>"},{"step":3,"timing":"Questo mese","action":"<focus strategico>","target":"<area o trend>"}]}`;
+    let result;
     try{
-      const raw=await callAI(ciPrompt,500);
-      const result=JSON.parse(raw.replace(/```json|```/g,'').trim());
-      document.getElementById('commercial-ai-text').textContent=result.summary||'';
-      const insEl=document.getElementById('commercial-ai-insights');
-      if(insEl&&result.insights)insEl.innerHTML=result.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+      const raw=await callAI(aiPrompt,900);
+      result=JSON.parse(raw.replace(/```json|```/g,'').trim());
     }catch(e){
-      document.getElementById('commercial-ai-text').textContent='AI summary non disponibile.';
+      console.warn('AI fallback:',e.message);
+      result={
+        brief:`Nel periodo analizzato sono stati rilevati ${data.length} annunci. Le aziende con maggiore attività sono ${topMom.slice(0,3).map(x=>x.company).join(', ')||'n.d.'}. I segmenti più attivi: ${topTA.slice(0,3).map(([ta])=>ta).join(', ')||'n.d.'}.`,
+        priority_companies:topMom.slice(0,5).map(x=>({company:x.company,reason:`${x.recent} nuovi annunci negli ultimi 30 giorni (${x.total} totali nel periodo)`,signal:'momentum',urgency:x.recent>=3?'high':'medium'})),
+        hot_segments:topTA.slice(0,3).map(([ta,n])=>({segment:ta,why:'Area con il maggior numero di annunci nel periodo selezionato',n})),
+        action_plan:[{step:1,timing:'Questa settimana',action:'Contattare le aziende con momentum alto',target:topMom.slice(0,2).map(x=>x.company).join(' e ')||'—'},{step:2,timing:'Prossima settimana',action:'Follow-up e mappatura decision maker',target:topMom.slice(2,4).map(x=>x.company).join(' e ')||'—'},{step:3,timing:'Questo mese',action:'Presidiare il segmento più attivo',target:topTA[0]?topTA[0][0]:'—'}]
+      };
     }
-
-    // Salva segnali su Supabase
-    await saveMarketSignalsToSupabase(data);
-
+    loadEl.style.display='none';
+    const urgColor=u=>u==='high'?'var(--danger)':'var(--accent)';
+    const sigLabel={momentum:'Momentum',expansion:'Espansione',new_role:'Nuovo ruolo',ta_investment:'Inv. TA'};
+    document.getElementById('ci-meta-label').textContent=data.length+' annunci — '+(ciArea||'tutte le aree')+' · '+(ciSector||'tutti i settori');
+    document.getElementById('ci-meta-date').textContent='Generato il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
+    document.getElementById('ci-brief-text').textContent=result.brief||'';
+    document.getElementById('ci-company-targets').innerHTML=(result.priority_companies||[]).map(c=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;border-left:4px solid ${urgColor(c.urgency)};">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:8px;">
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${c.company}</div>
+          <div style="display:flex;gap:5px;flex-shrink:0;">
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(${c.urgency==='high'?'224,92,92':'201,169,110'},.15);color:${urgColor(c.urgency)};">${c.urgency==='high'?'ALTA':'MEDIA'}</span>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(76,175,130,.12);color:var(--success);">${sigLabel[c.signal]||c.signal}</span>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;">${c.reason}</div>
+      </div>`).join('');
+    document.getElementById('ci-hot-segments').innerHTML=(result.hot_segments||[]).map(s=>`
+      <div class="ai-insight-item positive" style="padding:14px 16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">${s.segment} <span style="font-size:11px;color:var(--text2);font-weight:400;">(${s.n} annunci)</span></div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.5;">${s.why}</div>
+      </div>`).join('');
+    const ap=result.action_plan||[];
+    document.getElementById('ci-action-plan').innerHTML=ap.map((a,i)=>`
+      <div style="display:flex;gap:14px;align-items:flex-start;${i<ap.length-1?'margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);':''}">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--accent2);color:var(--bg);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${a.step}</div>
+        <div style="flex:1;">
+          <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;">${a.timing}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;">${a.action}</div>
+          <div style="font-size:12px;color:var(--text2);">Target: ${a.target}</div>
+        </div>
+      </div>`).join('');
+    resultsEl.style.display='block';
   }catch(e){
-    toast('Errore Commercial Intelligence: '+e.message,'error');
-    console.error(e);
+    loadEl.style.display='none';emptyEl.style.display='block';
+    toast('Errore: '+e.message,'error');console.error(e);
   }
 }
 
 function resetCIFilters(){
-  ['ci-filter-area','ci-filter-ta','ci-filter-period','ci-filter-sector'].forEach(id=>{
-    const el=document.getElementById(id);if(el)el.value=id==='ci-filter-period'?'0':'';
-  });
-  loadCommercialIntelligence();
+  ['ci-filter-area','ci-filter-ta','ci-filter-sector'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.querySelectorAll('.ci-period-btn').forEach(b=>{b.style.borderColor='var(--border)';b.style.background='var(--surface)';b.style.color='var(--text2)';b.style.fontWeight='400';b.textContent=b.textContent.replace(' ✓','');});
+  const monthBtn=[...document.querySelectorAll('.ci-period-btn')].find(b=>b.textContent.includes('mese'));
+  setCIPeriodPreset('month',monthBtn);
+  document.getElementById('ci-filter-count').textContent='';
+  document.getElementById('ci-empty').style.display='block';
+  document.getElementById('ci-results').style.display='none';
+  document.getElementById('ci-loading').style.display='none';
 }
 
 /* ══════════════════════════════════════════════
