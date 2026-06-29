@@ -1130,6 +1130,20 @@ a.job-link:hover{text-decoration:underline;}
         <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;">&#x1F4C5; Piano d&#39;azione suggerito</div>
         <div id="ci-action-plan"></div>
       </div>
+
+      <!-- Profilo azienda + annunci (visibile solo con filtro azienda) -->
+      <div id="ci-company-profile" style="display:none;">
+        <div style="margin-bottom:12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">🏢 Profilo azienda</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px;" id="ci-company-kpis"></div>
+          <div style="font-size:13px;line-height:1.7;color:var(--text);border-top:1px solid var(--border);padding-top:16px;" id="ci-company-analysis"></div>
+          <div style="font-size:11px;color:var(--text2);margin-top:10px;" id="ci-company-saved-at"></div>
+        </div>
+        <div style="margin-bottom:12px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">📋 Annunci pubblicati</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:24px;">
+          <div id="ci-company-listings"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3398,6 +3412,91 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
         </div>
       </div>`).join('');
     resultsEl.style.display='block';
+
+    // ── PROFILO AZIENDA (solo se filtro azienda valorizzato) ──
+    const profileEl=document.getElementById('ci-company-profile');
+    if(ciCompany && data.length>0){
+      profileEl.style.display='';
+      if(stepEl)stepEl.textContent='Generazione profilo azienda...';
+
+      // KPI azienda
+      const withRal=data.filter(l=>l.ral_min||l.ral_max);
+      const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
+      const areas=[...new Set(data.map(l=>l.functional_area_v2).filter(Boolean))];
+      const roles=[...new Set(data.map(l=>l.job_title).filter(Boolean))];
+      const lastDate=data[0]?.published_date?new Date(data[0].published_date).toLocaleDateString('it-IT'):'—';
+      const d30=new Date(Date.now()-30*864e5);
+      const recent30=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
+
+      document.getElementById('ci-company-kpis').innerHTML=[
+        {l:'Annunci totali',v:data.length},
+        {l:'Ultimi 30gg',v:recent30},
+        {l:'RAL media',v:avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'—'},
+        {l:'Ultimo annuncio',v:lastDate},
+      ].map(k=>`<div style="background:var(--surface2);border-radius:8px;padding:12px 14px;">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:4px;">${k.l}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);">${k.v}</div>
+      </div>`).join('');
+
+      // AI analisi azienda
+      const companyPrompt=`Analizza il profilo hiring di "${ciCompany}" nel settore Life Sciences italiano.
+Dati: ${data.length} annunci totali, ${recent30} negli ultimi 30 giorni.
+Aree funzionali: ${areas.slice(0,5).map(a=>toLabel(a)).join(', ')||'n.d.'}.
+Ruoli cercati: ${roles.slice(0,6).join(', ')||'n.d.'}.
+RAL media: ${avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'non disponibile'}.
+
+Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta potenziando, il livello di seniority cercato e una valutazione dell'opportunità commerciale per MC Pharma Consulting. Sii diretto e concreto.`;
+
+      let companyAnalysis='';
+      try{
+        companyAnalysis=await callAI(companyPrompt,400);
+      }catch(e){
+        companyAnalysis=`${ciCompany} ha pubblicato ${data.length} annunci nel periodo. Le aree principali sono: ${areas.slice(0,3).map(a=>toLabel(a)).join(', ')||'n.d.'}. Attività recente (30gg): ${recent30} annunci.`;
+      }
+      document.getElementById('ci-company-analysis').textContent=companyAnalysis;
+
+      // Tabella annunci
+      document.getElementById('ci-company-listings').innerHTML=`<table style="font-size:12px;width:100%;">
+        <thead><tr>
+          <th style="padding:10px 14px;text-align:left;">Titolo</th>
+          <th style="padding:10px 14px;text-align:left;">Area</th>
+          <th style="padding:10px 14px;text-align:left;">Seniority</th>
+          <th style="padding:10px 14px;">RAL</th>
+          <th style="padding:10px 14px;">Sede</th>
+          <th style="padding:10px 14px;">Data</th>
+        </tr></thead>
+        <tbody>${data.map(l=>`<tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 14px;font-weight:500;">${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);text-decoration:none;">${l.job_title}</a>`:l.job_title||'—'}</td>
+          <td style="padding:8px 14px;font-size:11px;color:var(--text2);">${toLabel(l.functional_area_v2||'')}</td>
+          <td style="padding:8px 14px;font-size:11px;">${toLabel(l.seniority_v2||'')}</td>
+          <td style="padding:8px 14px;text-align:center;font-size:11px;color:var(--accent);">${l.ral_min||l.ral_max?'€'+(((l.ral_min||0)+(l.ral_max||0))/2/1000).toFixed(0)+'k':'—'}</td>
+          <td style="padding:8px 14px;font-size:11px;">${(l.location||'—').split(',')[0]}</td>
+          <td style="padding:8px 14px;font-size:11px;color:var(--text2);">${l.published_date?(l.published_date+'').substring(0,10):'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+      // Salva su companies
+      const searchedAt=new Date().toISOString();
+      const researchNote=`[${new Date().toLocaleDateString('it-IT')}] ${companyAnalysis}`;
+      try{
+        // Trova azienda per ragione_sociale o name
+        const existing=await api('companies?or=(ragione_sociale.ilike.*'+encodeURIComponent(ciCompany)+'*,name.ilike.*'+encodeURIComponent(ciCompany)+'*)&select=id&limit=1');
+        if(existing.length){
+          await api('companies?id=eq.'+existing[0].id,'PATCH',{
+            last_researched_at:searchedAt,
+            research_notes:researchNote
+          });
+          document.getElementById('ci-company-saved-at').textContent='✅ Ricerca salvata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+        } else {
+          document.getElementById('ci-company-saved-at').textContent='⚠️ Azienda non trovata nella tabella companies — importa prima un CSV con i suoi annunci';
+        }
+      }catch(e){
+        console.warn('Save company research error:',e.message);
+      }
+    } else {
+      profileEl.style.display='none';
+    }
+
   }catch(e){
     loadEl.style.display='none';emptyEl.style.display='block';
     toast('Errore: '+e.message,'error');console.error(e);
