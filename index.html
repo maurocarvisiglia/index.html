@@ -530,6 +530,7 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
         <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
         <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
+        <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
         <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
         <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
@@ -1802,7 +1803,11 @@ async function importVocationsCSV(event){
     }catch(e){console.error('Row '+idx+' fetch error:',e.message);errors++;}
     if((idx+1)%50===0){toast('⏳ '+( idx+1)+'/'+rows.length+' (ok:'+ok+' err:'+errors+')...');await new Promise(r=>setTimeout(r,50));}
   }
-  setTimeout(()=>syncCompaniesFromVocations(rows),1000);
+  setTimeout(async()=>{
+    await syncCompaniesFromVocations(rows);
+    // Collega automaticamente gli annunci alle aziende
+    try{await api('rpc/link_listings_to_companies','POST',{});}catch(e){}
+  },1000);
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
   loadListings();refreshPendingBadges();
@@ -3507,6 +3512,38 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
   }catch(e){
     loadEl.style.display='none';emptyEl.style.display='block';
     toast('Errore: '+e.message,'error');console.error(e);
+  }
+}
+
+async function linkAllListingsToCompanies(){
+  toast('⏳ Collegamento aziende in corso...');
+  try{
+    // Step 1: crea companies mancanti dagli annunci
+    const unlinked=await api('job_listings?select=ragione_sociale&company_id=is.null&ragione_sociale=not.is.null');
+    const missing=[...new Set(unlinked.map(l=>l.ragione_sociale).filter(Boolean))];
+    let created=0;
+    for(const rag of missing){
+      try{
+        await api('companies','POST',{
+          name:rag,
+          ragione_sociale:rag,
+          entity_type:'life_sciences',
+          is_active:true
+        });
+        created++;
+      }catch(e){} // ignora duplicati
+    }
+    if(created>0)toast('✅ Create '+created+' nuove schede azienda');
+
+    // Step 2: esegui RPC link
+    const result=await api('rpc/link_listings_to_companies','POST',{});
+    const linked=result[0]?.linked||result?.linked||0;
+    const notFound=result[0]?.not_found||result?.not_found||0;
+    toast('✅ Collegati '+linked+' gruppi azienda | '+notFound+' non trovati','success');
+    refreshPendingBadges();
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+    console.error('linkAllListingsToCompanies error:',e);
   }
 }
 
