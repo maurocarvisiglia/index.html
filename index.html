@@ -884,7 +884,8 @@ a.job-link:hover{text-decoration:underline;}
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end;">
       <div class="filter-group" style="flex:2;min-width:200px;">
         <div class="filter-label">Cerca figura professionale</div>
-        <input type="text" id="ruolo-search" placeholder="es. Medical Advisor; ISF; Product Specialist (separa con ; o ,)" style="width:100%;font-size:14px;padding:10px 14px;" oninput="analyzeRuolo()">
+        <input type="text" id="ruolo-search" placeholder="es. Medical Advisor; ISF; Product Specialist (separa con ; o ,)" style="width:100%;font-size:14px;padding:10px 14px;" onkeydown="if(event.key==='Enter')analyzeRuolo()">
+        <button onclick="analyzeRuolo()" style="margin-top:8px;padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Cerca</button>
       </div>
       <div class="filter-group">
         <div class="filter-label">Settore</div>
@@ -2402,7 +2403,7 @@ async function analyzeRuolo(){
   });
 
   const emptyMsg='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo</div>';
-  if(!search&&!area){
+  if(!searchTerms.length&&!area&&!sector&&!ta){
     document.getElementById('ruolo-table').innerHTML='<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div>';
     ['ruolo-chart-seniority','ruolo-chart-companies','ruolo-chart-ral-seniority','ruolo-chart-geo','ruolo-chart-ta','ruolo-chart-fieldhq'].forEach(id=>{
       const el=document.getElementById(id);if(el)el.innerHTML=emptyMsg;
@@ -2411,7 +2412,7 @@ async function analyzeRuolo(){
   }
 
   try{
-    let q='job_listings?select=*&order=published_date.desc.nullslast';
+    let q='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
     if(sector)q+=`&sector_v2=eq.${encodeURIComponent(sector)}`;
     if(area)q+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)q+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
