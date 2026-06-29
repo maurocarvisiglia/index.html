@@ -6958,6 +6958,7 @@ async function runGeoAnalysis(){
         +'<div style="text-align:right;"><div style="font-size:15px;font-weight:700;">'+r.count+'</div>'
         +'<div style="font-size:10px;color:#f59e0b;">'+(avgR?'€'+(avgR/1000).toFixed(0)+'k':'—')+'</div></div></div>';
     }).join('');
+    const opts='<option value="">Seleziona</option>'+regions.map(r=>'<option value="'+r.name+'">'+r.name+' ('+r.count+')</option>').join('');
     const ca=document.getElementById('geo-compare-a');if(ca)ca.innerHTML=opts;
     const cb=document.getElementById('geo-compare-b');if(cb)cb.innerHTML=opts;
     renderGeoReadiness(regions);
