@@ -884,7 +884,7 @@ a.job-link:hover{text-decoration:underline;}
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end;">
       <div class="filter-group" style="flex:2;min-width:200px;">
         <div class="filter-label">Cerca figura professionale</div>
-        <input type="text" id="ruolo-search" placeholder="es. Medical Advisor, MSL, KAM..." style="width:100%;font-size:14px;padding:10px 14px;" oninput="analyzeRuolo()">
+        <input type="text" id="ruolo-search" placeholder="es. Medical Advisor; ISF; Product Specialist (separa con ; o ,)" style="width:100%;font-size:14px;padding:10px 14px;" oninput="analyzeRuolo()">
       </div>
       <div class="filter-group">
         <div class="filter-label">Settore</div>
@@ -2389,7 +2389,9 @@ function showView(name,btn){
 }
 
 async function analyzeRuolo(){
-  const search=(document.getElementById('ruolo-search')?.value||'').trim().toLowerCase();
+  const searchRaw=(document.getElementById('ruolo-search')?.value||'').trim();
+  const searchTerms=searchRaw.split(/[;,]+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
+  const search=searchRaw.toLowerCase();
   const sector=document.getElementById('ruolo-sector')?.value||'';
   const area=document.getElementById('ruolo-area')?.value||'';
   const ta=document.getElementById('ruolo-ta')?.value||'';
@@ -2416,13 +2418,15 @@ async function analyzeRuolo(){
 
     let data=await api(q);
 
-    // Filter by search
-    if(search){
+    // Filter by search (multi-termine: OR tra termini, AND con altri filtri)
+    if(searchTerms.length){
       data=data.filter(l=>
-        (l.job_title||'').toLowerCase().includes(search)||
-        (l.canonical_role||'').toLowerCase().includes(search)||
-        (l.sub_area||'').toLowerCase().includes(search)||
-        (l.role_family||'').toLowerCase().includes(search)
+        searchTerms.some(term=>
+          (l.job_title||'').toLowerCase().includes(term)||
+          (l.canonical_role||'').toLowerCase().includes(term)||
+          (l.sub_area||'').toLowerCase().includes(term)||
+          (l.role_family||'').toLowerCase().includes(term)
+        )
       );
     }
     // Filter by RAL
