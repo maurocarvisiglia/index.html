@@ -1586,6 +1586,7 @@ a.job-link:hover{text-decoration:underline;}
 <script>
 
 
+
 const SB_URL='https://ehrayeltqottgvkzvbdk.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocmF5ZWx0cW90dGd2a3p2YmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTEzNTgsImV4cCI6MjA5NzQyNzM1OH0.wmh0h8Xbt_gkxLwBRFHRM7yXXBw5comJbpbrotLksxE';
 
@@ -6355,330 +6356,8 @@ async function delCo(id){
 }
 
 
-</script>
 
 
-
-<!-- ── TALENT SCARCITY VIEW ── -->
-<div class="view" id="view-scarcity">
-  <div style="padding:24px 32px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🎯 Talent Scarcity Index</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Misura la difficoltà di reperimento dei profili Life Sciences</div></div>
-      <div style="display:flex;gap:8px;align-items:center;"><div id="scarcity-last-update" style="font-size:11px;color:var(--text2);"></div><button onclick="loadScarcityIndex()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button></div>
-    </div>
-    <div id="scarcity-data-warning" style="display:none;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#f59e0b;">⚠️ <strong>Dati storici insufficienti</strong> — Growth Rate e Hiring Persistence richiedono almeno 3 mesi di annunci.</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-      <div class="stat-card"><div class="stat-label">Ruoli analizzati</div><div class="stat-value" id="sc-kpi-roles">—</div></div>
-      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="sc-kpi-avg">—</div></div>
-      <div class="stat-card"><div class="stat-label">Ruolo più scarso</div><div class="stat-value" style="font-size:13px;" id="sc-kpi-top">—</div></div>
-      <div class="stat-card"><div class="stat-label">Mesi storici</div><div class="stat-value" id="sc-kpi-months">—</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
-      <div class="table-wrap">
-        <div class="table-header"><div class="table-title">🏆 Ranking Scarcity</div><div class="table-count" id="sc-ranking-count">—</div></div>
-        <div id="sc-ranking-body" style="padding:0;"></div>
-      </div>
-      <div class="table-wrap" style="padding:20px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">📊 Score Breakdown</div>
-        <div id="sc-breakdown-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un ruolo</div>
-        <div id="sc-breakdown-content" style="display:none;">
-          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;" id="sc-bd-role">—</div>
-          <div style="font-size:12px;color:var(--text2);margin-bottom:20px;" id="sc-bd-family">—</div>
-          <div style="margin-bottom:20px;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:12px;font-weight:600;">Scarcity Score</span><span style="font-size:20px;font-weight:800;" id="sc-bd-score">—</span></div>
-            <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;"><div id="sc-bd-bar" style="height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);border-radius:4px;transition:width 0.5s;width:0%"></div></div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:12px;" id="sc-bd-subscores"></div>
-          <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sc-bd-stats"></div>
-        </div>
-      </div>
-    </div>
-    <div class="table-wrap" style="padding:20px;"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🫧 Scarcity Map</div><div id="sc-bubble-chart" style="overflow-x:auto;"></div></div>
-  </div>
-</div>
-
-<!-- ── COMPETITOR MONITOR VIEW ── -->
-<div class="view" id="view-competitor">
-  <div style="padding:24px 32px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Analizza quali aziende competono per gli stessi profili</div></div>
-    </div>
-    <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
-    <div id="comp-panel-positioning">
-      <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Posizione / Ruolo (testo libero)</div>
-          <input type="text" id="pos-role-input" placeholder="es. Medical Advisor, ISF, KAM, MSL..."
-            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
-            onkeydown="if(event.key==='Enter')loadPositioningAnalysis()">
-        </div>
-        <div style="flex:1;min-width:200px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Azienda da analizzare</div>
-          <select id="pos-company-select" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona —</option></select>
-        </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
-        </div>
-      </div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">💡 Scrivi parte del titolo — es. "advisor", "informatore", "key account"</div>
-
-      <!-- Risultato posizionamento -->
-      <div id="pos-result" style="display:none;">
-
-        <!-- Hero: posizione azienda vs mercato -->
-        <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
-            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Posizionamento</div>
-            <div id="pos-badge" style="font-size:28px;font-weight:800;margin-bottom:6px;">—</div>
-            <div id="pos-label" style="font-size:13px;color:var(--text2);">—</div>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-            <div class="stat-card"><div class="stat-label">Annunci 90gg (azienda)</div><div class="stat-value" id="pos-kpi-own">—</div></div>
-            <div class="stat-card"><div class="stat-label">Media mercato 90gg</div><div class="stat-value" id="pos-kpi-avg">—</div></div>
-            <div class="stat-card"><div class="stat-label">Aziende nel mercato</div><div class="stat-value" id="pos-kpi-count">—</div></div>
-          </div>
-        </div>
-
-        <!-- Tabella competitor con indicatore -->
-        <div class="table-wrap">
-          <div class="table-header">
-            <div class="table-title">📊 Mercato — <span id="pos-role-label">—</span></div>
-            <div class="table-count" id="pos-table-count">—</div>
-          </div>
-          <div id="pos-table-body"></div>
-        </div>
-      </div>
-
-      <div id="pos-empty" style="padding:40px;text-align:center;color:var(--text2);font-size:13px;">
-        Seleziona un ruolo e un'azienda, poi clicca Analizza
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ── GEOGRAPHIC VIEW ── -->
-<div class="view" id="view-geo">
-  <div style="padding:24px 32px;">
-
-    <!-- Header -->
-    <div style="margin-bottom:24px;">
-      <div style="font-size:22px;font-weight:700;color:var(--text);">🗺️ Analisi Geografica per Figura</div>
-      <div style="font-size:13px;color:var(--text2);margin-top:4px;">Cerca una figura professionale e analizza come viene ricercata nelle diverse zone d'Italia</div>
-    </div>
-
-    <!-- Barra di ricerca -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
-        <div style="flex:2;min-width:200px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
-          <input type="text" id="geo-search-role" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
-            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
-            onkeydown="if(event.key==='Enter')runGeoAnalysis()">
-        </div>
-        <div style="flex:1;min-width:150px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">AREA FUNZIONALE</div>
-          <select id="geo-filter-area" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
-            <option value="">Tutte le aree</option>
-            <option value="commercial">Commercial / Sales</option>
-            <option value="medical_affairs">Medical Affairs</option>
-            <option value="marketing">Marketing</option>
-            <option value="market_access">Market Access</option>
-            <option value="regulatory_affairs">Regulatory Affairs</option>
-            <option value="quality">Quality</option>
-            <option value="rd">R&D</option>
-            <option value="manufacturing">Manufacturing</option>
-          </select>
-        </div>
-        <div style="flex:1;min-width:150px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">SENIORITY</div>
-          <select id="geo-filter-seniority" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
-            <option value="">Tutte</option>
-            <option value="entry_level">Entry Level</option>
-            <option value="specialist">Specialist</option>
-            <option value="senior_specialist">Senior Specialist</option>
-            <option value="manager">Manager</option>
-            <option value="director">Director</option>
-          </select>
-        </div>
-        <button onclick="runGeoAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#10b981;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
-      </div>
-    </div>
-
-    <!-- Empty state -->
-    <div id="geo-empty" style="padding:60px;text-align:center;color:var(--text2);">
-      <div style="font-size:32px;margin-bottom:12px;">🗺️</div>
-      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Cerca una figura professionale</div>
-      <div style="font-size:13px;">Scrivi il nome di un ruolo e clicca Analizza per vedere la distribuzione geografica</div>
-    </div>
-
-    <!-- Risultati -->
-    <div id="geo-results" style="display:none;">
-
-      <!-- KPI -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-        <div class="stat-card"><div class="stat-label">Annunci trovati</div><div class="stat-value" id="geo-kpi-total">—</div></div>
-        <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
-        <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
-        <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="geo-kpi-ral">—</div></div>
-      </div>
-
-      <!-- Sezione 1: Distribuzione per regione -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-
-        <div class="table-wrap">
-          <div class="table-header">
-            <div class="table-title">📍 Distribuzione per Regione</div>
-            <div class="table-count" id="geo-region-count">—</div>
-          </div>
-          <div id="geo-region-body"></div>
-        </div>
-
-        <div class="table-wrap" style="padding:20px;">
-          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;" id="geo-detail-title">📊 Dettaglio regione</div>
-          <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:32px 0;text-align:center;">← Seleziona una regione</div>
-          <div id="geo-detail-content" style="display:none;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
-            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Seniority richiesta</div>
-            <div id="geo-det-seniority" style="margin-bottom:12px;"></div>
-            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Top Aziende</div>
-            <div id="geo-det-companies"></div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- Sezione 2: Confronto zone -->
-      <div class="table-wrap" style="padding:20px;margin-bottom:20px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">⚖️ Confronto tra zone</div>
-        <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
-          <select id="geo-compare-a" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
-            <option value="">Zona A</option>
-          </select>
-          <span style="color:var(--text2);font-weight:700;">vs</span>
-          <select id="geo-compare-b" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
-            <option value="">Zona B</option>
-          </select>
-          <button onclick="runGeoCompare()" style="padding:8px 16px;border-radius:8px;border:1px solid #10b981;background:transparent;color:#10b981;font-size:12px;font-weight:600;cursor:pointer;">Confronta</button>
-        </div>
-        <div id="geo-compare-result" style="color:var(--text2);font-size:13px;text-align:center;padding:16px 0;">Seleziona due zone e clicca Confronta</div>
-      </div>
-
-      <!-- Sezione 3: Market readiness -->
-      <div class="table-wrap" style="padding:20px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🎯 Market Readiness per zona</div>
-        <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">Valutazione del mercato locale per la figura ricercata</div>
-        <div id="geo-readiness-body"></div>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<!-- ── EMPLOYER DEMAND VIEW ── -->
-<div class="view" id="view-demand">
-  <div style="padding:24px 32px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div><div style="font-size:22px;font-weight:700;color:var(--text);">📈 Employer Demand Score</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Classifica le aziende più aggressive nel recruiting</div></div>
-      <button onclick="refreshDemandData()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
-      <div class="stat-card"><div class="stat-label">Aziende analizzate</div><div class="stat-value" id="demand-kpi-companies">—</div></div>
-      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="demand-kpi-avg">—</div></div>
-      <div class="stat-card"><div class="stat-label">Top employer</div><div class="stat-value" style="font-size:13px;" id="demand-kpi-top">—</div></div>
-      <div class="stat-card"><div class="stat-label">In crescita 90gg</div><div class="stat-value" id="demand-kpi-growing">—</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-      <div class="table-wrap"><div class="table-header"><div class="table-title">🏆 Employer Demand Leaderboard</div><div class="table-count" id="demand-count">—</div></div><div id="demand-ranking-body"></div></div>
-      <div class="table-wrap" style="padding:20px;">
-        <div style="font-size:13px;font-weight:600;margin-bottom:16px;">📊 Score Breakdown</div>
-        <div id="demand-detail-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un'azienda</div>
-        <div id="demand-detail-content" style="display:none;">
-          <div style="font-size:16px;font-weight:800;margin-bottom:16px;" id="demand-det-name">—</div>
-          <div id="demand-det-scores"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;" id="demand-det-stats"></div>
-        </div>
-      </div>
-    </div>
-    <div class="table-wrap" style="padding:20px;"><div style="font-size:13px;font-weight:600;margin-bottom:4px;">🎯 Volume vs Diversità — dimensione = Demand Score</div><div id="demand-scatter"></div></div>
-  </div>
-</div>
-
-<!-- ── MODAL TAXONOMY MAPPER ── -->
-<div class="modal-overlay" id="modal-taxonomy-mapper">
-  <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
-    <div class="modal-title">🗂️ Mappa Tassonomia — Step 3</div>
-    <div id="taxonomy-mapper-body" style="overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
-      <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── MODAL AREA CLASSIFIER ── -->
-<div class="modal-overlay" id="modal-area-classifier">
-  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
-    <div class="modal-title">📋 Revisione dati — Fase 2</div>
-    <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px;">
-      <button onclick="setReviewTab('area')" id="rtab-area" class="qb-btn active">🗂️ Area Funzionale <span id="badge-rtab-area" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-      <button onclick="setReviewTab('location')" id="rtab-location" class="qb-btn">📍 Location <span id="badge-rtab-location" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-    </div>
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
-      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="autoClassifyAreas()" id="btn-auto-classify" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
-        <button class="btn btn-secondary" onclick="applyAreaRegex()" id="btn-apply-regex" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
-      </div>
-    </div>
-    <div id="filter-bar-area" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
-      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
-      <button onclick="filterAreaClassifier('')" class="qb-btn" id="acf-all">Tutti</button>
-      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
-      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
-      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
-      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
-      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
-      <button onclick="filterAreaClassifier(null)" class="qb-btn active" id="acf-unset">⚠️ Non classificati</button>
-    </div>
-    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
-      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
-      <button class="btn btn-primary" onclick="saveReviewData()">💾 Salva</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── MODAL COMPANY FILTER ── -->
-<div class="modal-overlay" id="modal-company-filter">
-  <div class="modal" style="width:860px;max-height:88vh;display:flex;flex-direction:column;">
-    <div class="modal-title">🏭 Filtra Aziende</div>
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-      <input type="text" id="company-filter-search" placeholder="Cerca azienda..." oninput="filterCompanyList(this.value)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;width:220px;">
-      <select id="company-filter-sector" onchange="filterCompanyList()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
-        <option value="">Tutti i settori</option>
-        <option value="pharma_rx">Pharma RX</option>
-        <option value="biotech">Biotech</option>
-        <option value="medical_devices">Medical Devices</option>
-        <option value="cdmo">CDMO</option>
-        <option value="cro">CRO</option>
-      </select>
-      <button onclick="selectAllCompanies(true)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☑ Seleziona tutti</button>
-      <button onclick="selectAllCompanies(false)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☐ Deseleziona tutti</button>
-      <div style="margin-left:auto;font-size:12px;color:var(--text2);" id="company-filter-count">—</div>
-    </div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);">⚠️ Le aziende <strong>spuntate</strong> verranno <strong>eliminate</strong>. Lascia deselezionate quelle da conservare.</div>
-    <div id="company-filter-body" style="overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <div style="font-size:11px;color:var(--text2);align-self:center;" id="company-filter-status"></div>
-      <button class="btn btn-secondary" onclick="closeModal('modal-company-filter')">Chiudi</button>
-      <button onclick="deleteSelectedCompanies()" style="background:#ef4444;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;">🗑️ Elimina selezionate</button>
-    </div>
-  </div>
-</div>
-
-<script>
 
 
 
@@ -7456,5 +7135,330 @@ function renderDemandScatter(){
 
 
 
+
 </script>
+
+
+
+
+<!-- ── TALENT SCARCITY VIEW ── -->
+<div class="view" id="view-scarcity">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🎯 Talent Scarcity Index</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Misura la difficoltà di reperimento dei profili Life Sciences</div></div>
+      <div style="display:flex;gap:8px;align-items:center;"><div id="scarcity-last-update" style="font-size:11px;color:var(--text2);"></div><button onclick="loadScarcityIndex()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button></div>
+    </div>
+    <div id="scarcity-data-warning" style="display:none;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:#f59e0b;">⚠️ <strong>Dati storici insufficienti</strong> — Growth Rate e Hiring Persistence richiedono almeno 3 mesi di annunci.</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Ruoli analizzati</div><div class="stat-value" id="sc-kpi-roles">—</div></div>
+      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="sc-kpi-avg">—</div></div>
+      <div class="stat-card"><div class="stat-label">Ruolo più scarso</div><div class="stat-value" style="font-size:13px;" id="sc-kpi-top">—</div></div>
+      <div class="stat-card"><div class="stat-label">Mesi storici</div><div class="stat-value" id="sc-kpi-months">—</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+      <div class="table-wrap">
+        <div class="table-header"><div class="table-title">🏆 Ranking Scarcity</div><div class="table-count" id="sc-ranking-count">—</div></div>
+        <div id="sc-ranking-body" style="padding:0;"></div>
+      </div>
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">📊 Score Breakdown</div>
+        <div id="sc-breakdown-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un ruolo</div>
+        <div id="sc-breakdown-content" style="display:none;">
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px;" id="sc-bd-role">—</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:20px;" id="sc-bd-family">—</div>
+          <div style="margin-bottom:20px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:12px;font-weight:600;">Scarcity Score</span><span style="font-size:20px;font-weight:800;" id="sc-bd-score">—</span></div>
+            <div style="background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;"><div id="sc-bd-bar" style="height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);border-radius:4px;transition:width 0.5s;width:0%"></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px;" id="sc-bd-subscores"></div>
+          <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sc-bd-stats"></div>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:20px;"><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🫧 Scarcity Map</div><div id="sc-bubble-chart" style="overflow-x:auto;"></div></div>
+  </div>
+</div>
+
+<!-- ── COMPETITOR MONITOR VIEW ── -->
+<div class="view" id="view-competitor">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Analizza quali aziende competono per gli stessi profili</div></div>
+    </div>
+    <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
+    <div id="comp-panel-positioning">
+      <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Posizione / Ruolo (testo libero)</div>
+          <input type="text" id="pos-role-input" placeholder="es. Medical Advisor, ISF, KAM, MSL..."
+            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+            onkeydown="if(event.key==='Enter')loadPositioningAnalysis()">
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Azienda da analizzare</div>
+          <select id="pos-company-select" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona —</option></select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">💡 Scrivi parte del titolo — es. "advisor", "informatore", "key account"</div>
+
+      <!-- Risultato posizionamento -->
+      <div id="pos-result" style="display:none;">
+
+        <!-- Hero: posizione azienda vs mercato -->
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Posizionamento</div>
+            <div id="pos-badge" style="font-size:28px;font-weight:800;margin-bottom:6px;">—</div>
+            <div id="pos-label" style="font-size:13px;color:var(--text2);">—</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="stat-card"><div class="stat-label">Annunci 90gg (azienda)</div><div class="stat-value" id="pos-kpi-own">—</div></div>
+            <div class="stat-card"><div class="stat-label">Media mercato 90gg</div><div class="stat-value" id="pos-kpi-avg">—</div></div>
+            <div class="stat-card"><div class="stat-label">Aziende nel mercato</div><div class="stat-value" id="pos-kpi-count">—</div></div>
+          </div>
+        </div>
+
+        <!-- Tabella competitor con indicatore -->
+        <div class="table-wrap">
+          <div class="table-header">
+            <div class="table-title">📊 Mercato — <span id="pos-role-label">—</span></div>
+            <div class="table-count" id="pos-table-count">—</div>
+          </div>
+          <div id="pos-table-body"></div>
+        </div>
+      </div>
+
+      <div id="pos-empty" style="padding:40px;text-align:center;color:var(--text2);font-size:13px;">
+        Seleziona un ruolo e un'azienda, poi clicca Analizza
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── GEOGRAPHIC VIEW ── -->
+<div class="view" id="view-geo">
+  <div style="padding:24px 32px;">
+
+    <!-- Header -->
+    <div style="margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:700;color:var(--text);">🗺️ Analisi Geografica per Figura</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px;">Cerca una figura professionale e analizza come viene ricercata nelle diverse zone d'Italia</div>
+    </div>
+
+    <!-- Barra di ricerca -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:2;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
+          <input type="text" id="geo-search-role" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
+            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+            onkeydown="if(event.key==='Enter')runGeoAnalysis()">
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">AREA FUNZIONALE</div>
+          <select id="geo-filter-area" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="">Tutte le aree</option>
+            <option value="commercial">Commercial / Sales</option>
+            <option value="medical_affairs">Medical Affairs</option>
+            <option value="marketing">Marketing</option>
+            <option value="market_access">Market Access</option>
+            <option value="regulatory_affairs">Regulatory Affairs</option>
+            <option value="quality">Quality</option>
+            <option value="rd">R&D</option>
+            <option value="manufacturing">Manufacturing</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">SENIORITY</div>
+          <select id="geo-filter-seniority" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="">Tutte</option>
+            <option value="entry_level">Entry Level</option>
+            <option value="specialist">Specialist</option>
+            <option value="senior_specialist">Senior Specialist</option>
+            <option value="manager">Manager</option>
+            <option value="director">Director</option>
+          </select>
+        </div>
+        <button onclick="runGeoAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#10b981;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="geo-empty" style="padding:60px;text-align:center;color:var(--text2);">
+      <div style="font-size:32px;margin-bottom:12px;">🗺️</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">Cerca una figura professionale</div>
+      <div style="font-size:13px;">Scrivi il nome di un ruolo e clicca Analizza per vedere la distribuzione geografica</div>
+    </div>
+
+    <!-- Risultati -->
+    <div id="geo-results" style="display:none;">
+
+      <!-- KPI -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+        <div class="stat-card"><div class="stat-label">Annunci trovati</div><div class="stat-value" id="geo-kpi-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
+        <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
+        <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="geo-kpi-ral">—</div></div>
+      </div>
+
+      <!-- Sezione 1: Distribuzione per regione -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+
+        <div class="table-wrap">
+          <div class="table-header">
+            <div class="table-title">📍 Distribuzione per Regione</div>
+            <div class="table-count" id="geo-region-count">—</div>
+          </div>
+          <div id="geo-region-body"></div>
+        </div>
+
+        <div class="table-wrap" style="padding:20px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;" id="geo-detail-title">📊 Dettaglio regione</div>
+          <div id="geo-detail-empty" style="color:var(--text2);font-size:13px;padding:32px 0;text-align:center;">← Seleziona una regione</div>
+          <div id="geo-detail-content" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;" id="geo-det-kpis"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Seniority richiesta</div>
+            <div id="geo-det-seniority" style="margin-bottom:12px;"></div>
+            <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Top Aziende</div>
+            <div id="geo-det-companies"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sezione 2: Confronto zone -->
+      <div class="table-wrap" style="padding:20px;margin-bottom:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:16px;">⚖️ Confronto tra zone</div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+          <select id="geo-compare-a" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+            <option value="">Zona A</option>
+          </select>
+          <span style="color:var(--text2);font-weight:700;">vs</span>
+          <select id="geo-compare-b" style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+            <option value="">Zona B</option>
+          </select>
+          <button onclick="runGeoCompare()" style="padding:8px 16px;border-radius:8px;border:1px solid #10b981;background:transparent;color:#10b981;font-size:12px;font-weight:600;cursor:pointer;">Confronta</button>
+        </div>
+        <div id="geo-compare-result" style="color:var(--text2);font-size:13px;text-align:center;padding:16px 0;">Seleziona due zone e clicca Confronta</div>
+      </div>
+
+      <!-- Sezione 3: Market readiness -->
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;">🎯 Market Readiness per zona</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">Valutazione del mercato locale per la figura ricercata</div>
+        <div id="geo-readiness-body"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── EMPLOYER DEMAND VIEW ── -->
+<div class="view" id="view-demand">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div><div style="font-size:22px;font-weight:700;color:var(--text);">📈 Employer Demand Score</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Classifica le aziende più aggressive nel recruiting</div></div>
+      <button onclick="refreshDemandData()" class="btn btn-secondary" style="font-size:12px;">🔄 Ricalcola</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;">
+      <div class="stat-card"><div class="stat-label">Aziende analizzate</div><div class="stat-value" id="demand-kpi-companies">—</div></div>
+      <div class="stat-card"><div class="stat-label">Score medio</div><div class="stat-value" id="demand-kpi-avg">—</div></div>
+      <div class="stat-card"><div class="stat-label">Top employer</div><div class="stat-value" style="font-size:13px;" id="demand-kpi-top">—</div></div>
+      <div class="stat-card"><div class="stat-label">In crescita 90gg</div><div class="stat-value" id="demand-kpi-growing">—</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+      <div class="table-wrap"><div class="table-header"><div class="table-title">🏆 Employer Demand Leaderboard</div><div class="table-count" id="demand-count">—</div></div><div id="demand-ranking-body"></div></div>
+      <div class="table-wrap" style="padding:20px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:16px;">📊 Score Breakdown</div>
+        <div id="demand-detail-empty" style="color:var(--text2);font-size:13px;padding:40px 0;text-align:center;">← Seleziona un'azienda</div>
+        <div id="demand-detail-content" style="display:none;">
+          <div style="font-size:16px;font-weight:800;margin-bottom:16px;" id="demand-det-name">—</div>
+          <div id="demand-det-scores"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;" id="demand-det-stats"></div>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap" style="padding:20px;"><div style="font-size:13px;font-weight:600;margin-bottom:4px;">🎯 Volume vs Diversità — dimensione = Demand Score</div><div id="demand-scatter"></div></div>
+  </div>
+</div>
+
+<!-- ── MODAL TAXONOMY MAPPER ── -->
+<div class="modal-overlay" id="modal-taxonomy-mapper">
+  <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🗂️ Mappa Tassonomia — Step 3</div>
+    <div id="taxonomy-mapper-body" style="overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL AREA CLASSIFIER ── -->
+<div class="modal-overlay" id="modal-area-classifier">
+  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title">📋 Revisione dati — Fase 2</div>
+    <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px;">
+      <button onclick="setReviewTab('area')" id="rtab-area" class="qb-btn active">🗂️ Area Funzionale <span id="badge-rtab-area" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+      <button onclick="setReviewTab('location')" id="rtab-location" class="qb-btn">📍 Location <span id="badge-rtab-location" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="autoClassifyAreas()" id="btn-auto-classify" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
+        <button class="btn btn-secondary" onclick="applyAreaRegex()" id="btn-apply-regex" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
+      </div>
+    </div>
+    <div id="filter-bar-area" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
+      <button onclick="filterAreaClassifier('')" class="qb-btn" id="acf-all">Tutti</button>
+      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
+      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
+      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
+      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
+      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
+      <button onclick="filterAreaClassifier(null)" class="qb-btn active" id="acf-unset">⚠️ Non classificati</button>
+    </div>
+    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
+      <button class="btn btn-primary" onclick="saveReviewData()">💾 Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL COMPANY FILTER ── -->
+<div class="modal-overlay" id="modal-company-filter">
+  <div class="modal" style="width:860px;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title">🏭 Filtra Aziende</div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+      <input type="text" id="company-filter-search" placeholder="Cerca azienda..." oninput="filterCompanyList(this.value)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;width:220px;">
+      <select id="company-filter-sector" onchange="filterCompanyList()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
+        <option value="">Tutti i settori</option>
+        <option value="pharma_rx">Pharma RX</option>
+        <option value="biotech">Biotech</option>
+        <option value="medical_devices">Medical Devices</option>
+        <option value="cdmo">CDMO</option>
+        <option value="cro">CRO</option>
+      </select>
+      <button onclick="selectAllCompanies(true)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☑ Seleziona tutti</button>
+      <button onclick="selectAllCompanies(false)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☐ Deseleziona tutti</button>
+      <div style="margin-left:auto;font-size:12px;color:var(--text2);" id="company-filter-count">—</div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:8px;padding:8px 12px;background:rgba(239,68,68,0.08);border-radius:8px;border:1px solid rgba(239,68,68,0.2);">⚠️ Le aziende <strong>spuntate</strong> verranno <strong>eliminate</strong>. Lascia deselezionate quelle da conservare.</div>
+    <div id="company-filter-body" style="overflow-y:auto;flex:1;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text2);align-self:center;" id="company-filter-status"></div>
+      <button class="btn btn-secondary" onclick="closeModal('modal-company-filter')">Chiudi</button>
+      <button onclick="deleteSelectedCompanies()" style="background:#ef4444;color:white;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:12px;font-weight:600;">🗑️ Elimina selezionate</button>
+    </div>
+  </div>
+</div>
+
+
 </body></html>
