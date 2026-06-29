@@ -1045,6 +1045,9 @@ a.job-link:hover{text-decoration:underline;}
           <option value="cdmo">CDMO</option>
           <option value="cro">CRO</option>
         </select>
+        <input type="text" id="ci-filter-company" placeholder="🔍 Azienda..."
+          style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;width:160px;"
+          onkeydown="if(event.key==='Enter')loadCommercialIntelligence()">
       </div>
 
       <!-- Selettore periodo -->
@@ -3293,10 +3296,12 @@ async function generateCommercialBriefing(){
     const ciArea=document.getElementById('ci-filter-area')?.value||'';
     const ciTa=document.getElementById('ci-filter-ta')?.value||'';
     const ciSector=document.getElementById('ci-filter-sector')?.value||'';
+    const ciCompany=(document.getElementById('ci-filter-company')?.value||'').trim();
     let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=3000';
     if(ciArea)ciQ+=`&functional_area_v2=eq.${encodeURIComponent(ciArea)}`;
     if(ciTa)ciQ+=`&therapeutic_area=eq.${encodeURIComponent(ciTa)}`;
     if(ciSector)ciQ+=`&sector_v2=eq.${encodeURIComponent(ciSector)}`;
+    if(ciCompany)ciQ+='&or=(ragione_sociale.ilike.*'+encodeURIComponent(ciCompany)+'*,company_name.ilike.*'+encodeURIComponent(ciCompany)+'*)';
     if(_ciPeriodFrom)ciQ+=`&published_date=gte.${_ciPeriodFrom.toISOString().split('T')[0]}`;
     if(_ciPeriodTo)ciQ+=`&published_date=lte.${_ciPeriodTo.toISOString().split('T')[0]}`;
     const data=await api(ciQ);
@@ -3401,6 +3406,7 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
 
 function resetCIFilters(){
   ['ci-filter-area','ci-filter-ta','ci-filter-sector'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const compEl=document.getElementById('ci-filter-company');if(compEl)compEl.value='';
   document.querySelectorAll('.ci-period-btn').forEach(b=>{b.style.borderColor='var(--border)';b.style.background='var(--surface)';b.style.color='var(--text2)';b.style.fontWeight='400';b.textContent=b.textContent.replace(' ✓','');});
   const monthBtn=[...document.querySelectorAll('.ci-period-btn')].find(b=>b.textContent.includes('mese'));
   setCIPeriodPreset('month',monthBtn);
