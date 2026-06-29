@@ -6907,7 +6907,9 @@ async function runGeoAnalysis(){
   const roleEl=document.getElementById('geo-search-role');
   const areaEl=document.getElementById('geo-filter-area');
   const senEl=document.getElementById('geo-filter-seniority');
-  const role=(roleEl?.value||'').trim();
+  const roleRaw=(roleEl?.value||'').trim();
+  const roleTerms=roleRaw.split(/[,;]+/).map(t=>t.trim()).filter(Boolean);
+  const role=roleRaw;
   const area=areaEl?.value||'';
   const seniority=senEl?.value||'';
   const emptyEl=document.getElementById('geo-empty');
@@ -6917,11 +6919,23 @@ async function runGeoAnalysis(){
   if(resultsEl)resultsEl.style.display='none';
   toast('⏳ Analisi geografica...');
   try{
-    let q='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&region=not.is.null&order=published_date.desc&limit=2000';
-    if(role)q+='&or=(job_title.ilike.*'+encodeURIComponent(role)+'*,canonical_role.ilike.*'+encodeURIComponent(role)+'*,role_family.ilike.*'+encodeURIComponent(role)+'*)';
-    if(area)q+='&functional_area_v2=eq.'+encodeURIComponent(area);
-    if(seniority)q+='&seniority_v2=eq.'+encodeURIComponent(seniority);
-    _geoRoleData=await api(q);
+    const baseQ='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&region=not.is.null&order=published_date.desc&limit=2000';
+    const areaFilter=area?'&functional_area_v2=eq.'+encodeURIComponent(area):'';
+    const senFilter=seniority?'&seniority_v2=eq.'+encodeURIComponent(seniority):'';
+    // Una query per ogni termine — poi unisco i risultati rimuovendo duplicati
+    const queries=roleTerms.length>0?roleTerms:[''];
+    const allResults=[];
+    const seenIds=new Set();
+    for(const term of queries){
+      let q=baseQ+areaFilter+senFilter;
+      if(term){
+        const enc=encodeURIComponent(term);
+        q+='&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*,role_family.ilike.*'+enc+'*)';
+      }
+      const results=await api(q);
+      results.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);allResults.push(l);}});
+    }
+    _geoRoleData=allResults;
     if(!_geoRoleData.length){
       toast('Nessun annuncio trovato','warning');
       if(emptyEl)emptyEl.style.display='';
@@ -7247,7 +7261,7 @@ function renderDemandScatter(){
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
         <div style="flex:2;min-width:200px;">
           <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
-          <input type="text" id="geo-search-role" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
+          <input type="text" id="geo-search-role" placeholder="es. ISF; Product Specialist; Technical Sales (separa con virgola o punto e virgola)"
             style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
             onkeydown="if(event.key==='Enter')runGeoAnalysis()">
         </div>
