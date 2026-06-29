@@ -3476,19 +3476,26 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
       </table>`;
 
       // Salva su companies
+      // Salva/aggiorna su companies
       const searchedAt=new Date().toISOString();
-      const researchNote=`[${new Date().toLocaleDateString('it-IT')}] ${companyAnalysis}`;
+      const researchNote='['+new Date().toLocaleDateString('it-IT')+'] '+companyAnalysis;
       try{
-        // Trova azienda per ragione_sociale o name
-        const existing=await api('companies?or=(ragione_sociale.ilike.*'+encodeURIComponent(ciCompany)+'*,name.ilike.*'+encodeURIComponent(ciCompany)+'*)&select=id&limit=1');
+        const enc=encodeURIComponent(ciCompany);
+        const existing=await api('companies?or=(ragione_sociale.ilike.*'+enc+'*,name.ilike.*'+enc+'*)&select=*&limit=1');
+        const ragSoc=data[0]?.ragione_sociale||ciCompany;
+        const sectors=[...new Set(data.map(l=>l.sector_v2).filter(Boolean))].join(', ')||null;
+        const posAperte=data.filter(l=>{const d=l.published_date?new Date(l.published_date):null;return d&&d>new Date(Date.now()-90*864e5);}).length;
+        const enrichData={last_researched_at:searchedAt,research_notes:researchNote,posizioni_aperte:posAperte||null,sectors:sectors};
+        const savedEl=document.getElementById('ci-company-saved-at');
         if(existing.length){
-          await api('companies?id=eq.'+existing[0].id,'PATCH',{
-            last_researched_at:searchedAt,
-            research_notes:researchNote
-          });
-          document.getElementById('ci-company-saved-at').textContent='✅ Ricerca salvata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+          const upd={...enrichData};
+          if(!existing[0].ragione_sociale)upd.ragione_sociale=ragSoc;
+          await api('companies?id=eq.'+existing[0].id,'PATCH',upd);
+          if(savedEl)savedEl.textContent='✅ Scheda aggiornata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
         } else {
-          document.getElementById('ci-company-saved-at').textContent='⚠️ Azienda non trovata nella tabella companies — importa prima un CSV con i suoi annunci';
+          const website=data.find(l=>l.url)?.url?.match(/^https?:\/\/[^\/]+/)?.[0]||null;
+          await api('companies','POST',{name:ragSoc,ragione_sociale:ragSoc,entity_type:'life_sciences',is_active:true,sectors:sectors,posizioni_aperte:posAperte||null,last_researched_at:searchedAt,research_notes:researchNote,website:website});
+          if(savedEl)savedEl.textContent='✅ Nuova scheda creata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
         }
       }catch(e){
         console.warn('Save company research error:',e.message);
