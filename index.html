@@ -177,6 +177,30 @@ a.job-link:hover{text-decoration:underline;}
 </head>
 <body>
 
+<!-- ── LOGIN SCREEN ── -->
+<div id="login-screen" style="position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:380px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-family:'DM Serif Display',serif;font-size:24px;color:var(--accent);margin-bottom:8px;">LS Job Intelligence</div>
+      <div style="font-size:12px;color:var(--text2);">Life Sciences · Market Intelligence Engine</div>
+    </div>
+    <div style="margin-bottom:16px;">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">EMAIL</div>
+      <input type="email" id="login-email" placeholder="nome@mcpharmaconsulting.it"
+        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+    </div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">PASSWORD</div>
+      <input type="password" id="login-password" placeholder="••••••••"
+        style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button onclick="doLogin()" style="width:100%;padding:12px;border-radius:8px;border:none;background:var(--accent);color:#1a1411;font-size:14px;font-weight:700;cursor:pointer;">Accedi</button>
+    <div id="login-error" style="margin-top:14px;font-size:12px;color:var(--danger);text-align:center;display:none;"></div>
+  </div>
+</div>
+
 <div class="header">
   <div class="logo">LS Job Intelligence <span>Life Sciences · Market Intelligence Engine</span></div>
   <div class="nav">
@@ -192,6 +216,11 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-competitor" onclick="showView('competitor',this)" style="border-color:#06b6d4;color:#06b6d4;">🔬 Competitor Monitor</button>
     <button class="nav-btn" id="nav-geo" onclick="showView('geo',this)" style="border-color:#10b981;color:#10b981;">🗺️ Geographic</button>
     <button class="nav-btn" id="nav-demand" onclick="showView('demand',this)" style="border-color:#f59e0b;color:#f59e0b;">📈 Employer Demand</button>
+    <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div id="current-user-label" style="font-size:12px;color:var(--text2);"></div>
+    <button onclick="doLogout()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;">Esci</button>
   </div>
 </div>
 
@@ -525,16 +554,18 @@ a.job-link:hover{text-decoration:underline;}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
-        <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
-        <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza, classifica e completa tutti i campi">🔮 2. Completa dati</button>
-        <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
-        <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
-        <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
-        <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
-        <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
-        <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
+        <div id="admin-only-actions" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+          <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
+          <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza, classifica e completa tutti i campi">🔮 2. Completa dati</button>
+          <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
+          <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
+          <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
+          <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
+          <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
+          <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
+          <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi</button>
+        </div>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
-        <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi</button>
       </div>
     </div>
     <div class="filters">
@@ -680,7 +711,7 @@ a.job-link:hover{text-decoration:underline;}
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-secondary" onclick="generateCompanyAISummary()" id="btn-cd-ai" style="border-color:#a78bfa;color:#a78bfa;">🤖 AI Summary</button>
-        <button class="btn btn-secondary" onclick="linkListingsToCompany()" id="btn-link-listings">🔗 Collega annunci</button>
+        <button class="btn btn-secondary" onclick="linkListingsToCompany()" id="btn-link-listings" class="admin-only-el" style="display:none;">🔗 Collega annunci</button>
         <button class="btn btn-danger" onclick="delCo()">🗑 Elimina</button>
       </div>
     </div>
@@ -1591,6 +1622,161 @@ a.job-link:hover{text-decoration:underline;}
 const SB_URL='https://ehrayeltqottgvkzvbdk.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocmF5ZWx0cW90dGd2a3p2YmRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4NTEzNTgsImV4cCI6MjA5NzQyNzM1OH0.wmh0h8Xbt_gkxLwBRFHRM7yXXBw5comJbpbrotLksxE';
 
+/* ═══════════════════════════════════════════════════
+   AUTH SYSTEM — Supabase Auth
+═══════════════════════════════════════════════════ */
+let _currentUser=null;
+let _currentRole='collaboratore';
+
+async function doLogin(){
+  const email=(document.getElementById('login-email')?.value||'').trim();
+  const password=document.getElementById('login-password')?.value||'';
+  const errEl=document.getElementById('login-error');
+  if(errEl)errEl.style.display='none';
+  if(!email||!password){
+    if(errEl){errEl.textContent='Inserisci email e password';errEl.style.display='';}
+    return;
+  }
+  try{
+    const r=await fetch(SB_URL+'/auth/v1/token?grant_type=password',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({email,password})
+    });
+    const data=await r.json();
+    if(!r.ok||!data.access_token){
+      if(errEl){errEl.textContent='Email o password errati';errEl.style.display='';}
+      return;
+    }
+    localStorage.setItem('ls_auth_token',data.access_token);
+    localStorage.setItem('ls_auth_user_id',data.user.id);
+    localStorage.setItem('ls_auth_email',data.user.email);
+    await loadCurrentUserRole(data.user.id,data.user.email);
+    hideLoginScreen();
+  }catch(e){
+    if(errEl){errEl.textContent='Errore di connessione';errEl.style.display='';}
+    console.error('Login error:',e);
+  }
+}
+
+async function loadCurrentUserRole(userId,email){
+  try{
+    const rows=await api('app_users?id=eq.'+userId+'&select=*');
+    if(rows.length){
+      _currentUser=rows[0];
+      _currentRole=rows[0].role;
+    }else{
+      _currentUser={id:userId,email,role:'collaboratore'};
+      _currentRole='collaboratore';
+    }
+  }catch(e){
+    _currentUser={id:userId,email,role:'collaboratore'};
+    _currentRole='collaboratore';
+  }
+  applyRolePermissions();
+}
+
+function applyRolePermissions(){
+  const isAdmin=_currentRole==='admin';
+  const label=document.getElementById('current-user-label');
+  if(label)label.textContent=(_currentUser?.full_name||_currentUser?.email||'')+(isAdmin?' (Admin)':'');
+  const adminActions=document.getElementById('admin-only-actions');
+  if(adminActions)adminActions.style.display=isAdmin?'':'none';
+  document.querySelectorAll('.admin-only-el').forEach(el=>{el.style.display=isAdmin?'':'none';});
+  const navUsers=document.getElementById('nav-users');
+  if(navUsers)navUsers.style.display=isAdmin?'':'none';
+}
+
+function hideLoginScreen(){
+  const el=document.getElementById('login-screen');
+  if(el)el.style.display='none';
+}
+
+function doLogout(){
+  localStorage.removeItem('ls_auth_token');
+  localStorage.removeItem('ls_auth_user_id');
+  localStorage.removeItem('ls_auth_email');
+  _currentUser=null;_currentRole='collaboratore';
+  location.reload();
+}
+
+async function checkAuthOnLoad(){
+  const token=localStorage.getItem('ls_auth_token');
+  const userId=localStorage.getItem('ls_auth_user_id');
+  const email=localStorage.getItem('ls_auth_email');
+  if(token&&userId){
+    await loadCurrentUserRole(userId,email);
+    hideLoginScreen();
+  }
+}
+
+/* ── GESTIONE UTENTI (Admin) ── */
+async function loadUsersView(){
+  const body=document.getElementById('users-body');
+  if(body)body.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
+  try{
+    const users=await api('app_users?select=*&order=created_at.desc');
+    const countEl=document.getElementById('users-count');
+    if(countEl)countEl.textContent=users.length+' utenti';
+    const rowsHtml=users.map(function(u){
+      const isMe=u.id===(_currentUser&&_currentUser.id);
+      const roleColor=u.role==='admin'?'rgba(239,68,68,0.15);color:#ef4444':'rgba(99,102,241,0.15);color:#6366f1';
+      const roleLabel=u.role==='admin'?'Admin':'Collaboratore';
+      const dateStr=new Date(u.created_at).toLocaleDateString('it-IT');
+      const actionCell=isMe?'<span style="color:var(--text2);font-size:11px;">Tu</span>':('<button onclick="deleteUser(&quot;'+u.id+'&quot;)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">🗑 Elimina</button>');
+      return '<tr><td>'+(u.full_name||'—')+'</td><td>'+u.email+'</td><td><span style="padding:2px 8px;border-radius:4px;font-size:11px;background:'+roleColor+';">'+roleLabel+'</span></td><td style="font-size:12px;color:var(--text2);">'+dateStr+'</td><td>'+actionCell+'</td></tr>';
+    }).join('');
+    if(body)body.innerHTML='<table><thead><tr><th>Nome</th><th>Email</th><th>Ruolo</th><th>Creato il</th><th></th></tr></thead><tbody>'+rowsHtml+'</tbody></table>';
+  }catch(e){if(body)body.innerHTML='<div style="padding:24px;text-align:center;color:var(--danger);">Errore caricamento</div>';}
+}
+
+async function createNewUser(){
+  const name=(document.getElementById('nu-name')?.value||'').trim();
+  const email=(document.getElementById('nu-email')?.value||'').trim();
+  const password=document.getElementById('nu-password')?.value||'';
+  const role=document.getElementById('nu-role')?.value||'collaboratore';
+  if(!email||!password){toast('Email e password sono obbligatori','error');return;}
+  try{
+    // Crea utente via Supabase Auth Admin API (richiede service_role — usiamo signup pubblico)
+    const r=await fetch(SB_URL+'/auth/v1/signup',{
+      method:'POST',
+      headers:{'apikey':SB_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify({email,password})
+    });
+    const data=await r.json();
+    if(!r.ok||!data.user){
+      toast('Errore creazione utente: '+(data.msg||data.error_description||'sconosciuto'),'error');
+      return;
+    }
+    // Inserisci in app_users
+    await api('app_users','POST',{
+      id:data.user.id,
+      email:email,
+      role:role,
+      full_name:name||null
+    });
+    toast('✅ Utente creato: '+email,'success');
+    closeModal('modal-add-user');
+    ['nu-name','nu-email'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+    document.getElementById('nu-password').value='password';
+    loadUsersView();
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+    console.error('createNewUser error:',e);
+  }
+}
+
+async function deleteUser(userId){
+  if(!confirm('Eliminare questo utente? Non potrà più accedere alla piattaforma.'))return;
+  try{
+    await api('app_users?id=eq.'+userId,'DELETE');
+    toast('✅ Utente eliminato','success');
+    loadUsersView();
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+  }
+}
+
 const GROQ_API_KEY='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';
 const GROQ_URL='https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL='llama-3.1-8b-instant';
@@ -2384,6 +2570,7 @@ function showView(name,btn){
   if(name==='competitor')initCompetitorMonitor();
   if(name==='geo')loadGeoModule();
   if(name==='demand')loadDemandModule();
+  if(name==='users')loadUsersView();
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies')loadCompanies();
   if(name==='ruolo')analyzeRuolo();
@@ -5747,6 +5934,7 @@ async function initApp(){
     ['stat-total','stat-ls','stat-hh','stat-ral'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='err';});
   }
 }
+checkAuthOnLoad();
 initApp();
 
 
@@ -7400,6 +7588,35 @@ function renderDemandScatter(){
   </div>
 </div>
 
+<!-- ── GESTIONE UTENTI (solo Admin) ── -->
+<div class="view" id="view-users">
+  <div style="padding:24px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+      <div><div style="font-size:22px;font-weight:700;color:var(--text);">👥 Gestione Utenti</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Crea e gestisci gli accessi alla piattaforma</div></div>
+      <button onclick="openModal('modal-add-user')" class="btn btn-primary">+ Nuovo utente</button>
+    </div>
+    <div class="table-wrap">
+      <div class="table-header"><div class="table-title">Utenti registrati</div><div class="table-count" id="users-count">—</div></div>
+      <div id="users-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL AGGIUNGI UTENTE ── -->
+<div class="modal-overlay" id="modal-add-user">
+  <div class="modal" style="width:420px;">
+    <div class="modal-title">+ Nuovo Utente</div>
+    <div class="form-group"><div class="form-label">Nome completo</div><input type="text" id="nu-name" placeholder="es. Laura Bianchi"></div>
+    <div class="form-group"><div class="form-label">Email *</div><input type="email" id="nu-email" placeholder="nome@mcpharmaconsulting.it"></div>
+    <div class="form-group"><div class="form-label">Password temporanea *</div><input type="text" id="nu-password" placeholder="es. password123" value="password"></div>
+    <div class="form-group"><div class="form-label">Ruolo</div><select id="nu-role"><option value="collaboratore">Collaboratore</option><option value="admin">Admin</option></select></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-user')">Annulla</button>
+      <button class="btn btn-primary" onclick="createNewUser()">Crea utente</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL TAXONOMY MAPPER ── -->
 <div class="modal-overlay" id="modal-taxonomy-mapper">
   <div class="modal" style="width:820px;max-height:85vh;display:flex;flex-direction:column;">
@@ -7411,6 +7628,7 @@ function renderDemandScatter(){
     </div>
   </div>
 </div>
+
 
 <!-- ── MODAL AREA CLASSIFIER ── -->
 <div class="modal-overlay" id="modal-area-classifier">
