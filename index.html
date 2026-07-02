@@ -238,23 +238,9 @@ a.job-link:hover{text-decoration:underline;}
     <!-- QUERY BUILDER -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px 32px;margin-bottom:28px;" id="query-builder">
 
-      <!-- Step 1: Cosa vuoi analizzare -->
-      <div style="margin-bottom:24px;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">1 · Cosa vuoi analizzare?</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;" id="qb-subject-buttons">
-          <button onclick="setQuerySubject('role',this)" class="qb-btn active" data-subject="role">👤 Ruolo</button>
-          <button onclick="setQuerySubject('company',this)" class="qb-btn" data-subject="company">🏢 Azienda</button>
-          <button onclick="setQuerySubject('area',this)" class="qb-btn" data-subject="area">🎯 Area funzionale</button>
-          <button onclick="setQuerySubject('ta',this)" class="qb-btn" data-subject="ta">🧬 Area terapeutica</button>
-          <button onclick="setQuerySubject('geo',this)" class="qb-btn" data-subject="geo">📍 Regione</button>
-          <button onclick="setQuerySubject('salary',this)" class="qb-btn" data-subject="salary">💶 Salary</button>
-          <button onclick="setQuerySubject('sector',this)" class="qb-btn" data-subject="sector">🏭 Settore</button>
-        </div>
-      </div>
-
-      <!-- Step 2: Filtri dinamici -->
+      <!-- Filtri -->
       <div style="margin-bottom:24px;" id="qb-filters">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">2 · Filtra</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">Filtra il mercato</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;" id="qb-filter-grid">
           <div class="filter-group">
             <div class="filter-label">Area funzionale</div>
@@ -508,17 +494,7 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
-      <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Market Intelligence</div>
-      <div class="chart-grid" style="margin-bottom:24px;">
-        <div class="chart-card">
-          <div class="chart-card-title">Top aziende</div>
-          <div id="chart-companies"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-card-title">Settori</div>
-          <div id="chart-sector"></div>
-        </div>
-      </div>
+
 
       <!-- Detail panel -->
       <div id="detail-panel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:24px;">
