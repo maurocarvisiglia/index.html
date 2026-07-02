@@ -560,6 +560,7 @@ a.job-link:hover{text-decoration:underline;}
           <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
           <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
           <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
+          <button class="btn btn-secondary" onclick="calcAllRalRanges()" style="border-color:#f59e0b;color:#f59e0b;" title="Calcola range RAL da mediana per tutti gli annunci">💰 Calcola range RAL</button>
           <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
           <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
           <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi</button>
@@ -2017,7 +2018,33 @@ async function importVocationsCSV(event){
     else if(/salute femminile|women.s health|menopausa|endometrios/.test(combined))therapeutic_area='womens_health';
     else if(/consumer health|otc|automedicaz|nutraceut|integratori/.test(combined))therapeutic_area='consumer_health';
     const desc=[row['Competenze']?'Competenze: '+row['Competenze']:'',row['Target']?'Profilo: '+row['Target']:''].filter(Boolean).join('\n').substring(0,2000)||null;
-    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min:isAgenzia?null:ral,ral_max:isAgenzia?null:ral,fixed_monthly:isAgenzia?ral:null,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
+    // Calcolo range RAL da mediana (coefficienti per seniority)
+    let ral_min=null,ral_max=null,ral_estimated=false;
+    if(!isAgenzia&&ral){
+      // Coefficienti per seniority
+      const ralCoeff={
+        'internship':       {lo:0.90,hi:1.10},
+        'entry_level':      {lo:0.90,hi:1.10},
+        'associate':        {lo:0.88,hi:1.12},
+        'specialist':       {lo:0.88,hi:1.12},
+        'senior_specialist':{lo:0.88,hi:1.12},
+        'manager':          {lo:0.85,hi:1.15},
+        'senior_manager':   {lo:0.85,hi:1.15},
+        'lead':             {lo:0.85,hi:1.15},
+        'director':         {lo:0.83,hi:1.17},
+        'senior_director':  {lo:0.83,hi:1.17},
+        'head':             {lo:0.83,hi:1.17},
+        'vp':               {lo:0.83,hi:1.17},
+        'c_level':          {lo:0.83,hi:1.17},
+      };
+      const coeff=ralCoeff[seniority_v2]||{lo:0.85,hi:1.15};
+      // Arrotonda a €500 più vicino
+      const round500=v=>Math.round(v/500)*500;
+      ral_min=round500(ral*coeff.lo);
+      ral_max=round500(ral*coeff.hi);
+      ral_estimated=true;
+    }
+    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min,ral_max,fixed_monthly:isAgenzia?ral:null,ral_estimated,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
     try{
       const r=await fetch(SB_URL+'/rest/v1/job_listings',{method:'POST',headers:{...H,'Prefer':'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(record)});
       if(r.status===201||r.status===200)ok++;
@@ -2032,6 +2059,8 @@ async function importVocationsCSV(event){
     try{await api('rpc/link_listings_to_companies','POST',{});}catch(e){}
     // Risolvi location (city/province/region)
     try{await api('rpc/resolve_locations','POST',{});}catch(e){}
+    // Calcola range RAL da mediana
+    setTimeout(()=>calcAllRalRanges(),2000);
   },1000);
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
@@ -3908,6 +3937,53 @@ function showDemandDetailCI(idx){
     +'<div style="font-size:10px;color:var(--text2);">'+s.l+'</div>'
     +'<div style="font-size:13px;font-weight:700;color:var(--text);">'+s.v+'</div></div>'
   ).join('');
+}
+
+async function calcAllRalRanges(){
+  toast('⏳ Calcolo range RAL in corso...');
+  try{
+    // Carica tutti gli annunci con salary_text (mediana da Vocations)
+    const listings=await api('job_listings?select=id,salary_text,seniority_v2&salary_text=not.is.null&limit=2000');
+    const RAL_COEFFS={
+      'internship':       {lo:0.90,hi:1.10},
+      'entry_level':      {lo:0.90,hi:1.10},
+      'associate':        {lo:0.88,hi:1.12},
+      'specialist':       {lo:0.88,hi:1.12},
+      'senior_specialist':{lo:0.88,hi:1.12},
+      'manager':          {lo:0.85,hi:1.15},
+      'senior_manager':   {lo:0.85,hi:1.15},
+      'lead':             {lo:0.85,hi:1.15},
+      'director':         {lo:0.83,hi:1.17},
+      'senior_director':  {lo:0.83,hi:1.17},
+      'head':             {lo:0.83,hi:1.17},
+      'vp':               {lo:0.83,hi:1.17},
+      'c_level':          {lo:0.83,hi:1.17},
+    };
+    const round500=v=>Math.round(v/500)*500;
+    const parseRALStr=str=>{
+      if(!str||str==='N/A')return null;
+      const s=str.replace(/[€\s.]/g,'').toUpperCase();
+      if(s.includes('K')){const n=parseFloat(s.replace('K',''))*1000;return n>=10000&&n<=500000?Math.round(n):null;}
+      const n=parseInt(s);return n&&n>=10000&&n<=500000?n:null;
+    };
+    let updated=0,skipped=0;
+    for(const l of listings){
+      const median=parseRALStr(l.salary_text);
+      if(!median){skipped++;continue;}
+      const coeff=RAL_COEFFS[l.seniority_v2]||{lo:0.85,hi:1.15};
+      const ral_min=round500(median*coeff.lo);
+      const ral_max=round500(median*coeff.hi);
+      try{
+        await api('job_listings?id=eq.'+l.id,'PATCH',{ral_min,ral_max,ral_estimated:true});
+        updated++;
+      }catch(e){skipped++;}
+    }
+    toast('✅ '+updated+' annunci aggiornati | '+skipped+' saltati','success');
+    loadListings();
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+    console.error('calcAllRalRanges error:',e);
+  }
 }
 
 function resetCIFilters(){
