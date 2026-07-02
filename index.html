@@ -2626,23 +2626,24 @@ async function analyzeRuolo(){
   }
 
   try{
-    let q='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
-    if(sector)q+=`&sector_v2=eq.${encodeURIComponent(sector)}`;
-    if(area)q+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
-    if(ta)q+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
+    const baseQ='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
+    const sectorF=sector?'&sector_v2=eq.'+encodeURIComponent(sector):'';
+    const areaF=area?'&functional_area_v2=eq.'+encodeURIComponent(area):'';
+    const taF=ta?'&therapeutic_area=eq.'+encodeURIComponent(ta):'';
+    const baseFilters=sectorF+areaF+taF;
 
-    let data=await api(q);
-
-    // Filter by search (multi-termine: OR tra termini, AND con altri filtri)
+    let data=[];
     if(searchTerms.length){
-      data=data.filter(l=>
-        searchTerms.some(term=>
-          (l.job_title||'').toLowerCase().includes(term)||
-          (l.canonical_role||'').toLowerCase().includes(term)||
-          (l.sub_area||'').toLowerCase().includes(term)||
-          (l.role_family||'').toLowerCase().includes(term)
-        )
-      );
+      // Una query per termine — unisce i risultati senza duplicati
+      const seenIds=new Set();
+      for(const term of searchTerms){
+        const enc=encodeURIComponent(term);
+        const q=baseQ+baseFilters+'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)';
+        const res=await api(q);
+        res.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
+      }
+    } else {
+      data=await api(baseQ+baseFilters);
     }
     // Filter by RAL
     const ralFilter=document.getElementById('ruolo-ral')?.value||'';
@@ -2702,7 +2703,7 @@ async function analyzeRuolo(){
     renderRuoloBar('ruolo-chart-ta',Object.entries(byTA).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
 
     // Chart geografia
-    const byGeo={}; data.forEach(l=>{const loc=(l.location||'').split(',')[0].trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
+    const byGeo={}; data.forEach(l=>{const loc=l.region||(l.location||'').split(',')[0].trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
     renderRuoloBar('ruolo-chart-geo',Object.entries(byGeo).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
 
     // Chart Field vs HQ
