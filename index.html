@@ -356,19 +356,6 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
-      <!-- Step 3: Tipo analisi -->
-      <div style="margin-bottom:24px;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:14px;">3 · Tipo di analisi</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;" id="qb-analysis-buttons">
-          <button onclick="setQueryAnalysis('market',this)" class="qb-btn active" data-analysis="market">📊 Market Overview</button>
-          <button onclick="setQueryAnalysis('salary',this)" class="qb-btn" data-analysis="salary">💶 Salary Benchmark</button>
-          <button onclick="setQueryAnalysis('hiring',this)" class="qb-btn" data-analysis="hiring">📈 Hiring Trend</button>
-          <button onclick="setQueryAnalysis('company',this)" class="qb-btn" data-analysis="company">🏢 Company Intelligence</button>
-          <button onclick="setQueryAnalysis('geographic',this)" class="qb-btn" data-analysis="geographic">📍 Geographic</button>
-          <button onclick="setQueryAnalysis('talent',this)" class="qb-btn" data-analysis="talent">🎯 Talent Intelligence</button>
-        </div>
-      </div>
-
       <!-- Run button -->
       <div style="display:flex;justify-content:center;gap:12px;">
         <button class="btn btn-primary" onclick="runMarketQuery()" id="btn-run-query" style="padding:14px 40px;font-size:15px;font-weight:700;border-radius:12px;">
@@ -4007,7 +3994,6 @@ async function saveMarketSignalsToSupabase(data){
    ══════════════════════════════════════════════ */
 
 let _qbSubject = 'role';
-let _qbAnalysis = 'market';
 
 function setQuerySubject(subject, btn){
   _qbSubject = subject;
@@ -4017,19 +4003,8 @@ function setQuerySubject(subject, btn){
   if(btn) btn.classList.add('active');
 }
 
-function setQueryAnalysis(analysis, btn){
-  _qbAnalysis = analysis;
-  document.querySelectorAll('#qb-analysis-buttons .qb-btn').forEach(b=>{
-    b.classList.remove('active');
-  });
-  if(btn) btn.classList.add('active');
-}
-
 function resetQuery(){
-  _qbSubject='role';
-  _qbAnalysis='market';
   document.querySelectorAll('#qb-subject-buttons .qb-btn').forEach((b,i)=>{b.classList.toggle('active',i===0);});
-  document.querySelectorAll('#qb-analysis-buttons .qb-btn').forEach((b,i)=>{b.classList.toggle('active',i===0);});
   ['qb-area','qb-sector','qb-ta','qb-seniority','qb-region','qb-contract','qb-ral','qb-period'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.value='';
@@ -4086,7 +4061,7 @@ async function runMarketQuery(){
     document.getElementById('qb-context-count').textContent=`${data.length} annunci trovati`;
 
     // Renderizza in base al tipo di analisi
-    await renderQueryResults(data, _qbAnalysis, contextLabel);
+    await renderQueryResults(data, contextLabel);
 
   }catch(e){
     toast('Errore query: '+e.message,'error');
@@ -4096,7 +4071,7 @@ async function runMarketQuery(){
   btn.disabled=false;
 }
 
-async function renderQueryResults(data, analysisType, contextLabel){
+async function renderQueryResults(data, contextLabel){
   const now=Date.now();
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
 
@@ -4190,7 +4165,7 @@ async function loadDashboard(){
     document.getElementById('qb-results').style.display='block';
     document.getElementById('qb-context-label').textContent='📊 Tutto il mercato Life Sciences Italia';
     document.getElementById('qb-context-count').textContent=`${data.length} annunci nel database`;
-    await renderQueryResults(data,'market','Life Sciences Italia');
+    await renderQueryResults(data,'Life Sciences Italia');
   }catch(e){
     console.error('loadDashboard error:',e);
   }
