@@ -1254,6 +1254,9 @@ a.job-link:hover{text-decoration:underline;}
           <option value="only">Solo con RAL</option>
         </select>
       </div>
+      <div class="filter-group" style="align-self:flex-end;">
+        <button onclick="refreshSalaryBenchmarks()" class="btn btn-secondary" style="font-size:12px;border-color:#10b981;color:#10b981;padding:10px 16px;" title="Ricalcola benchmark salariali da tutti gli annunci">🔄 Benchmark</button>
+      </div>
     </div>
 
     <!-- Role list quick access -->
@@ -2048,6 +2051,8 @@ async function importVocationsCSV(event){
     try{await api('rpc/resolve_locations','POST',{});}catch(e){}
     // Calcola range RAL da mediana
     setTimeout(()=>calcAllRalRanges(),2000);
+    // Ricalcola salary benchmarks
+    setTimeout(async()=>{try{await api('rpc/refresh_salary_benchmarks','POST',{});}catch(e){}},5000);
   },1000);
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
@@ -6680,6 +6685,18 @@ function selectRole(role, area){
   const areaEl=document.getElementById('ri-area');
   if(areaEl&&area)areaEl.value=area;
   loadRoleIntelligence();
+}
+
+async function refreshSalaryBenchmarks(){
+  toast('⏳ Ricalcolo benchmark salariali...');
+  try{
+    const result=await api('rpc/refresh_salary_benchmarks','POST',{});
+    const updated=result[0]?.roles_updated||0;
+    toast('✅ '+updated+' ruoli aggiornati nel benchmark','success');
+  }catch(e){
+    toast('Errore: '+e.message,'error');
+    console.error('refreshSalaryBenchmarks error:',e);
+  }
 }
 
 async function loadRoleIntelligence(){
