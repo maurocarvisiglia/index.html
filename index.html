@@ -1778,6 +1778,10 @@ async function deleteUser(userId){
 
 const GROQ_API_KEY='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';
 const GROQ_URL='https://api.groq.com/openai/v1/chat/completions';
+const MISTRAL_API_KEY='9QiiL4yLkKWlNkuidArKXa4qGQN5MGW2';
+const MISTRAL_URL='https://api.mistral.ai/v1/chat/completions';
+const GEMINI_API_KEY='AQ.Ab8RN6JT2eVy_cB19SKmNmW5Vc6JOy2QwBPdvh5szfjR43MuYw';
+const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const GROQ_MODEL='llama-3.1-8b-instant';
 
 // ── VOCATIONS ──
@@ -2346,8 +2350,11 @@ async function upsertListing(record){
 }
 
 let _groqRateLimitUntil=0;
-async function callAI(prompt, maxTokens=800){
-  // Rispetta rate limit
+let _mistralRateLimitUntil=0;
+let _geminiRateLimitUntil=0;
+
+// ── PROVIDER SINGOLI ──
+async function callGroq(prompt, maxTokens=800){
   const waitMs=_groqRateLimitUntil-Date.now();
   if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
   const resp=await fetch(GROQ_URL,{
@@ -2356,14 +2363,82 @@ async function callAI(prompt, maxTokens=800){
     body:JSON.stringify({model:GROQ_MODEL,max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature:0.1})
   });
   if(!resp.ok){
-    if(resp.status===429){
-      _groqRateLimitUntil=Date.now()+30000; // backoff 15 secondi
-      throw new Error('Groq rate limit — attendi 15s');
-    }
-    throw new Error('Groq API error '+resp.status);
+    if(resp.status===429){_groqRateLimitUntil=Date.now()+30000;throw new Error('Groq 429');}
+    throw new Error('Groq error '+resp.status);
   }
   const data=await resp.json();
   return data.choices[0].message.content.trim();
+}
+
+async function callMistral(prompt, maxTokens=800){
+  const waitMs=_mistralRateLimitUntil-Date.now();
+  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
+  const resp=await fetch(MISTRAL_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+MISTRAL_API_KEY},
+    body:JSON.stringify({model:'mistral-small-latest',max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature:0.1})
+  });
+  if(!resp.ok){
+    if(resp.status===429){_mistralRateLimitUntil=Date.now()+30000;throw new Error('Mistral 429');}
+    throw new Error('Mistral error '+resp.status);
+  }
+  const data=await resp.json();
+  return data.choices[0].message.content.trim();
+}
+
+async function callGemini(prompt, maxTokens=800){
+  const waitMs=_geminiRateLimitUntil-Date.now();
+  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
+  const resp=await fetch(GEMINI_URL+'?key='+GEMINI_API_KEY,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{maxOutputTokens:maxTokens,temperature:0.1}
+    })
+  });
+  if(!resp.ok){
+    if(resp.status===429){_geminiRateLimitUntil=Date.now()+30000;throw new Error('Gemini 429');}
+    throw new Error('Gemini error '+resp.status);
+  }
+  const data=await resp.json();
+  return data.candidates[0].content.parts[0].text.trim();
+}
+
+// ── MOTORE CASCADE: Groq → Mistral → Gemini ──
+async function callAI(prompt, maxTokens=800){
+  const providers=[
+    {name:'Groq',  fn:()=>callGroq(prompt, maxTokens)},
+    {name:'Mistral',fn:()=>callMistral(prompt, maxTokens)},
+    {name:'Gemini', fn:()=>callGemini(prompt, maxTokens)},
+  ];
+  let lastError=null;
+  for(const p of providers){
+    try{
+      const result=await p.fn();
+      if(result&&result.length>0)return result;
+    }catch(e){
+      console.warn(p.name+' fallito:',e.message);
+      lastError=e;
+      await new Promise(r=>setTimeout(r,1000));
+    }
+  }
+  throw new Error('Tutti i provider AI non disponibili: '+lastError?.message);
+}
+
+// ── CHIAMATA AI POTENTE: tutti in parallelo → Gemini sintetizza ──
+async function callAIPowerful(prompt, maxTokens=1200){
+  try{
+    // Prova prima Gemini direttamente (più potente per analisi)
+    return await callGemini(prompt, maxTokens);
+  }catch(e){
+    console.warn('Gemini fallito, provo Mistral:',e.message);
+    try{return await callMistral(prompt, maxTokens);}
+    catch(e2){
+      console.warn('Mistral fallito, provo Groq:',e2.message);
+      return await callGroq(prompt, maxTokens);
+    }
+  }
 }
 
 function renderInsights(data, now){
@@ -3596,7 +3671,7 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
 {"brief":"<2-3 frasi executive summary>","priority_companies":[{"company":"<nome>","reason":"<perche contattarla ADESSO — segnale specifico>","signal":"<momentum|expansion|new_role|ta_investment>","urgency":"<high|medium>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"},{"company":"<nome>","reason":"<motivo>","signal":"<tipo>","urgency":"<livello>"}],"hot_segments":[{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>},{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>},{"segment":"<area o ruolo>","why":"<perche prioritario>","n":<numero>}],"action_plan":[{"step":1,"timing":"Questa settimana","action":"<azione concreta>","target":"<azienda o segmento specifico>"},{"step":2,"timing":"Prossima settimana","action":"<azione concreta>","target":"<azienda o segmento specifico>"},{"step":3,"timing":"Questo mese","action":"<focus strategico>","target":"<area o trend>"}]}`;
     let result;
     try{
-      const raw=await callAI(aiPrompt,900);
+      const raw=await callAIPowerful(aiPrompt,900);
       result=JSON.parse(raw.replace(/```json|```/g,'').trim());
     }catch(e){
       console.warn('AI fallback:',e.message);
@@ -3677,7 +3752,7 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
 
       let companyAnalysis='';
       try{
-        companyAnalysis=await callAI(companyPrompt,400);
+        companyAnalysis=await callAIPowerful(companyPrompt,400);
       }catch(e){
         companyAnalysis=`${ciCompany} ha pubblicato ${data.length} annunci nel periodo. Le aree principali sono: ${areas.slice(0,3).map(a=>toLabel(a)).join(', ')||'n.d.'}. Attività recente (30gg): ${recent30} annunci.`;
       }
@@ -5560,7 +5635,7 @@ JSON:
   "job_description": "<riassunto ruolo max 400 caratteri>"
 }`;
 
-    const rawText=await callAI(prompt,800);
+    const rawText=await callAIPowerful(prompt,800);
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
@@ -5679,7 +5754,7 @@ Titolo: ${title}
 Rispondi SOLO con JSON:
 {"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector_v2":"altro","functional_area_v2":"altro","seniority_v2":"specialist","location":null,"contract_type":null,"page_read":false}`;
 
-    const rawText=await callAI(prompt,700);
+    const rawText=await callAIPowerful(prompt,700);
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
