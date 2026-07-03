@@ -3690,13 +3690,12 @@ async function generateCommercialBriefing(){
     const ciTa=document.getElementById('ci-filter-ta')?.value||'';
     const ciSector=document.getElementById('ci-filter-sector')?.value||'';
     const ciCompany=(document.getElementById('ci-filter-company')?.value||'').trim();
-    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=3000';
+    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=5000';
     if(ciArea)ciQ+=`&functional_area_v2=eq.${encodeURIComponent(ciArea)}`;
     if(ciTa)ciQ+=`&therapeutic_area=eq.${encodeURIComponent(ciTa)}`;
     if(ciSector)ciQ+=`&sector_v2=eq.${encodeURIComponent(ciSector)}`;
     if(ciCompany)ciQ+='&or=(ragione_sociale.ilike.*'+encodeURIComponent(ciCompany)+'*,company_name.ilike.*'+encodeURIComponent(ciCompany)+'*)';
-    if(_ciPeriodFrom)ciQ+=`&published_date=gte.${_ciPeriodFrom.toISOString().split('T')[0]}`;
-    if(_ciPeriodTo)ciQ+=`&published_date=lte.${_ciPeriodTo.toISOString().split('T')[0]}`;
+    // Periodo usato solo per momentum, non per filtrare la query base
     const data=await api(ciQ);
     const countEl=document.getElementById('ci-filter-count');
     if(countEl)countEl.textContent=data.length+' annunci';
@@ -3765,9 +3764,9 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
     document.getElementById('ci-meta-date').textContent='Generato il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
     document.getElementById('ci-brief-text').textContent=result.brief||'';
     document.getElementById('ci-company-targets').innerHTML=(result.priority_companies||[]).map(c=>`
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;border-left:4px solid ${urgColor(c.urgency)};">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;border-left:4px solid ${urgColor(c.urgency)};cursor:pointer;" onclick="openCompanyProfileFromCI(this.dataset.company)" data-company="${c.company}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:8px;">
-          <div style="font-size:14px;font-weight:700;color:var(--text);">${c.company}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${c.company} <span style="font-size:10px;color:var(--accent);">→ Apri scheda</span></div>
           <div style="display:flex;gap:5px;flex-shrink:0;">
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(${c.urgency==='high'?'224,92,92':'201,169,110'},.15);color:${urgColor(c.urgency)};">${c.urgency==='high'?'ALTA':'MEDIA'}</span>
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(76,175,130,.12);color:var(--success);">${sigLabel[c.signal]||c.signal}</span>
@@ -3791,6 +3790,12 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
         </div>
       </div>`).join('');
     resultsEl.style.display='block';
+
+    // ── AZIENDE TARGET AUTO ──
+    loadDemandInCommercial();
+
+    // ── SALVA PRIORITY COMPANIES IN DB ──
+    savePriorityCompaniesToDB(result.priority_companies||[], data);
 
     // ── PROFILO AZIENDA (solo se filtro azienda valorizzato) ──
     const profileEl=document.getElementById('ci-company-profile');
@@ -3886,6 +3891,41 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
   }catch(e){
     loadEl.style.display='none';emptyEl.style.display='block';
     toast('Errore: '+e.message,'error');console.error(e);
+  }
+}
+
+
+async function savePriorityCompaniesToDB(priorityCompanies, allListings){
+  if(!priorityCompanies.length)return;
+  const now=new Date().toISOString();
+  const d90=new Date(Date.now()-90*864e5);
+  for(const pc of priorityCompanies){
+    try{
+      const enc=encodeURIComponent(pc.company);
+      const existing=await api('companies?or=(ragione_sociale.ilike.*'+enc+'*,name.ilike.*'+enc+'*)&select=*&limit=1');
+      const listings=allListings.filter(l=>(l.ragione_sociale||l.company_name||'').toLowerCase().includes(pc.company.toLowerCase()));
+      const sectors=[...new Set(listings.map(l=>l.sector_v2).filter(Boolean))].join(', ')||null;
+      const posAperte=listings.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
+      const ragSoc=listings[0]?.ragione_sociale||pc.company;
+      const note='['+new Date().toLocaleDateString('it-IT')+'] PRIORITY: '+pc.reason;
+      const enrichData={last_researched_at:now,research_notes:note,posizioni_aperte:posAperte||null,sectors:sectors};
+      if(existing.length){
+        const upd={...enrichData};
+        if(!existing[0].ragione_sociale)upd.ragione_sociale=ragSoc;
+        await api('companies?id=eq.'+existing[0].id,'PATCH',upd);
+      }else{
+        await api('companies','POST',{name:ragSoc,ragione_sociale:ragSoc,entity_type:'life_sciences',is_active:true,sectors:sectors,posizioni_aperte:posAperte||null,last_researched_at:now,research_notes:note});
+      }
+    }catch(e){console.warn('savePriorityCompaniesToDB:',pc.company,e.message);}
+  }
+  toast('✅ '+priorityCompanies.length+' aziende priority salvate in DB','success');
+}
+
+function openCompanyProfileFromCI(companyName){
+  const compEl=document.getElementById('ci-filter-company');
+  if(compEl){
+    compEl.value=companyName;
+    generateCommercialBriefing();
   }
 }
 
