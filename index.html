@@ -7410,8 +7410,9 @@ async function generateScarcityReport(){
   const aiText=document.getElementById('sc-bd-ai-text')?.textContent||'';
 
   // Totale annunci dal KPI
-  const totalAnnunci=document.getElementById('sc-kpi-roles')?.textContent||'—';
-  const totalListings=document.getElementById('listings-count')?.textContent||document.getElementById('sc-kpi-roles')?.textContent||'—';
+  // Totale annunci nel DB — legge dal contatore globale della dashboard
+  // Totale annunci nel DB — legge dal contatore Market Overview
+  const totalListings=(document.getElementById('qb-context-count')?.textContent||'').replace(/[^0-9]/g,'')||r.total_listings||'—';
 
   // Sub-scores
   const subScores=[
