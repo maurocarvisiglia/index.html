@@ -4201,7 +4201,7 @@ async function renderQueryResults(data, contextLabel){
   renderClickableBar('chart-area',areaData,'','functional_area',data);
   renderHeatmap('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,12));
   renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8));
-  renderWordCloud('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10));
+  renderDonut('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8));
   renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
   renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
   renderRalGradient('chart-ral',data);
@@ -4972,26 +4972,43 @@ function renderHeatmap(id,data){
     +'</div>';
 }
 
-// ── Word cloud SVG per ruoli canonici
-function renderWordCloud(id,data){
+// ── Donut chart per ruoli canonici
+function renderDonut(id,data){
   const el=document.getElementById(id);
   if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const W=460,H=200;
-  const max=data[0][1];
-  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
-  // Posizioni predefinite a spirale per evitare sovrapposizioni
-  const positions=[
-    {x:230,y:90},{x:120,y:60},{x:340,y:70},{x:80,y:130},{x:370,y:140},
-    {x:190,y:155},{x:300,y:160},{x:150,y:40},{x:320,y:40},{x:60,y:80}
-  ];
-  const words=data.slice(0,10).map(([l,n],i)=>{
-    const size=Math.round(10+n/max*22);
-    const pos=positions[i]||{x:W/2,y:H/2};
-    const lbl=l.length>20?l.substring(0,18)+'…':l;
-    return '<text x="'+pos.x+'" y="'+pos.y+'" text-anchor="middle" style="font-size:'+size+'px;fill:'+colors[i%colors.length]+';font-weight:700;cursor:default;">'
-      +'<title>'+l+': '+n+' annunci</title>'+lbl+'</text>';
+  const items=data.slice(0,8);
+  const total=items.reduce((s,[,n])=>s+n,0);
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  const CX=90,CY=90,R=70,r=42;
+  let angle=-Math.PI/2;
+  const slices=items.map(([l,n],i)=>{
+    const a=n/total*Math.PI*2;
+    const x1=CX+R*Math.cos(angle),y1=CY+R*Math.sin(angle);
+    const x2=CX+R*Math.cos(angle+a),y2=CY+R*Math.sin(angle+a);
+    const xi1=CX+r*Math.cos(angle),yi1=CY+r*Math.sin(angle);
+    const xi2=CX+r*Math.cos(angle+a),yi2=CY+r*Math.sin(angle+a);
+    const large=a>Math.PI?1:0;
+    const path='M '+xi1+' '+yi1+' L '+x1+' '+y1+' A '+R+' '+R+' 0 '+large+' 1 '+x2+' '+y2+' L '+xi2+' '+yi2+' A '+r+' '+r+' 0 '+large+' 0 '+xi1+' '+yi1+' Z';
+    angle+=a;
+    return '<path d="'+path+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.85" stroke="var(--surface)" stroke-width="1.5"/>';
   });
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;">'+words.join('')+'</svg>';
+  // Legenda
+  const legend=items.map(([l,n],i)=>{
+    const pct=Math.round(n/total*100);
+    const lbl=toLabel(l).length>22?toLabel(l).substring(0,20)+'…':toLabel(l);
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+      +'<div style="width:10px;height:10px;border-radius:2px;background:'+colors[i%colors.length]+';flex-shrink:0;"></div>'
+      +'<div style="font-size:10px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+lbl+'</div>'
+      +'<div style="font-size:10px;font-weight:700;color:var(--text2);">'+pct+'%</div>'
+      +'</div>';
+  }).join('');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:16px;">'
+    +'<svg viewBox="0 0 180 180" style="width:160px;flex-shrink:0;">'+slices.join('')
+    +'<text x="'+CX+'" y="'+(CY-4)+'" text-anchor="middle" style="font-size:11px;fill:var(--text2);">Totale</text>'
+    +'<text x="'+CX+'" y="'+(CY+14)+'" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--text);">'+total+'</text>'
+    +'</svg>'
+    +'<div style="flex:1;overflow:hidden;">'+legend+'</div>'
+    +'</div>';
 }
 
 function renderBar(id,data,cls){
