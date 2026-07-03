@@ -4199,9 +4199,9 @@ async function renderQueryResults(data, contextLabel){
   // Charts — sempre
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
   renderClickableBar('chart-area',areaData,'','functional_area',data);
-  renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue');
+  renderHeatmap('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,12));
   renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8));
-  renderBar('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10),'');
+  renderWordCloud('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10));
   renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
   renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
   renderRalGradient('chart-ral',data);
@@ -4944,6 +4944,54 @@ function renderBoxPlot(id,listings){
     +'<text x="'+x90+'" y="'+(mid+28)+'" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P90 '+fmt(p90)+'</text>'
     +'<text x="4" y="12" style="font-size:9px;fill:var(--text2);">'+withRal.length+' annunci con RAL</text>'
     +'</svg>';
+}
+
+
+// ── Heatmap a griglia per sottoaree
+function renderHeatmap(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const max=Math.max(...data.map(([,n])=>n));
+  const cols=3;
+  const getColor=v=>{
+    const t=v/max;
+    const r=Math.round(99+t*156),g=Math.round(102+t*55),b=Math.round(241-t*177);
+    return 'rgba('+r+','+g+','+b+','+(0.2+t*0.7)+')';
+  };
+  el.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:6px;padding:4px;">'
+    +data.slice(0,12).map(([l,n])=>{
+      const lbl=toLabel(l);
+      const col=getColor(n);
+      const pct=Math.round(n/max*100);
+      return '<div style="background:'+col+';border-radius:6px;padding:8px 10px;position:relative;overflow:hidden;">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:2px;">'+lbl+'</div>'
+        +'<div style="font-size:16px;font-weight:800;color:var(--text);">'+n+'</div>'
+        +'<div style="position:absolute;bottom:4px;right:6px;font-size:9px;color:var(--text2);">'+pct+'%</div>'
+        +'</div>';
+    }).join('')
+    +'</div>';
+}
+
+// ── Word cloud SVG per ruoli canonici
+function renderWordCloud(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const W=460,H=200;
+  const max=data[0][1];
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
+  // Posizioni predefinite a spirale per evitare sovrapposizioni
+  const positions=[
+    {x:230,y:90},{x:120,y:60},{x:340,y:70},{x:80,y:130},{x:370,y:140},
+    {x:190,y:155},{x:300,y:160},{x:150,y:40},{x:320,y:40},{x:60,y:80}
+  ];
+  const words=data.slice(0,10).map(([l,n],i)=>{
+    const size=Math.round(10+n/max*22);
+    const pos=positions[i]||{x:W/2,y:H/2};
+    const lbl=l.length>20?l.substring(0,18)+'…':l;
+    return '<text x="'+pos.x+'" y="'+pos.y+'" text-anchor="middle" style="font-size:'+size+'px;fill:'+colors[i%colors.length]+';font-weight:700;cursor:default;">'
+      +'<title>'+l+': '+n+' annunci</title>'+lbl+'</text>';
+  });
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;">'+words.join('')+'</svg>';
 }
 
 function renderBar(id,data,cls){
