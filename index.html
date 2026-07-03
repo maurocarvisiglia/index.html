@@ -7225,7 +7225,7 @@ async function openAreaClassifier(){
     // Carica annunci per area funzionale
     _areaClassifierData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,functional_area_v2,seniority_v2,sector_v2,location,published_date&order=published_date.desc&limit=2000');
     // Carica annunci senza location
-    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
+    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
     _areaClassifierFilter=null; // default: mostra solo non classificati
     // Aggiorna badge tab
     const noArea=_areaClassifierData.filter(l=>!l.functional_area_v2).length;
@@ -7264,23 +7264,75 @@ function renderLocationReview(){
     return;
   }
   if(countEl)countEl.textContent=_locationData.length+' annunci senza location';
-  body.innerHTML=`<table style="font-size:11px;width:100%;">
-    <thead><tr>
-      <th style="padding:8px;text-align:left;">Titolo</th>
-      <th style="padding:8px;text-align:left;">Azienda</th>
-      <th style="padding:8px;width:200px;">Inserisci città</th>
-    </tr></thead>
-    <tbody>${_locationData.map((l,i)=>`
-      <tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:6px 8px;font-weight:500;">${l.job_title||'—'}</td>
-        <td style="padding:6px 8px;color:var(--text2);font-size:10px;">${l.ragione_sociale||l.company_name||'—'}</td>
-        <td style="padding:4px 8px;">
-          <input type="text" id="loc-inp-${i}" data-id="${l.id}"
-            placeholder="es. Milano, Lombardia"
-            style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">
-        </td>
-      </tr>`).join('')}
-    </tbody></table>`;
+
+  const rows=_locationData.map((l,i)=>{
+    const title=l.job_title||'—';
+    const azienda=l.ragione_sociale||l.company_name||'—';
+    const hasUrl=l.url&&l.url.startsWith('http');
+    const linkBtn=hasUrl
+      ?'<a href="'+l.url+'" target="_blank" title="Apri annuncio" style="text-decoration:none;font-size:14px;margin-right:4px;">🔗</a>'
+      :'<span style="font-size:14px;margin-right:4px;opacity:0.3;" title="URL non disponibile">🔗</span>';
+    const aiBtn=hasUrl
+      ?'<button onclick="extractLocationWithAI('+i+')" title="Estrai location con Gemini" style="background:none;border:1px solid #6366f1;border-radius:4px;color:#6366f1;cursor:pointer;font-size:11px;padding:2px 6px;">🤖</button>'
+      :'';
+    return '<tr style="border-bottom:1px solid var(--border);" id="loc-row-'+i+'">'
+      +'<td style="padding:6px 8px;">'
+        +linkBtn
+        +'<span style="font-weight:500;font-size:11px;">'+title+'</span>'
+      +'</td>'
+      +'<td style="padding:6px 8px;color:var(--text2);font-size:10px;">'+azienda+'</td>'
+      +'<td style="padding:4px 8px;">'
+        +'<div style="display:flex;gap:4px;align-items:center;">'
+          +'<input type="text" id="loc-inp-'+i+'" data-id="'+l.id+'" data-url="'+(l.url||'')+'"'
+            +' placeholder="es. Milano, Lombardia"'
+            +' style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">'
+          +aiBtn
+        +'</div>'
+      +'</td>'
+      +'</tr>';
+  }).join('');
+
+  body.innerHTML='<table style="font-size:11px;width:100%;">'
+    +'<thead><tr>'
+    +'<th style="padding:8px;text-align:left;">Titolo</th>'
+    +'<th style="padding:8px;text-align:left;">Azienda</th>'
+    +'<th style="padding:8px;width:220px;">Inserisci città</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>';
+}
+
+async function extractLocationWithAI(idx){
+  const inp=document.getElementById('loc-inp-'+idx);
+  const row=document.getElementById('loc-row-'+idx);
+  if(!inp)return;
+  const url=inp.dataset.url;
+  if(!url){toast('URL non disponibile per questo annuncio','error');return;}
+
+  inp.placeholder='⏳ Gemini in analisi...';
+  inp.disabled=true;
+
+  try{
+    const geoPrompt='Analizza questo annuncio di lavoro: '+url+'. Trova la localita geografica dove si svolge il lavoro. Rispondi SOLO con Citta, Regione (es. Milano, Lombardia). Piu citta separate da | . Se non trovi: NON_TROVATA';
+
+    const result=await callGemini(geoPrompt, 100);
+    const clean=(result||'').trim();
+
+    if(clean==='NON_TROVATA'||clean.length===0){
+      inp.placeholder='es. Milano, Lombardia';
+      inp.disabled=false;
+      toast('Gemini non ha trovato una location per questo annuncio','warning');
+    } else {
+      inp.value=clean;
+      inp.disabled=false;
+      inp.style.borderColor='#10b981';
+      toast('✅ Location trovata: '+clean,'success');
+    }
+  }catch(e){
+    inp.placeholder='es. Milano, Lombardia';
+    inp.disabled=false;
+    toast('Errore Gemini: '+e.message,'error');
+    console.warn('extractLocationWithAI error:',e);
+  }
 }
 
 async function saveReviewData(){
@@ -7309,7 +7361,7 @@ async function saveLocationData(){
     }catch(e){errors++;}
   }
   // Ricarica location data
-  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
+  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
   const bl=document.getElementById('badge-rtab-location');
   if(bl){bl.textContent=_locationData.length;bl.style.display=_locationData.length?'':' none';}
   renderLocationReview();
