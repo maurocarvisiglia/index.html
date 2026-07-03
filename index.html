@@ -4199,30 +4199,17 @@ async function renderQueryResults(data, contextLabel){
   // Charts — sempre
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
   renderClickableBar('chart-area',areaData,'','functional_area',data);
-  renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue');
-  renderBar('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,10),'accent');
-  renderBar('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10),'');
-  renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
-  renderClickableBar('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen'),'blue','seniority',data);
-  renderRal('chart-ral',data);
+  renderHeatmap('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,12));
+  renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8));
+  renderDonut('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8));
+  renderBubbleChart('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8));
+  renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
+  renderRalGradient('chart-ral',data);
   // Rimosso: chart-companies e chart-sector non più presenti nella view
   // Rimosso: chart-companies e chart-sector non più presenti nella view
 
-  // Percentili RAL
-  if(withRal.length>=3){
-    const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
-    const p=n=>mids[Math.floor(mids.length*n/100)];
-    const stats=[['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b)/mids.length)],['P75',p(75)],['P90',p(90)]];
-    const maxVal=Math.max(...stats.map(s=>s[1]));
-    document.getElementById('chart-percentiles').innerHTML=stats.map(([l,v])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="width:70px">${l}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(v/maxVal*100).toFixed(0)}%;background:var(--success)"></div></div>
-        <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
-      </div>`).join('');
-  }else{
-    document.getElementById('chart-percentiles').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati RAL insufficienti</div>';
-  }
+  // Percentili RAL — Box plot
+  renderBoxPlot('chart-percentiles',data);
 
   // Insights
   renderInsights(data, now);
@@ -4834,6 +4821,194 @@ function countBy(arr,key){
   const c={};arr.forEach(i=>{const v=i[key]||'N/D';c[v]=(c[v]||0)+1;});
   return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,7);
 }
+
+// ── Treemap per role family
+function renderTreemap(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const W=460,H=200;
+  const total=data.reduce((s,[,n])=>s+n,0);
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  let x=0;
+  const rects=data.slice(0,8).map(([l,n],i)=>{
+    const w=Math.max(30,Math.round(n/total*W));
+    const pct=Math.round(n/total*100);
+    const lbl=l.length>12?l.substring(0,10)+'…':l;
+    const r='<rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.85" rx="3"/>'
+      +'<text x="'+(x+w/2)+'" y="'+(H/2-8)+'" text-anchor="middle" style="font-size:9px;fill:white;font-weight:700;">'+lbl+'</text>'
+      +'<text x="'+(x+w/2)+'" y="'+(H/2+8)+'" text-anchor="middle" style="font-size:14px;fill:white;font-weight:800;">'+n+'</text>'
+      +'<text x="'+(x+w/2)+'" y="'+(H/2+24)+'" text-anchor="middle" style="font-size:9px;fill:rgba(255,255,255,0.7);">'+pct+'%</text>';
+    x+=w;
+    return r;
+  });
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;border-radius:8px;overflow:hidden;">'+rects.join('')+'</svg>';
+}
+
+// ── Heatmap per sottoaree
+function renderHeatmap(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const max=Math.max(...data.map(([,n])=>n));
+  const cols=3;
+  const getColor=v=>{
+    const t=v/max;
+    const r=Math.round(99+t*156),g=Math.round(102+t*55),b=Math.round(241-t*177);
+    return 'rgba('+r+','+g+','+b+','+(0.2+t*0.7)+')';
+  };
+  el.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:6px;padding:4px;">'
+    +data.slice(0,12).map(([l,n])=>{
+      const lbl=toLabel(l);
+      const col=getColor(n);
+      const pct=Math.round(n/max*100);
+      return '<div style="background:'+col+';border-radius:6px;padding:8px 10px;position:relative;overflow:hidden;">'
+        +'<div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:2px;">'+lbl+'</div>'
+        +'<div style="font-size:16px;font-weight:800;color:var(--text);">'+n+'</div>'
+        +'<div style="position:absolute;bottom:4px;right:6px;font-size:9px;color:var(--text2);">'+pct+'%</div>'
+        +'</div>';
+    }).join('')
+    +'</div>';
+}
+
+// ── Donut chart per ruoli canonici
+function renderDonut(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const items=data.slice(0,8);
+  const total=items.reduce((s,[,n])=>s+n,0);
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  const CX=90,CY=90,R=70,r=42;
+  let angle=-Math.PI/2;
+  const slices=items.map(([l,n],i)=>{
+    const a=n/total*Math.PI*2;
+    const x1=CX+R*Math.cos(angle),y1=CY+R*Math.sin(angle);
+    const x2=CX+R*Math.cos(angle+a),y2=CY+R*Math.sin(angle+a);
+    const xi1=CX+r*Math.cos(angle),yi1=CY+r*Math.sin(angle);
+    const xi2=CX+r*Math.cos(angle+a),yi2=CY+r*Math.sin(angle+a);
+    const large=a>Math.PI?1:0;
+    const path='M '+xi1+' '+yi1+' L '+x1+' '+y1+' A '+R+' '+R+' 0 '+large+' 1 '+x2+' '+y2+' L '+xi2+' '+yi2+' A '+r+' '+r+' 0 '+large+' 0 '+xi1+' '+yi1+' Z';
+    angle+=a;
+    return '<path d="'+path+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.85" stroke="var(--surface)" stroke-width="1.5"/>';
+  });
+  const legend=items.map(([l,n],i)=>{
+    const pct=Math.round(n/total*100);
+    const lbl=toLabel(l).length>22?toLabel(l).substring(0,20)+'…':toLabel(l);
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+      +'<div style="width:10px;height:10px;border-radius:2px;background:'+colors[i%colors.length]+';flex-shrink:0;"></div>'
+      +'<div style="font-size:10px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+lbl+'</div>'
+      +'<div style="font-size:10px;font-weight:700;color:var(--text2);">'+pct+'%</div>'
+      +'</div>';
+  }).join('');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:16px;">'
+    +'<svg viewBox="0 0 180 180" style="width:160px;flex-shrink:0;">'+slices.join('')
+    +'<text x="'+CX+'" y="'+(CY-4)+'" text-anchor="middle" style="font-size:11px;fill:var(--text2);">Totale</text>'
+    +'<text x="'+CX+'" y="'+(CY+14)+'" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--text);">'+total+'</text>'
+    +'</svg>'
+    +'<div style="flex:1;overflow:hidden;">'+legend+'</div>'
+    +'</div>';
+}
+
+// ── Bubble chart per area terapeutica
+function renderBubbleChart(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const W=460,H=200,cols=4;
+  const max=Math.max(...data.map(([,n])=>n));
+  const colors=['#ef4444','#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  const rows=Math.ceil(Math.min(data.length,8)/cols);
+  const cw=W/cols,rh=H/rows;
+  const bubbles=data.slice(0,8).map(([l,n],i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const cx=col*cw+cw/2,cy=row*rh+rh/2;
+    const r=Math.max(16,Math.round(n/max*36));
+    const lbl=l.length>10?l.substring(0,9)+'…':l;
+    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.8"/>'
+      +'<text x="'+cx+'" y="'+(cy-2)+'" text-anchor="middle" style="font-size:8px;fill:white;font-weight:700;">'+lbl+'</text>'
+      +'<text x="'+cx+'" y="'+(cy+12)+'" text-anchor="middle" style="font-size:11px;fill:white;font-weight:800;">'+n+'</text>';
+  });
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;">'+bubbles.join('')+'</svg>';
+}
+
+// ── Funnel per seniority
+function renderFunnel(id,data){
+  const el=document.getElementById(id);
+  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','senior_director','head','vp','c_level'];
+  const sorted=data.slice().sort((a,b)=>{const ia=ORDER.indexOf(a[0]),ib=ORDER.indexOf(b[0]);return(ia===-1?99:ia)-(ib===-1?99:ib);});
+  const max=Math.max(...sorted.map(([,n])=>n));
+  const colors=['#6366f1','#818cf8','#10b981','#34d399','#f59e0b','#fbbf24','#ef4444','#f87171','#8b5cf6','#a78bfa'];
+  el.innerHTML=sorted.map(([l,n],i)=>{
+    const pct=Math.max(8,Math.round(n/max*100));
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+      +'<div style="font-size:11px;color:var(--text2);width:130px;text-align:right;">'+toLabel(l)+'</div>'
+      +'<div style="flex:1;background:var(--surface2);border-radius:3px;height:18px;overflow:hidden;">'
+      +'<div style="width:'+pct+'%;height:100%;background:'+colors[i%colors.length]+';border-radius:3px;"></div></div>'
+      +'<span style="font-size:12px;font-weight:700;color:var(--text);min-width:28px;">'+n+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── RAL con gradiente colore
+function renderRalGradient(id,listings){
+  const el=document.getElementById(id);if(!el)return;
+  const byArea={};
+  listings.forEach(l=>{
+    const area=l.functional_area_v2||l.functional_area;
+    if(!area||(!l.ral_min&&!l.ral_max))return;
+    if(!byArea[area])byArea[area]=[];
+    byArea[area].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+  });
+  const data=Object.entries(byArea).map(([a,v])=>[toLabel(a),Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]);
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato RAL</div>';return;}
+  const maxV=data[0][1],minV=data[data.length-1][1];
+  const getColor=v=>{
+    const t=(v-minV)/(maxV-minV||1);
+    return 'rgb('+Math.round(239-t*223)+','+Math.round(68+t*117)+','+Math.round(68+t*61)+')';
+  };
+  el.innerHTML=data.map(([l,v])=>{
+    const pct=Math.max(5,Math.round((v-minV)/(maxV-minV||1)*100));
+    const col=getColor(v);
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+      +'<div style="font-size:11px;color:var(--text2);width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+l+'</div>'
+      +'<div style="flex:1;background:var(--surface2);border-radius:4px;height:16px;overflow:hidden;">'
+      +'<div style="width:'+pct+'%;height:100%;background:'+col+';border-radius:4px;"></div></div>'
+      +'<div style="font-size:12px;font-weight:700;color:'+col+';width:44px;text-align:right;">€'+(v/1000).toFixed(0)+'k</div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Box plot per percentili RAL
+function renderBoxPlot(id,listings){
+  const el=document.getElementById(id);if(!el)return;
+  const withRal=listings.filter(l=>l.ral_min||l.ral_max);
+  if(withRal.length<3){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti</div>';return;}
+  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const p=n=>mids[Math.floor(mids.length*n/100)]||0;
+  const avg=Math.round(mids.reduce((a,b)=>a+b)/mids.length);
+  const p10=p(10),p25=p(25),med=p(50),p75=p(75),p90=p(90);
+  const W=460,H=110,PAD=40;
+  const allV=[p10,p25,med,avg,p75,p90];
+  const minV=Math.min(...allV),maxV=Math.max(...allV);
+  const sx=v=>PAD+(v-minV)/(maxV-minV||1)*(W-PAD*2);
+  const x10=sx(p10),x25=sx(p25),xM=sx(med),xA=sx(avg),x75=sx(p75),x90=sx(p90);
+  const mid=H/2;
+  const fmt=v=>'€'+(v/1000).toFixed(0)+'k';
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;overflow:visible;">'
+    +'<line x1="'+x10+'" y1="'+mid+'" x2="'+x90+'" y2="'+mid+'" stroke="var(--border)" stroke-width="2"/>'
+    +'<rect x="'+x25+'" y="'+(mid-16)+'" width="'+(x75-x25)+'" height="32" fill="#6366f1" fill-opacity="0.2" stroke="#6366f1" stroke-width="1.5" rx="3"/>'
+    +'<line x1="'+xM+'" y1="'+(mid-18)+'" x2="'+xM+'" y2="'+(mid+18)+'" stroke="#10b981" stroke-width="3"/>'
+    +'<line x1="'+xA+'" y1="'+(mid-12)+'" x2="'+xA+'" y2="'+(mid+12)+'" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2"/>'
+    +'<line x1="'+x10+'" y1="'+(mid-8)+'" x2="'+x10+'" y2="'+(mid+8)+'" stroke="var(--text2)" stroke-width="2"/>'
+    +'<line x1="'+x90+'" y1="'+(mid-8)+'" x2="'+x90+'" y2="'+(mid+8)+'" stroke="var(--text2)" stroke-width="2"/>'
+    +'<text x="'+x10+'" y="'+(mid+28)+'" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P10 '+fmt(p10)+'</text>'
+    +'<text x="'+x25+'" y="'+(mid-24)+'" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P25 '+fmt(p25)+'</text>'
+    +'<text x="'+xM+'" y="'+(mid-26)+'" text-anchor="middle" style="font-size:10px;fill:#10b981;font-weight:700;">Med '+fmt(med)+'</text>'
+    +'<text x="'+xA+'" y="'+(mid+30)+'" text-anchor="middle" style="font-size:9px;fill:#f59e0b;">Avg '+fmt(avg)+'</text>'
+    +'<text x="'+x75+'" y="'+(mid-24)+'" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P75 '+fmt(p75)+'</text>'
+    +'<text x="'+x90+'" y="'+(mid+28)+'" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P90 '+fmt(p90)+'</text>'
+    +'<text x="4" y="12" style="font-size:9px;fill:var(--text2);">'+withRal.length+' annunci con RAL</text>'
+    +'</svg>';
+}
+
 function renderBar(id,data,cls){
   const el=document.getElementById(id);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
