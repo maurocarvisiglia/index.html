@@ -2356,7 +2356,8 @@ let _geminiRateLimitUntil=0;
 // ── PROVIDER SINGOLI ──
 async function callGroq(prompt, maxTokens=800){
   const waitMs=_groqRateLimitUntil-Date.now();
-  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
+  // Se in rate limit, lancia subito errore per passare al provider successivo
+  if(waitMs>0)throw new Error('Groq in rate limit, skip');
   const resp=await fetch(GROQ_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_API_KEY},
@@ -2372,7 +2373,7 @@ async function callGroq(prompt, maxTokens=800){
 
 async function callMistral(prompt, maxTokens=800){
   const waitMs=_mistralRateLimitUntil-Date.now();
-  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
+  if(waitMs>0)throw new Error('Mistral in rate limit, skip');
   const resp=await fetch(MISTRAL_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+MISTRAL_API_KEY},
@@ -2388,7 +2389,7 @@ async function callMistral(prompt, maxTokens=800){
 
 async function callGemini(prompt, maxTokens=800){
   const waitMs=_geminiRateLimitUntil-Date.now();
-  if(waitMs>0)await new Promise(r=>setTimeout(r,waitMs));
+  if(waitMs>0)throw new Error('Gemini in rate limit, skip');
   const resp=await fetch(GEMINI_URL+'?key='+GEMINI_API_KEY,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
