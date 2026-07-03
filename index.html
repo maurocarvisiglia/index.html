@@ -533,7 +533,7 @@ a.job-link:hover{text-decoration:underline;}
           <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
           <button class="btn btn-secondary" onclick="calcAllRalRanges()" style="border-color:#f59e0b;color:#f59e0b;" title="Calcola range RAL da mediana per tutti gli annunci">💰 Calcola range RAL</button>
           <div style="width:1px;height:24px;background:var(--border);margin:0 2px;"></div>
-          <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected">🗑 Elimina selezionati</button>
+          <button class="btn btn-danger" onclick="deleteSelected()" id="btn-delete-selected" style="display:none;">🗑 Elimina selezionati</button>
           <button class="btn btn-primary" onclick="openModal('modal-listing')">+ Aggiungi</button>
         </div>
         <button class="btn btn-pdf" onclick="exportPDF()">⬇ PDF</button>
@@ -962,36 +962,30 @@ a.job-link:hover{text-decoration:underline;}
       <div class="chart-card">
         <div class="chart-card-title">RAL per seniority</div>
         <div id="ruolo-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-ral-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Top aziende</div>
         <div id="ruolo-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-companies" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
     <div class="chart-grid" style="margin-bottom:20px;">
       <div class="chart-card">
         <div class="chart-card-title">Area terapeutica</div>
         <div id="ruolo-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-ta" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Distribuzione geografica</div>
         <div id="ruolo-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-geo" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
     <div class="chart-grid" style="margin-bottom:20px;">
       <div class="chart-card">
         <div class="chart-card-title">Distribuzione seniority</div>
         <div id="ruolo-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Field vs HQ</div>
         <div id="ruolo-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-rdesc-fieldhq" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
 
@@ -1254,9 +1248,6 @@ a.job-link:hover{text-decoration:underline;}
           <option value="only">Solo con RAL</option>
         </select>
       </div>
-      <div class="filter-group" style="align-self:flex-end;">
-        <button onclick="refreshSalaryBenchmarks()" class="btn btn-secondary" style="font-size:12px;border-color:#10b981;color:#10b981;padding:10px 16px;" title="Ricalcola benchmark salariali da tutti gli annunci">🔄 Benchmark</button>
-      </div>
     </div>
 
     <!-- Role list quick access -->
@@ -1391,12 +1382,10 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">RAL per seniority</div>
           <div id="ri-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-ral-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Top aziende</div>
           <div id="ri-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-companies" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -1405,12 +1394,10 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">Area terapeutica</div>
           <div id="ri-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-ta" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Distribuzione geografica</div>
           <div id="ri-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-geo" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -1419,12 +1406,10 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">Distribuzione seniority</div>
           <div id="ri-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Field vs HQ</div>
           <div id="ri-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-          <div id="ai-ridesc-fieldhq" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -2051,8 +2036,6 @@ async function importVocationsCSV(event){
     try{await api('rpc/resolve_locations','POST',{});}catch(e){}
     // Calcola range RAL da mediana
     setTimeout(()=>calcAllRalRanges(),2000);
-    // Ricalcola salary benchmarks
-    setTimeout(async()=>{try{await api('rpc/refresh_salary_benchmarks','POST',{});}catch(e){}},5000);
   },1000);
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
@@ -2824,8 +2807,6 @@ async function analyzeRuolo(){
 
       // Confronto ruoli simili
       loadRuoloComparisons(search);
-      // Descrizioni AI sotto i grafici (asincrono)
-      generateRuoloChartDescriptions(data,search);
     }else{
       const aiCard=document.getElementById('ruolo-ai-card');
       if(aiCard)aiCard.style.display='none';
@@ -3454,113 +3435,36 @@ function hideEnrichmentProgress(){
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
   const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
-  const median=mids.length?mids[Math.floor(mids.length/2)]:null;
-  const p25=mids.length?mids[Math.floor(mids.length*0.25)]:null;
-  const p75=mids.length?mids[Math.floor(mids.length*0.75)]:null;
-  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const bySen=Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]);
-  const byGeo=Object.entries(data.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const d30=new Date(Date.now()-30*864e5);
-  const recent30=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
-  const ralBySen=Object.entries(data.filter(l=>l.ral_min||l.ral_max).reduce((acc,l)=>{
-    const s=l.seniority_v2||'n/d';
-    if(!acc[s])acc[s]=[];
-    acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
-    return acc;
-  },{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]);
+  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
 
-  const geoPrompt='Sei un analista senior di executive search specializzato nel settore Life Sciences italiano, con expertise in compensation e talent market. '+
-    'Analizza questi dati di mercato per la figura "'+searchTerm+'" e produci un report di market intelligence approfondito in italiano. '+
-    'DATI COMPLETI: '+
-    'Annunci totali: '+data.length+'. '+
-    'Pubblicati negli ultimi 30 giorni: '+recent30+'. '+
-    'Aziende attive: '+new Set(data.map(l=>l.ragione_sociale||l.company_name).filter(Boolean)).size+'. '+
-    'Compliance RAL: '+Math.round(withRal.length/data.length*100)+'%. '+
-    'RAL media: '+(avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'n.d.')+'. '+
-    'RAL mediana: '+(median?'€'+(median/1000).toFixed(0)+'k':'n.d.')+'. '+
-    'Range IQR: P25='+(p25?'€'+(p25/1000).toFixed(0)+'k':'n.d.')+' P75='+(p75?'€'+(p75/1000).toFixed(0)+'k':'n.d.')+'. '+
-    'RAL per seniority: '+ralBySen.slice(0,5).map(([s,v])=>s+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. '+
-    'Top aziende: '+topCo.map(([c,n])=>c+' ('+n+' annunci)').join(', ')+'. '+
-    'Aree terapeutiche principali: '+(topTA.length?topTA.map(([t,n])=>t+' ('+n+')').join(', '):'non specificata')+'. '+
-    'Distribuzione seniority: '+bySen.slice(0,5).map(([s,n])=>s+' ('+n+')').join(', ')+'. '+
-    'Top regioni: '+byGeo.map(([r,n])=>r+' ('+n+')').join(', ')+'. '+
-    'Rispondi SOLO con un JSON valido con questa struttura esatta (nessun testo prima o dopo): '+
-    '{"summary":"<paragrafo di 4-5 frasi che descrive il profilo di mercato della figura, la domanda attuale, le aziende più attive e il contesto del settore Life Sciences italiano>",'+
-    '"insights":['+
-    '{"text":"<analisi approfondita del salary benchmark: range, mediana, variabilità per seniority, confronto con il mercato>","type":"positive"},'+
-    '{"text":"<analisi della domanda: trend hiring, concentrazione geografica, aree terapeutiche che trainano la domanda>","type":"positive"},'+
-    '{"text":"<opportunità commerciale specifica per MC Pharma Consulting: quali aziende contattare, timing, approccio>","type":"positive"},'+
-    '{"text":"<fattori di rischio o variabilità: stagionalità, saturazione, figure difficili da trovare>","type":"warning"},'+
-    '{"text":"<insight sul profilo del candidato ideale: seniority più richiesta, competenze chiave, provenienza settoriale>","type":"positive"}'+
-    ']}';
+  const prompt=`Sei un esperto headhunter specializzato nel settore Life Sciences italiano.
+Analizza questi dati di mercato per la figura "${searchTerm}" e genera un intelligence report in italiano.
+
+DATI:
+- Annunci totali: ${data.length}
+- Aziende che assumono: ${new Set(data.map(l=>l.company_name).filter(Boolean)).size}
+- RAL media: ${avgRal?`€${(avgRal/1000).toFixed(0)}k`:'n.d.'}
+- Compliance RAL: ${Math.round(withRal.length/data.length*100)}%
+- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
+- Top aree terapeutiche: ${topTA.map(([t,n])=>`${t} (${n})`).join(', ')||'n.d.'}
+
+JSON con struttura ESATTA:
+{
+  "summary": "<2-3 frasi professionali sul profilo di mercato di questa figura>",
+  "insights": [
+    {"text": "<insight 1: domanda di mercato e trend>", "type": "positive"},
+    {"text": "<insight 2: salary benchmark vs mercato>", "type": "positive"},
+    {"text": "<insight 3: opportunità commerciale per un headhunter>", "type": "positive"},
+    {"text": "<insight 4: area di attenzione o variabilità>", "type": "warning"}
+  ]
+}`;
 
   try{
-    const raw=await callAIPowerful(geoPrompt,800);
-    const cleaned=raw.replace(/```json|```/g,'').trim();
-    return JSON.parse(cleaned);
+    const raw=await callAI(prompt,500);
+    return JSON.parse(raw.replace(/```json|```/g,'').trim());
   }catch(e){
-    console.warn('generateRuoloAISummary error:',e.message);
-    return{
-      summary:data.length+' annunci per "'+searchTerm+'" nel database. '+new Set(data.map(l=>l.company_name).filter(Boolean)).size+' aziende attive. RAL media: '+(avgRal?'€'+(avgRal/1000).toFixed(0)+'k':'non disponibile')+'.',
-      insights:[
-        {text:'Top aziende: '+topCo.slice(0,3).map(([c,n])=>c+' ('+n+')').join(', '),type:'positive'},
-        {text:'Compliance RAL: '+Math.round(withRal.length/data.length*100)+'% degli annunci riporta la retribuzione',type:'positive'}
-      ]
-    };
-  }
-}
-
-
-async function generateRuoloChartDescriptions(data, searchTerm){
-  const withRal=data.filter(l=>l.ral_min||l.ral_max);
-  const charts=[
-    {
-      id:'ai-rdesc-seniority',
-      getData:()=>Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". Distribuzione seniority ('+n+' annunci): '+d.map(([s,v])=>s+': '+v).join(', ')+'. Scrivi 1-2 frasi che spiegano il livello di esperienza richiesto dal mercato per questa figura.'
-    },
-    {
-      id:'ai-rdesc-companies',
-      getData:()=>Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". Top aziende che assumono ('+n+' annunci totali): '+d.map(([c,v])=>c+' ('+v+')').join(', ')+'. Scrivi 1-2 frasi sulle aziende più attive e cosa indica per MC Pharma Consulting.'
-    },
-    {
-      id:'ai-rdesc-ral-seniority',
-      getData:()=>Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". RAL media per seniority (su '+withRal.length+' annunci con RAL): '+d.map(([s,v])=>s+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. Scrivi 1-2 frasi sui differenziali salariali tra i livelli di seniority.'
-    },
-    {
-      id:'ai-rdesc-ta',
-      getData:()=>Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". Aree terapeutiche ('+n+' annunci): '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi su quali aree terapeutiche trainano la domanda per questa figura.'
-    },
-    {
-      id:'ai-rdesc-geo',
-      getData:()=>Object.entries(data.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". Distribuzione geografica ('+n+' annunci): '+d.map(([r,v])=>r+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla concentrazione geografica di questa figura in Italia.'
-    },
-    {
-      id:'ai-rdesc-fieldhq',
-      getData:()=>Object.entries(data.filter(l=>l.field_hq).reduce((acc,l)=>{acc[l.field_hq]=(acc[l.field_hq]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Analisi Ruolo Life Sciences - figura: "'+searchTerm+'". Tipologia field vs HQ: '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla natura operativa di questa figura (territorio vs sede centrale).'
-    },
-  ];
-
-  for(const chart of charts){
-    const el=document.getElementById(chart.id);
-    if(!el)continue;
-    const chartData=chart.getData();
-    if(!chartData.length){el.innerHTML='';continue;}
-    el.innerHTML='<span style="color:var(--text2);font-size:10px;">⏳ AI in analisi...</span>';
-    try{
-      const desc=await callAIPowerful(chart.prompt(chartData,data.length),150);
-      el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+desc;
-    }catch(e){
-      el.innerHTML='';
-    }
-    await new Promise(r=>setTimeout(r,2000));
+    return{summary:`${data.length} annunci per "${searchTerm}" nel database. ${new Set(data.map(l=>l.company_name).filter(Boolean)).size} aziende attive.`,insights:[]};
   }
 }
 
@@ -3615,104 +3519,36 @@ async function loadRuoloComparisons(searchTerm){
 
 async function generateRoleIntelAISummary(listings, benchmarks, roleName){
   const withRal=listings.filter(l=>l.ral_min||l.ral_max);
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const topCo=Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
-  const topCo=Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const topTA=Object.entries(listings.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const bySen=Object.entries(listings.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]);
-  const byGeo=Object.entries(listings.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const ralBySen=Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]);
-  const d30=new Date(Date.now()-30*864e5);
-  const recent30=listings.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
-  const fmt=v=>v?'€'+(v/1000).toFixed(0)+'k':'n.d.';
 
-  const riPrompt='Sei un analista senior di executive search specializzato nel settore Life Sciences italiano, con expertise in compensation e talent intelligence. '+
-    'Genera un report di market intelligence approfondito e professionale per la figura "'+roleName+'" basato su questi dati reali. '+
-    'DATI BENCHMARK SALARIALE: '+
-    'P25='+fmt(mainBench?.p25)+', Mediana='+fmt(mainBench?.median)+', Media='+fmt(mainBench?.avg_ral)+', P75='+fmt(mainBench?.p75)+', P90='+fmt(mainBench?.p90)+'. '+
-    'RAL per seniority: '+ralBySen.slice(0,5).map(([s,v])=>s+' '+fmt(v)).join(', ')+'. '+
-    'DATI DOMANDA: '+
-    'Annunci totali: '+listings.length+'. Ultimi 30gg: '+recent30+'. '+
-    'Aziende attive: '+new Set(listings.map(l=>l.ragione_sociale||l.company_name).filter(Boolean)).size+'. '+
-    'Compliance RAL: '+Math.round(withRal.length/listings.length*100)+'%. '+
-    'AZIENDE: '+topCo.map(([c,n])=>c+' ('+n+')').join(', ')+'. '+
-    'AREE TERAPEUTICHE: '+(topTA.length?topTA.map(([t,n])=>t+' ('+n+')').join(', '):'non specificata')+'. '+
-    'SENIORITY: '+bySen.slice(0,5).map(([s,n])=>s+' ('+n+')').join(', ')+'. '+
-    'GEOGRAFIA: '+byGeo.map(([r,n])=>r+' ('+n+')').join(', ')+'. '+
-    'Rispondi SOLO con JSON valido: '+
-    '{"summary":"<executive summary di 4-5 frasi che descrive il posizionamento di mercato della figura, il benchmark salariale con range e mediana, le aziende più attive, le aree terapeutiche e il contesto competitivo del settore Life Sciences italiano>",'+
-    '"insights":['+
-    '{"text":"<analisi approfondita del salary benchmark: range P25-P90, differenziali per seniority, confronto con il mercato Life Sciences>","type":"positive"},'+
-    '{"text":"<analisi della domanda hiring: trend recente, aziende più attive e loro strategia di espansione, concentrazione geografica>","type":"positive"},'+
-    '{"text":"<opportunità commerciale specifica per MC Pharma Consulting: quali aziende contattare, timing ottimale, tipo di servizio da proporre>","type":"positive"},'+
-    '{"text":"<analisi del profilo candidato ideale: seniority più richiesta, competenze chiave, background settoriale e terapeutico>","type":"positive"},'+
-    '{"text":"<rischi o fattori di attenzione: scarsità candidati, saturazione mercato, variabilità salariale, stagionalità>","type":"warning"}'+
-    ']}';
+  const prompt=`Sei un esperto headhunter Life Sciences. Genera un intelligence report professionale per la figura "${roleName}".
+
+DATI:
+- Annunci totali: ${listings.length}
+- Con RAL: ${withRal.length} (${Math.round(withRal.length/listings.length*100)}%)
+- P25: ${mainBench?.p25?`€${(mainBench.p25/1000).toFixed(0)}k`:'n.d.'}
+- Mediana: ${mainBench?.median?`€${(mainBench.median/1000).toFixed(0)}k`:'n.d.'}
+- P75: ${mainBench?.p75?`€${(mainBench.p75/1000).toFixed(0)}k`:'n.d.'}
+- P90: ${mainBench?.p90?`€${(mainBench.p90/1000).toFixed(0)}k`:'n.d.'}
+- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
+
+JSON ESATTO:
+{
+  "summary": "<executive summary 2-3 frasi: posizionamento di mercato, benchmark salariale, demand>",
+  "insights": [
+    {"text": "<insight benchmark vs mercato>", "type": "positive"},
+    {"text": "<insight aziende e domanda>", "type": "positive"},
+    {"text": "<insight opportunità headhunter>", "type": "positive"},
+    {"text": "<insight variabilità o attenzione>", "type": "warning"}
+  ]
+}`;
 
   try{
-    const raw=await callAIPowerful(riPrompt,900);
+    const raw=await callAI(prompt,500);
     return JSON.parse(raw.replace(/```json|```/g,'').trim());
   }catch(e){
-    console.warn('generateRoleIntelAISummary error:',e.message);
-    return{
-      summary:listings.length+' annunci per "'+roleName+'". Mediana RAL: '+fmt(mainBench?.median)+'. '+withRal.length+' annunci con RAL su '+listings.length+' totali.',
-      insights:[
-        {text:'Top aziende: '+topCo.slice(0,3).map(([c,n])=>c+' ('+n+')').join(', '),type:'positive'},
-        {text:'Compliance RAL: '+Math.round(withRal.length/listings.length*100)+'% degli annunci riporta la retribuzione',type:'positive'}
-      ]
-    };
-  }
-}
-
-
-async function generateRIChartDescriptions(listings, roleName){
-  const withRal=listings.filter(l=>l.ral_min||l.ral_max);
-  const charts=[
-    {
-      id:'ai-ridesc-seniority',
-      getData:()=>Object.entries(listings.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". Distribuzione seniority ('+n+' annunci): '+d.map(([s,v])=>s+': '+v).join(', ')+'. Scrivi 1-2 frasi sul livello di esperienza richiesto per questa figura.'
-    },
-    {
-      id:'ai-ridesc-companies',
-      getData:()=>Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". Top aziende ('+n+' annunci totali): '+d.map(([c,v])=>c+' ('+v+')').join(', ')+'. Scrivi 1-2 frasi sulle aziende più attive e opportunità per MC Pharma Consulting.'
-    },
-    {
-      id:'ai-ridesc-ral-seniority',
-      getData:()=>Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". RAL media per seniority ('+withRal.length+' annunci con RAL): '+d.map(([s,v])=>s+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. Scrivi 1-2 frasi sui differenziali salariali tra i livelli.'
-    },
-    {
-      id:'ai-ridesc-ta',
-      getData:()=>Object.entries(listings.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". Aree terapeutiche ('+n+' annunci): '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi su quali aree terapeutiche richiedono questa figura.'
-    },
-    {
-      id:'ai-ridesc-geo',
-      getData:()=>Object.entries(listings.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". Distribuzione geografica ('+n+' annunci): '+d.map(([r,v])=>r+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla concentrazione territoriale di questa figura.'
-    },
-    {
-      id:'ai-ridesc-fieldhq',
-      getData:()=>Object.entries(listings.filter(l=>l.field_hq).reduce((acc,l)=>{acc[l.field_hq]=(acc[l.field_hq]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
-      prompt:(d,n)=>'Role Intelligence Life Sciences - figura: "'+roleName+'". Field vs HQ: '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla natura operativa di questa figura.'
-    },
-  ];
-
-  for(const chart of charts){
-    const el=document.getElementById(chart.id);
-    if(!el)continue;
-    const chartData=chart.getData();
-    if(!chartData.length){el.innerHTML='';continue;}
-    el.innerHTML='<span style="color:var(--text2);font-size:10px;">⏳ AI in analisi...</span>';
-    try{
-      const desc=await callAIPowerful(chart.prompt(chartData,listings.length),150);
-      el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+desc;
-    }catch(e){
-      el.innerHTML='';
-    }
-    await new Promise(r=>setTimeout(r,2000));
+    return{summary:`${listings.length} annunci per "${roleName}". ${withRal.length} con RAL indicata.`,insights:[]};
   }
 }
 
@@ -3787,15 +3623,14 @@ async function generateCommercialBriefing(){
     const ciTa=document.getElementById('ci-filter-ta')?.value||'';
     const ciSector=document.getElementById('ci-filter-sector')?.value||'';
     const ciCompany=(document.getElementById('ci-filter-company')?.value||'').trim();
-    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=5000';
+    let ciQ='job_listings?select=*&order=published_date.desc.nullslast&limit=3000';
     if(ciArea)ciQ+=`&functional_area_v2=eq.${encodeURIComponent(ciArea)}`;
     if(ciTa)ciQ+=`&therapeutic_area=eq.${encodeURIComponent(ciTa)}`;
     if(ciSector)ciQ+=`&sector_v2=eq.${encodeURIComponent(ciSector)}`;
     if(ciCompany)ciQ+='&or=(ragione_sociale.ilike.*'+encodeURIComponent(ciCompany)+'*,company_name.ilike.*'+encodeURIComponent(ciCompany)+'*)';
-    // Periodo usato solo per momentum, non per filtrare gli annunci base
+    if(_ciPeriodFrom)ciQ+=`&published_date=gte.${_ciPeriodFrom.toISOString().split('T')[0]}`;
+    if(_ciPeriodTo)ciQ+=`&published_date=lte.${_ciPeriodTo.toISOString().split('T')[0]}`;
     const data=await api(ciQ);
-    // Conta totale assoluto per contesto AI
-    const totalInDB=(await api('job_listings?select=id&limit=1&order=id')).length||data.length;
     const countEl=document.getElementById('ci-filter-count');
     if(countEl)countEl.textContent=data.length+' annunci';
     if(data.length===0){loadEl.style.display='none';emptyEl.style.display='block';toast('Nessun annuncio trovato','error');return;}
@@ -3832,7 +3667,7 @@ async function generateCommercialBriefing(){
     const aiPrompt=`Sei un esperto di business development per MC Pharma Consulting, studio di executive search Life Sciences italiano.
 Analizza questi dati di hiring e genera un briefing commerciale concreto.
 
-DATI (${data.length} annunci totali nel DB, ${data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length} negli ultimi 30gg, ${data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-90*864e5)).length} negli ultimi 90gg):
+DATI (${periodStr}, ${data.length} annunci):
 - Top momentum: ${topMom.slice(0,5).map(x=>x.company+'('+x.recent+'ann.recenti)').join(', ')||'n.d.'}
 - Top opportunity score: ${oppScores.slice(0,5).map(x=>x.company+'('+x.score+')').join(', ')||'n.d.'}
 - Aree terapeutiche attive: ${topTA.map(([ta,n])=>ta+'('+n+')').join(', ')||'n.d.'}
@@ -3863,9 +3698,9 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
     document.getElementById('ci-meta-date').textContent='Generato il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
     document.getElementById('ci-brief-text').textContent=result.brief||'';
     document.getElementById('ci-company-targets').innerHTML=(result.priority_companies||[]).map(c=>`
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;border-left:4px solid ${urgColor(c.urgency)};cursor:pointer;" onclick="openCompanyProfileFromCI(this.dataset.company)" data-company="${c.company}">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;border-left:4px solid ${urgColor(c.urgency)};">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;gap:8px;">
-          <div style="font-size:14px;font-weight:700;color:var(--text);">${c.company} <span style="font-size:10px;color:var(--accent);">→ Apri scheda</span></div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);">${c.company}</div>
           <div style="display:flex;gap:5px;flex-shrink:0;">
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(${c.urgency==='high'?'224,92,92':'201,169,110'},.15);color:${urgColor(c.urgency)};">${c.urgency==='high'?'ALTA':'MEDIA'}</span>
             <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;background:rgba(76,175,130,.12);color:var(--success);">${sigLabel[c.signal]||c.signal}</span>
@@ -3889,12 +3724,6 @@ Rispondi SOLO con JSON valido (zero testo fuori dal JSON):
         </div>
       </div>`).join('');
     resultsEl.style.display='block';
-
-    // ── AZIENDE TARGET — carica automaticamente ──
-    loadDemandInCommercial();
-
-    // ── SALVA PRIORITY COMPANIES IN DB ──
-    savePriorityCompaniesToDB(result.priority_companies||[], data);
 
     // ── PROFILO AZIENDA (solo se filtro azienda valorizzato) ──
     const profileEl=document.getElementById('ci-company-profile');
@@ -3990,49 +3819,6 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
   }catch(e){
     loadEl.style.display='none';emptyEl.style.display='block';
     toast('Errore: '+e.message,'error');console.error(e);
-  }
-}
-
-
-// Salva le priority companies nel DB companies
-async function savePriorityCompaniesToDB(priorityCompanies, allListings){
-  if(!priorityCompanies.length)return;
-  const now=new Date().toISOString();
-  const d90=new Date(Date.now()-90*864e5);
-  for(const pc of priorityCompanies){
-    try{
-      const enc=encodeURIComponent(pc.company);
-      const existing=await api('companies?or=(ragione_sociale.ilike.*'+enc+'*,name.ilike.*'+enc+'*)&select=*&limit=1');
-      const listings=allListings.filter(l=>(l.ragione_sociale||l.company_name||'').toLowerCase().includes(pc.company.toLowerCase()));
-      const sectors=[...new Set(listings.map(l=>l.sector_v2).filter(Boolean))].join(', ')||null;
-      const posAperte=listings.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
-      const ragSoc=listings[0]?.ragione_sociale||pc.company;
-      const note='['+new Date().toLocaleDateString('it-IT')+'] PRIORITY: '+pc.reason;
-      const enrichData={last_researched_at:now,research_notes:note,posizioni_aperte:posAperte||null,sectors:sectors};
-      if(existing.length){
-        const upd={...enrichData};
-        if(!existing[0].ragione_sociale)upd.ragione_sociale=ragSoc;
-        await api('companies?id=eq.'+existing[0].id,'PATCH',upd);
-      } else {
-        await api('companies','POST',{name:ragSoc,ragione_sociale:ragSoc,entity_type:'life_sciences',is_active:true,sectors:sectors,posizioni_aperte:posAperte||null,last_researched_at:now,research_notes:note});
-      }
-    }catch(e){console.warn('savePriorityCompaniesToDB error:',pc.company,e.message);}
-  }
-  toast('✅ '+priorityCompanies.length+' aziende priority salvate in DB','success');
-}
-
-// Apre profilo azienda dalla card priority companies
-function openCompanyProfileFromCI(companyName){
-  const compEl=document.getElementById('ci-filter-company');
-  if(compEl){
-    compEl.value=companyName;
-    // Scrolla al profilo azienda
-    const profileEl=document.getElementById('ci-company-profile');
-    if(profileEl&&profileEl.style.display!=='none'){
-      profileEl.scrollIntoView({behavior:'smooth',block:'start'});
-    } else {
-      generateCommercialBriefing();
-    }
   }
 }
 
@@ -4413,17 +4199,30 @@ async function renderQueryResults(data, contextLabel){
   // Charts — sempre
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
   renderClickableBar('chart-area',areaData,'','functional_area',data);
-  renderHeatmap('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,12));
-  renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8));
-  renderDonut('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8));
+  renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue');
+  renderBar('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,10),'accent');
+  renderBar('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10),'');
   renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
-  renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
-  renderRalGradient('chart-ral',data);
+  renderClickableBar('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen'),'blue','seniority',data);
+  renderRal('chart-ral',data);
   // Rimosso: chart-companies e chart-sector non più presenti nella view
   // Rimosso: chart-companies e chart-sector non più presenti nella view
 
-  // Percentili RAL — Box plot
-  renderBoxPlot('chart-percentiles',data);
+  // Percentili RAL
+  if(withRal.length>=3){
+    const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+    const p=n=>mids[Math.floor(mids.length*n/100)];
+    const stats=[['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b)/mids.length)],['P75',p(75)],['P90',p(90)]];
+    const maxVal=Math.max(...stats.map(s=>s[1]));
+    document.getElementById('chart-percentiles').innerHTML=stats.map(([l,v])=>`
+      <div class="bar-row">
+        <div class="bar-label" style="width:70px">${l}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${(v/maxVal*100).toFixed(0)}%;background:var(--success)"></div></div>
+        <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
+      </div>`).join('');
+  }else{
+    document.getElementById('chart-percentiles').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati RAL insufficienti</div>';
+  }
 
   // Insights
   renderInsights(data, now);
@@ -4838,7 +4637,7 @@ async function generateMarketSignals(){
   if(btn){btn.textContent='⏳ Analisi...';btn.disabled=true;}
 
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=3000');
+    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=500');
 
     // Calcola score globali
     const momentum=calcHiringMomentum(data);
@@ -4912,8 +4711,13 @@ async function generateMarketSignals(){
     });
     const salaryData=Object.entries(byArea).map(([a,vals])=>[a,Math.round(vals.reduce((s,v)=>s+v)/vals.length)]).sort((a,b)=>b[1]-a[1]).slice(0,8);
     const maxSal=Math.max(...salaryData.map(d=>d[1]),1);
-    // Salary Intelligence → Box plot
-    renderBoxPlot('signals-salary-intel', data);
+    const salEl=document.getElementById('signals-salary-intel');
+    if(salEl)salEl.innerHTML=salaryData.map(([a,avg])=>`
+      <div class="bar-row">
+        <div class="bar-label" style="font-size:11px;">${a.replace(/_/g,' ')}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(avg/maxSal*100)}%;background:var(--accent)"></div></div>
+        <div class="bar-count" style="color:var(--accent);font-size:11px;">€${(avg/1000).toFixed(0)}k</div>
+      </div>`).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">RAL non disponibile</div>';
 
     // Segnali specifici
     const signals=detectMarketSignals(data,data);
@@ -4927,50 +4731,11 @@ async function generateMarketSignals(){
         </div>
       </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Nessun segnale significativo rilevato — aggiungi più annunci per attivare il motore</div>';
 
-    // AI Summary dedicato per Market Signals
-    try{
-      const d30count=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
-      const d90count=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-90*864e5)).length;
-      const topTA=Object.entries(taCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
-      const topCo=Object.entries(byCoD30).sort((a,b)=>b[1]-a[1]).slice(0,5);
-      const withRalCount=data.filter(l=>l.ral_min||l.ral_max).length;
-      const sigPrompt='Sei un analista senior di market intelligence specializzato nel settore Life Sciences italiano. '+
-        'Analizza questi segnali di mercato e genera un briefing di intelligence con trend emergenti e alert strategici. '+
-        'DATI: Annunci totali: '+data.length+'. Ultimi 30gg: '+d30count+'. Ultimi 90gg: '+d90count+'. '+
-        'Score mercato: Momentum='+momentum+'/100, Salary='+salary+'/100, Depth='+depth+'/100, Scarcity='+scarcity+'/100. '+
-        'Top TA per momentum: '+topTA.map(([t,n])=>t+' ('+n+')').join(', ')+'. '+
-        'Aziende più attive (30gg): '+topCo.map(([c,n])=>c+' ('+n+')').join(', ')+'. '+
-        'Compliance RAL: '+Math.round(withRalCount/data.length*100)+'%. '+
-        'Segnali rilevati: '+signals.slice(0,5).map(s=>s.title).join(', ')+'. '+
-        'Rispondi SOLO con JSON: {"summary":"<paragrafo di 3-4 frasi che descrive lo stato attuale del mercato Life Sciences, i trend emergenti e i segnali più significativi>","insights":['+
-        '{"text":"<trend più significativo con dati specifici>","type":"positive"},'+
-        '{"text":"<area terapeutica o segmento in crescita>","type":"positive"},'+
-        '{"text":"<opportunità commerciale per MC Pharma basata sui segnali>","type":"positive"},'+
-        '{"text":"<alert o segnale di attenzione>","type":"warning"}]}';
-      const sigRaw=await callAIPowerful(sigPrompt,700);
-      const aiResult=JSON.parse(sigRaw.replace(/```json|```/g,'').trim());
-      document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
-      const aiInsEl=document.getElementById('signals-ai-insights');
-      if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
-    }catch(e){
-      console.warn('Market Signals AI error:',e.message);
-      document.getElementById('signals-ai-text').textContent='Dati calcolati: '+data.length+' annunci analizzati. Momentum: '+momentum+'/100.';
-    }
-
-    // Salva segnali in market_signals
-    try{
-      const cutoff=new Date(Date.now()-7*864e5).toISOString();
-      await api('market_signals?created_at=lt.'+cutoff,'DELETE');
-      for(const sig of signals.slice(0,10)){
-        await api('market_signals','POST',{
-          signal_type:sig.badge||'info',
-          title:sig.title,
-          description:sig.desc,
-          score:momentum,
-          created_at:new Date().toISOString()
-        });
-      }
-    }catch(e){console.warn('Save signals error:',e.message);}
+    // AI Summary globale
+    const aiResult=await generateDashboardAISummary(data,'');
+    document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
+    const aiInsEl=document.getElementById('signals-ai-insights');
+    if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
 
   }catch(e){
     toast('Errore Market Signals: '+e.message,'error');
@@ -5069,196 +4834,6 @@ function countBy(arr,key){
   const c={};arr.forEach(i=>{const v=i[key]||'N/D';c[v]=(c[v]||0)+1;});
   return Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,7);
 }
-
-// ── Treemap per role family
-function renderTreemap(id,data){
-  const el=document.getElementById(id);
-  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const W=460,H=200;
-  const total=data.reduce((s,[,n])=>s+n,0);
-  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-  let x=0;
-  const rects=data.slice(0,8).map(([l,n],i)=>{
-    const w=Math.max(30,Math.round(n/total*W));
-    const pct=Math.round(n/total*100);
-    const lbl=l.length>12?l.substring(0,10)+'…':l;
-    const r='<rect x="'+x+'" y="0" width="'+w+'" height="'+H+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.85" rx="3"/>'
-      +'<text x="'+(x+w/2)+'" y="'+(H/2-8)+'" text-anchor="middle" style="font-size:9px;fill:white;font-weight:700;">'+lbl+'</text>'
-      +'<text x="'+(x+w/2)+'" y="'+(H/2+8)+'" text-anchor="middle" style="font-size:14px;fill:white;font-weight:800;">'+n+'</text>'
-      +'<text x="'+(x+w/2)+'" y="'+(H/2+24)+'" text-anchor="middle" style="font-size:9px;fill:rgba(255,255,255,0.7);">'+pct+'%</text>';
-    x+=w;
-    return r;
-  });
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;border-radius:8px;overflow:hidden;">'+rects.join('')+'</svg>';
-}
-
-// ── Bubble chart per area terapeutica
-function renderBubbleChart(id,data){
-  const el=document.getElementById(id);
-  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const W=460,H=200,cols=4;
-  const max=Math.max(...data.map(([,n])=>n));
-  const colors=['#ef4444','#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-  const rows=Math.ceil(Math.min(data.length,8)/cols);
-  const cw=W/cols,rh=H/rows;
-  const bubbles=data.slice(0,8).map(([l,n],i)=>{
-    const col=i%cols,row=Math.floor(i/cols);
-    const cx=col*cw+cw/2,cy=row*rh+rh/2;
-    const r=Math.max(16,Math.round(n/max*36));
-    const lbl=l.length>10?l.substring(0,9)+'…':l;
-    return '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.8"/>'
-      +'<text x="'+cx+'" y="'+(cy-2)+'" text-anchor="middle" style="font-size:8px;fill:white;font-weight:700;">'+lbl+'</text>'
-      +'<text x="'+cx+'" y="'+(cy+12)+'" text-anchor="middle" style="font-size:11px;fill:white;font-weight:800;">'+n+'</text>';
-  });
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;">'+bubbles.join('')+'</svg>';
-}
-
-// ── Funnel per seniority
-function renderFunnel(id,data){
-  const el=document.getElementById(id);
-  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','senior_director','head','vp','c_level'];
-  const sorted=data.slice().sort((a,b)=>{const ia=ORDER.indexOf(a[0]),ib=ORDER.indexOf(b[0]);return(ia===-1?99:ia)-(ib===-1?99:ib);});
-  const max=Math.max(...sorted.map(([,n])=>n));
-  const colors=['#6366f1','#818cf8','#10b981','#34d399','#f59e0b','#fbbf24','#ef4444','#f87171','#8b5cf6','#a78bfa'];
-  el.innerHTML=sorted.map(([l,n],i)=>{
-    const pct=Math.max(8,Math.round(n/max*100));
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
-      +'<div style="font-size:11px;color:var(--text2);width:130px;text-align:right;">'+toLabel(l)+'</div>'
-      +'<div style="flex:1;background:var(--surface2);border-radius:3px;height:18px;overflow:hidden;">'
-      +'<div style="width:'+pct+'%;height:100%;background:'+colors[i%colors.length]+';border-radius:3px;"></div></div>'
-      +'<span style="font-size:12px;font-weight:700;color:var(--text);min-width:28px;">'+n+'</span>'
-      +'</div>';
-  }).join('');
-}
-
-// ── RAL con gradiente colore verde→rosso
-function renderRalGradient(id,listings){
-  const el=document.getElementById(id);if(!el)return;
-  const byArea={};
-  listings.forEach(l=>{
-    const area=l.functional_area_v2||l.functional_area;
-    if(!area||(!l.ral_min&&!l.ral_max))return;
-    if(!byArea[area])byArea[area]=[];
-    byArea[area].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
-  });
-  const data=Object.entries(byArea).map(([a,v])=>[toLabel(a),Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]);
-  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato RAL</div>';return;}
-  const maxV=data[0][1],minV=data[data.length-1][1];
-  const getColor=v=>{
-    const t=(v-minV)/(maxV-minV||1);
-    return 'rgb('+Math.round(239-t*223)+','+Math.round(68+t*117)+','+Math.round(68+t*61)+')';
-  };
-  el.innerHTML=data.map(([l,v])=>{
-    const pct=Math.max(5,Math.round((v-minV)/(maxV-minV||1)*100));
-    const col=getColor(v);
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-      +'<div style="font-size:11px;color:var(--text2);width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+l+'</div>'
-      +'<div style="flex:1;background:var(--surface2);border-radius:4px;height:16px;overflow:hidden;">'
-      +'<div style="width:'+pct+'%;height:100%;background:'+col+';border-radius:4px;"></div></div>'
-      +'<div style="font-size:12px;font-weight:700;color:'+col+';width:44px;text-align:right;">€'+(v/1000).toFixed(0)+'k</div>'
-      +'</div>';
-  }).join('');
-}
-
-// ── Box plot per percentili RAL
-function renderBoxPlot(id,listings){
-  const el=document.getElementById(id);if(!el)return;
-  const withRal=listings.filter(l=>l.ral_min||l.ral_max);
-  if(withRal.length<3){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti</div>';return;}
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
-  const p=n=>mids[Math.floor(mids.length*n/100)]||0;
-  const avg=Math.round(mids.reduce((a,b)=>a+b)/mids.length);
-  const p10=p(10),p25=p(25),med=p(50),p75=p(75),p90=p(90);
-  const W=460,H=110,PAD=40;
-  const allV=[p10,p25,med,avg,p75,p90];
-  const minV=Math.min(...allV),maxV=Math.max(...allV);
-  const sx=v=>PAD+(v-minV)/(maxV-minV||1)*(W-PAD*2);
-  const x10=sx(p10),x25=sx(p25),xM=sx(med),xA=sx(avg),x75=sx(p75),x90=sx(p90);
-  const mid=H/2;
-  const fmt=v=>'€'+(v/1000).toFixed(0)+'k';
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;overflow:visible;">'
-    +'<line x1="'+x10+'" y1="'+mid+'" x2="'+x90+'" y2="'+mid+'" stroke="var(--border)" stroke-width="2"/>'
-    +'<rect x="'+x25+'" y="'+(mid-16)+'" width="'+(x75-x25)+'" height="32" fill="#6366f1" fill-opacity="0.2" stroke="#6366f1" stroke-width="1.5" rx="3"/>'
-    +'<line x1="'+xM+'" y1="'+(mid-18)+'" x2="'+xM+'" y2="'+(mid+18)+'" stroke="#10b981" stroke-width="3"/>'
-    +'<line x1="'+xA+'" y1="'+(mid-12)+'" x2="'+xA+'" y2="'+(mid+12)+'" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2"/>'
-    +'<line x1="'+x10+'" y1="'+(mid-8)+'" x2="'+x10+'" y2="'+(mid+8)+'" stroke="var(--text2)" stroke-width="2"/>'
-    +'<line x1="'+x90+'" y1="'+(mid-8)+'" x2="'+x90+'" y2="'+(mid+8)+'" stroke="var(--text2)" stroke-width="2"/>'
-    +'<text x="'+x10+'" y="'+(mid+28)+'" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P10 '+fmt(p10)+'</text>'
-    +'<text x="'+x25+'" y="'+(mid-24)+'" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P25 '+fmt(p25)+'</text>'
-    +'<text x="'+xM+'" y="'+(mid-26)+'" text-anchor="middle" style="font-size:10px;fill:#10b981;font-weight:700;">Med '+fmt(med)+'</text>'
-    +'<text x="'+xA+'" y="'+(mid+30)+'" text-anchor="middle" style="font-size:9px;fill:#f59e0b;">Avg '+fmt(avg)+'</text>'
-    +'<text x="'+x75+'" y="'+(mid-24)+'" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P75 '+fmt(p75)+'</text>'
-    +'<text x="'+x90+'" y="'+(mid+28)+'" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P90 '+fmt(p90)+'</text>'
-    +'<text x="4" y="12" style="font-size:9px;fill:var(--text2);">'+withRal.length+' annunci con RAL</text>'
-    +'</svg>';
-}
-
-
-// ── Heatmap a griglia per sottoaree
-function renderHeatmap(id,data){
-  const el=document.getElementById(id);
-  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const max=Math.max(...data.map(([,n])=>n));
-  const cols=3;
-  const getColor=v=>{
-    const t=v/max;
-    const r=Math.round(99+t*156),g=Math.round(102+t*55),b=Math.round(241-t*177);
-    return 'rgba('+r+','+g+','+b+','+(0.2+t*0.7)+')';
-  };
-  el.innerHTML='<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:6px;padding:4px;">'
-    +data.slice(0,12).map(([l,n])=>{
-      const lbl=toLabel(l);
-      const col=getColor(n);
-      const pct=Math.round(n/max*100);
-      return '<div style="background:'+col+';border-radius:6px;padding:8px 10px;position:relative;overflow:hidden;">'
-        +'<div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:2px;">'+lbl+'</div>'
-        +'<div style="font-size:16px;font-weight:800;color:var(--text);">'+n+'</div>'
-        +'<div style="position:absolute;bottom:4px;right:6px;font-size:9px;color:var(--text2);">'+pct+'%</div>'
-        +'</div>';
-    }).join('')
-    +'</div>';
-}
-
-// ── Donut chart per ruoli canonici
-function renderDonut(id,data){
-  const el=document.getElementById(id);
-  if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const items=data.slice(0,8);
-  const total=items.reduce((s,[,n])=>s+n,0);
-  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
-  const CX=90,CY=90,R=70,r=42;
-  let angle=-Math.PI/2;
-  const slices=items.map(([l,n],i)=>{
-    const a=n/total*Math.PI*2;
-    const x1=CX+R*Math.cos(angle),y1=CY+R*Math.sin(angle);
-    const x2=CX+R*Math.cos(angle+a),y2=CY+R*Math.sin(angle+a);
-    const xi1=CX+r*Math.cos(angle),yi1=CY+r*Math.sin(angle);
-    const xi2=CX+r*Math.cos(angle+a),yi2=CY+r*Math.sin(angle+a);
-    const large=a>Math.PI?1:0;
-    const path='M '+xi1+' '+yi1+' L '+x1+' '+y1+' A '+R+' '+R+' 0 '+large+' 1 '+x2+' '+y2+' L '+xi2+' '+yi2+' A '+r+' '+r+' 0 '+large+' 0 '+xi1+' '+yi1+' Z';
-    angle+=a;
-    return '<path d="'+path+'" fill="'+colors[i%colors.length]+'" fill-opacity="0.85" stroke="var(--surface)" stroke-width="1.5"/>';
-  });
-  // Legenda
-  const legend=items.map(([l,n],i)=>{
-    const pct=Math.round(n/total*100);
-    const lbl=toLabel(l).length>22?toLabel(l).substring(0,20)+'…':toLabel(l);
-    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
-      +'<div style="width:10px;height:10px;border-radius:2px;background:'+colors[i%colors.length]+';flex-shrink:0;"></div>'
-      +'<div style="font-size:10px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+lbl+'</div>'
-      +'<div style="font-size:10px;font-weight:700;color:var(--text2);">'+pct+'%</div>'
-      +'</div>';
-  }).join('');
-  el.innerHTML='<div style="display:flex;align-items:center;gap:16px;">'
-    +'<svg viewBox="0 0 180 180" style="width:160px;flex-shrink:0;">'+slices.join('')
-    +'<text x="'+CX+'" y="'+(CY-4)+'" text-anchor="middle" style="font-size:11px;fill:var(--text2);">Totale</text>'
-    +'<text x="'+CX+'" y="'+(CY+14)+'" text-anchor="middle" style="font-size:16px;font-weight:800;fill:var(--text);">'+total+'</text>'
-    +'</svg>'
-    +'<div style="flex:1;overflow:hidden;">'+legend+'</div>'
-    +'</div>';
-}
-
 function renderBar(id,data,cls){
   const el=document.getElementById(id);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
@@ -6771,18 +6346,6 @@ function selectRole(role, area){
   loadRoleIntelligence();
 }
 
-async function refreshSalaryBenchmarks(){
-  toast('⏳ Ricalcolo benchmark salariali...');
-  try{
-    const result=await api('rpc/refresh_salary_benchmarks','POST',{});
-    const updated=result[0]?.roles_updated||0;
-    toast('✅ '+updated+' ruoli aggiornati nel benchmark','success');
-  }catch(e){
-    toast('Errore: '+e.message,'error');
-    console.error('refreshSalaryBenchmarks error:',e);
-  }
-}
-
 async function loadRoleIntelligence(){
   const search=(document.getElementById('ri-search')?.value||'').trim();
   const area=document.getElementById('ri-area')?.value||'';
@@ -6931,7 +6494,7 @@ async function loadRoleIntelligence(){
     else document.getElementById('ri-chart-ta').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">TA non specificata per questo ruolo</div>';
 
     // Geo
-    const byGeo={};listings.forEach(l=>{const loc=l.region||(l.location||'').split(',').pop().trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
+    const byGeo={};listings.forEach(l=>{const loc=(l.location||'').split(',')[0].trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
     renderRuoloBar('ri-chart-geo',Object.entries(byGeo).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
 
     // Seniority
@@ -6942,9 +6505,6 @@ async function loadRoleIntelligence(){
     const byFH={};listings.filter(l=>l.field_hq).forEach(l=>{byFH[l.field_hq]=(byFH[l.field_hq]||0)+1;});
     if(Object.keys(byFH).length) renderRuoloBar('ri-chart-fieldhq',Object.entries(byFH).sort((a,b)=>b[1]-a[1]),'blue');
     else document.getElementById('ri-chart-fieldhq').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati Field/HQ non disponibili</div>';
-
-    // ── DESCRIZIONI AI SOTTO GRAFICI ──
-    if(listings.length>0) generateRIChartDescriptions(listings, roleName);
 
     // ── AI SUMMARY ROLE INTELLIGENCE — asincrono ──
     if(listings.length>0){
@@ -7488,7 +7048,7 @@ async function openAreaClassifier(){
     // Carica annunci per area funzionale
     _areaClassifierData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,functional_area_v2,seniority_v2,sector_v2,location,published_date&order=published_date.desc&limit=2000');
     // Carica annunci senza location
-    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
+    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
     _areaClassifierFilter=null; // default: mostra solo non classificati
     // Aggiorna badge tab
     const noArea=_areaClassifierData.filter(l=>!l.functional_area_v2).length;
@@ -7527,75 +7087,23 @@ function renderLocationReview(){
     return;
   }
   if(countEl)countEl.textContent=_locationData.length+' annunci senza location';
-
-  const rows=_locationData.map((l,i)=>{
-    const title=l.job_title||'—';
-    const azienda=l.ragione_sociale||l.company_name||'—';
-    const hasUrl=l.url&&l.url.startsWith('http');
-    const linkBtn=hasUrl
-      ?'<a href="'+l.url+'" target="_blank" title="Apri annuncio" style="text-decoration:none;font-size:14px;margin-right:4px;">🔗</a>'
-      :'<span style="font-size:14px;margin-right:4px;opacity:0.3;" title="URL non disponibile">🔗</span>';
-    const aiBtn=hasUrl
-      ?'<button onclick="extractLocationWithAI('+i+')" title="Estrai location con Gemini" style="background:none;border:1px solid #6366f1;border-radius:4px;color:#6366f1;cursor:pointer;font-size:11px;padding:2px 6px;">🤖</button>'
-      :'';
-    return '<tr style="border-bottom:1px solid var(--border);" id="loc-row-'+i+'">'
-      +'<td style="padding:6px 8px;">'
-        +linkBtn
-        +'<span style="font-weight:500;font-size:11px;">'+title+'</span>'
-      +'</td>'
-      +'<td style="padding:6px 8px;color:var(--text2);font-size:10px;">'+azienda+'</td>'
-      +'<td style="padding:4px 8px;">'
-        +'<div style="display:flex;gap:4px;align-items:center;">'
-          +'<input type="text" id="loc-inp-'+i+'" data-id="'+l.id+'" data-url="'+(l.url||'')+'"'
-            +' placeholder="es. Milano, Lombardia"'
-            +' style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">'
-          +aiBtn
-        +'</div>'
-      +'</td>'
-      +'</tr>';
-  }).join('');
-
-  body.innerHTML='<table style="font-size:11px;width:100%;">'
-    +'<thead><tr>'
-    +'<th style="padding:8px;text-align:left;">Titolo</th>'
-    +'<th style="padding:8px;text-align:left;">Azienda</th>'
-    +'<th style="padding:8px;width:220px;">Inserisci città</th>'
-    +'</tr></thead>'
-    +'<tbody>'+rows+'</tbody></table>';
-}
-
-async function extractLocationWithAI(idx){
-  const inp=document.getElementById('loc-inp-'+idx);
-  const row=document.getElementById('loc-row-'+idx);
-  if(!inp)return;
-  const url=inp.dataset.url;
-  if(!url){toast('URL non disponibile per questo annuncio','error');return;}
-
-  inp.placeholder='⏳ Gemini in analisi...';
-  inp.disabled=true;
-
-  try{
-    const geoPrompt='Analizza questo annuncio di lavoro: '+url+'. Trova la localita geografica dove si svolge il lavoro. Rispondi SOLO con Citta, Regione (es. Milano, Lombardia). Piu citta separate da | . Se non trovi: NON_TROVATA';
-
-    const result=await callGemini(geoPrompt, 100);
-    const clean=(result||'').trim();
-
-    if(clean==='NON_TROVATA'||clean.length===0){
-      inp.placeholder='es. Milano, Lombardia';
-      inp.disabled=false;
-      toast('Gemini non ha trovato una location per questo annuncio','warning');
-    } else {
-      inp.value=clean;
-      inp.disabled=false;
-      inp.style.borderColor='#10b981';
-      toast('✅ Location trovata: '+clean,'success');
-    }
-  }catch(e){
-    inp.placeholder='es. Milano, Lombardia';
-    inp.disabled=false;
-    toast('Errore Gemini: '+e.message,'error');
-    console.warn('extractLocationWithAI error:',e);
-  }
+  body.innerHTML=`<table style="font-size:11px;width:100%;">
+    <thead><tr>
+      <th style="padding:8px;text-align:left;">Titolo</th>
+      <th style="padding:8px;text-align:left;">Azienda</th>
+      <th style="padding:8px;width:200px;">Inserisci città</th>
+    </tr></thead>
+    <tbody>${_locationData.map((l,i)=>`
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 8px;font-weight:500;">${l.job_title||'—'}</td>
+        <td style="padding:6px 8px;color:var(--text2);font-size:10px;">${l.ragione_sociale||l.company_name||'—'}</td>
+        <td style="padding:4px 8px;">
+          <input type="text" id="loc-inp-${i}" data-id="${l.id}"
+            placeholder="es. Milano, Lombardia"
+            style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">
+        </td>
+      </tr>`).join('')}
+    </tbody></table>`;
 }
 
 async function saveReviewData(){
@@ -7624,7 +7132,7 @@ async function saveLocationData(){
     }catch(e){errors++;}
   }
   // Ricarica location data
-  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
+  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,published_date&location=is.null&order=published_date.desc&limit=500');
   const bl=document.getElementById('badge-rtab-location');
   if(bl){bl.textContent=_locationData.length;bl.style.display=_locationData.length?'':' none';}
   renderLocationReview();
@@ -7845,6 +7353,34 @@ function showScarcityBreakdown(idx){
   if(subEl)subEl.innerHTML=subscores.map(s=>{const val=parseFloat(r[s.key]||0);const col=val>=70?'#ef4444':val>=50?'#f59e0b':val>=30?'#3b82f6':'#6b7280';return`<div><div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:11px;color:var(--text2);">${s.icon} ${s.label} (${s.weight})</span><span style="font-size:12px;font-weight:700;color:${col};">${val.toFixed(1)}</span></div><div style="background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;"><div style="width:${val}%;height:100%;background:${col};border-radius:3px;transition:width 0.4s;"></div></div><div style="font-size:10px;color:var(--text2);margin-top:2px;">${s.desc}</div></div>`;}).join('');
   const statsEl=document.getElementById('sc-bd-stats');
   if(statsEl)statsEl.innerHTML=[{label:'Annunci totali',val:r.total_listings||0},{label:'Annunci 90gg',val:r.listings_90d||0},{label:'Province',val:r.provinces_count||0},{label:'Aziende',val:r.companies_count||0},{label:'Mesi attivi',val:r.active_months||0},{label:'Role family',val:r.role_family||'—'}].map(s=>`<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;"><div style="font-size:10px;color:var(--text2);">${s.label}</div><div style="font-size:13px;font-weight:700;color:var(--text);">${s.val}</div></div>`).join('');
+
+  // Interpretazione testuale
+  const interpEl=document.getElementById('sc-bd-interpretation');
+  if(interpEl){
+    interpEl.style.display='block';
+    const scoreLevel=score>=70?'🔴 Alta scarsità':score>=50?'🟡 Scarsità media':score>=30?'🔵 Scarsità bassa':'⚪ Disponibilità elevata';
+    const growthNote=parseFloat(r.growth_score||0)>=60?'La domanda è in crescita accelerata.':'La domanda è stabile o in lieve calo.';
+    const geoNote=parseFloat(r.geo_score||0)>=60?'La figura è richiesta in molte province.':'La domanda è geograficamente concentrata.';
+    const compNote=parseInt(r.companies_count||0)>=10?'Molte aziende ('+r.companies_count+') competono per questo profilo.':'La competizione è limitata ('+r.companies_count+' aziende).';
+    interpEl.innerHTML='<strong>'+scoreLevel+'</strong> ('+score.toFixed(0)+'/100)<br>'+growthNote+' '+geoNote+' '+compNote;
+  }
+
+  // AI Analysis
+  const aiEl=document.getElementById('sc-bd-ai');
+  const aiTextEl=document.getElementById('sc-bd-ai-text');
+  const aiRecEl=document.getElementById('sc-bd-ai-rec');
+  if(aiEl&&aiTextEl){
+    aiEl.style.display='block';
+    aiTextEl.textContent='⏳ Gemini in analisi...';
+    if(aiRecEl)aiRecEl.style.display='none';
+    generateScarcityAI(r).then(function(result){
+      aiTextEl.textContent=result.analysis||'';
+      if(aiRecEl&&result.recommendation){
+        aiRecEl.style.display='block';
+        aiRecEl.innerHTML='<strong>💼 Raccomandazione MC Pharma:</strong> '+result.recommendation;
+      }
+    }).catch(function(){aiTextEl.textContent='Analisi AI non disponibile.';});
+  }
 }
 
 function renderScarcityBubble(data){
@@ -7856,6 +7392,22 @@ function renderScarcityBubble(data){
   const scoreColor=s=>s>=70?'#ef4444':s>=50?'#f59e0b':s>=30?'#3b82f6':'#6b7280';
   const bubbles=data.map(r=>{const score=parseFloat(r.scarcity_score||0);const listings=parseInt(r.total_listings||0);const companies=parseInt(r.companies_count||0);const x=PAD+(companies/Math.max(maxCompanies,1))*(W-PAD*2);const y=H-PAD-(score/Math.max(maxScore,1))*(H-PAD*2);const r2=6+(listings/Math.max(maxListings,1))*20;const color=scoreColor(score);const label=r.canonical_role.length>15?r.canonical_role.substring(0,14)+'…':r.canonical_role;return`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r2.toFixed(1)}" fill="${color}" fill-opacity="0.7" stroke="${color}" stroke-width="1.5" style="cursor:pointer;"><title>${r.canonical_role} — Score: ${score}</title></circle><text x="${x.toFixed(1)}" y="${(y-r2-3).toFixed(1)}" text-anchor="middle" style="font-size:9px;fill:var(--text2);">${label}</text>`;}).join('');
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;"><line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/><line x1="${PAD}" y1="${H-PAD}" x2="${W-PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/><text x="${W/2}" y="${H-8}" text-anchor="middle" style="font-size:10px;fill:var(--text2);">← Meno competizione — Aziende concorrenti →</text><text x="12" y="${H/2}" text-anchor="middle" transform="rotate(-90,12,${H/2})" style="font-size:10px;fill:var(--text2);">Scarcity ↑</text>${bubbles}</svg>`;
+}
+
+
+async function generateScarcityAI(r){
+  const score=parseFloat(r.scarcity_score||0);
+  const prompt='Sei un analista senior di executive search specializzato nel settore Life Sciences italiano. '+
+    'Analizza questi dati di scarcity per la figura "'+r.canonical_role+'" e genera una spiegazione professionale. '+
+    'DATI: Scarcity Score='+score.toFixed(1)+'/100. '+
+    'Growth Rate='+parseFloat(r.growth_score||0).toFixed(1)+' (peso 30%): velocita di crescita annunci. '+
+    'Geographic Dispersion='+parseFloat(r.geo_score||0).toFixed(1)+' (peso 25%): province in cui e richiesta ('+r.provinces_count+' province). '+
+    'Company Competition='+parseFloat(r.competition_score||0).toFixed(1)+' (peso 25%): aziende che cercano questa figura ('+r.companies_count+' aziende). '+
+    'Hiring Persistence='+parseFloat(r.persistence_score||0).toFixed(1)+' (peso 20%): continuita della domanda ('+r.active_months+' mesi attivi). '+
+    'Annunci totali: '+r.total_listings+'. Annunci ultimi 90gg: '+r.listings_90d+'. '+
+    'Rispondi SOLO con JSON valido: {"analysis":"<3-4 frasi che spiegano in linguaggio chiaro perche questa figura ha questo livello di scarcity, quali sono i driver principali e cosa significa per il mercato Life Sciences>","recommendation":"<1-2 frasi su come MC Pharma Consulting puo sfruttare questo dato nella strategia commerciale>"}';
+  const raw=await callAIPowerful(prompt,400);
+  return JSON.parse(raw.replace(/```json|```/g,'').trim());
 }
 
 /* ═══ COMPETITOR MONITOR ═══ */
@@ -8243,6 +7795,12 @@ function renderDemandScatter(){
           </div>
           <div style="display:flex;flex-direction:column;gap:12px;" id="sc-bd-subscores"></div>
           <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="sc-bd-stats"></div>
+          <div id="sc-bd-interpretation" style="margin-top:16px;padding:12px 14px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--text);line-height:1.6;display:none;"></div>
+          <div id="sc-bd-ai" style="margin-top:12px;display:none;">
+            <div style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">AI ▸ Analisi Gemini</div>
+            <div id="sc-bd-ai-text" style="font-size:12px;color:var(--text2);line-height:1.6;"></div>
+            <div id="sc-bd-ai-rec" style="margin-top:10px;padding:10px 12px;background:rgba(99,102,241,0.08);border-left:3px solid var(--accent);border-radius:4px;font-size:12px;color:var(--text);line-height:1.5;display:none;"></div>
+          </div>
         </div>
       </div>
     </div>
