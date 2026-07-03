@@ -4196,15 +4196,15 @@ async function renderQueryResults(data, contextLabel){
   document.getElementById('stat-trend-90').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
   document.getElementById('stat-trend-365').textContent=data.filter(l=>l.published_date&&new Date(l.published_date)>d365).length;
 
-  // Charts — sempre
+  // Charts — visualizzazioni specializzate
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
-  renderClickableBar('chart-area',areaData,'','functional_area',data);
-  renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue');
-  renderBar('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,10),'accent');
-  renderBar('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10),'');
-  renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
-  renderClickableBar('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen'),'blue','seniority',data);
-  renderRal('chart-ral',data);
+  renderClickableBar('chart-area',areaData,'','functional_area',data);            // Barre orizzontali ✅
+  renderBar('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,10),'blue'); // Barre orizzontali ✅
+  renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8)); // Treemap
+  renderBar('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,10),''); // Barre ✅
+  renderBubbleChart('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8)); // Bubble
+  renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10)); // Funnel gerarchico
+  renderRalGradient('chart-ral',data);  // Barre RAL con gradiente colore
   // Rimosso: chart-companies e chart-sector non più presenti nella view
   // Rimosso: chart-companies e chart-sector non più presenti nella view
 
@@ -4212,17 +4212,7 @@ async function renderQueryResults(data, contextLabel){
   if(withRal.length>=3){
     const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
     const p=n=>mids[Math.floor(mids.length*n/100)];
-    const stats=[['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b)/mids.length)],['P75',p(75)],['P90',p(90)]];
-    const maxVal=Math.max(...stats.map(s=>s[1]));
-    document.getElementById('chart-percentiles').innerHTML=stats.map(([l,v])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="width:70px">${l}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(v/maxVal*100).toFixed(0)}%;background:var(--success)"></div></div>
-        <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
-      </div>`).join('');
-  }else{
-    document.getElementById('chart-percentiles').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati RAL insufficienti</div>';
-  }
+    renderBoxPlot('chart-percentiles',data);
 
   // Insights
   renderInsights(data, now);
@@ -4848,6 +4838,156 @@ function renderRal(id,listings){
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato RAL</div>';return;}
   const max=Math.max(...data.map(d=>d[1]));
   el.innerHTML=data.map(([l,v])=>`<div class="bar-row"><div class="bar-label">${l}</div><div class="bar-track"><div class="bar-fill" style="width:${(v/max*100).toFixed(1)}%"></div></div><div class="bar-count" style="width:60px;font-size:11px">€${(v/1000).toFixed(0)}k</div></div>`).join('');
+}
+
+
+/* ═══════════════════════════════════════════════════
+   CHART RENDERERS SPECIALIZZATI — Market Overview
+═══════════════════════════════════════════════════ */
+
+// Treemap SVG per famiglie di ruolo
+function renderTreemap(id, data){
+  const el=document.getElementById(id);if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const W=480,H=220;
+  const total=data.reduce((s,[,n])=>s+n,0);
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
+  let x=0;
+  const rects=data.slice(0,8).map(([l,n],i)=>{
+    const w=Math.max(40,Math.round(n/total*W));
+    const pct=Math.round(n/total*100);
+    const label=l.length>12?l.substring(0,10)+'…':l;
+    const rect=`<rect x="${x}" y="0" width="${w}" height="${H}" fill="${colors[i%colors.length]}" fill-opacity="0.85" rx="4"/>`
+      +`<text x="${x+w/2}" y="${H/2-8}" text-anchor="middle" style="font-size:10px;fill:white;font-weight:700;">${label}</text>`
+      +`<text x="${x+w/2}" y="${H/2+10}" text-anchor="middle" style="font-size:13px;fill:white;font-weight:800;">${n}</text>`
+      +`<text x="${x+w/2}" y="${H/2+26}" text-anchor="middle" style="font-size:9px;fill:rgba(255,255,255,0.7);">${pct}%</text>`;
+    x+=w;
+    return rect;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;border-radius:8px;overflow:hidden;">${rects.join('')}</svg>`;
+}
+
+// Bubble chart per area terapeutica
+function renderBubbleChart(id, data){
+  const el=document.getElementById(id);if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const W=480,H=220;
+  const max=Math.max(...data.map(([,n])=>n));
+  const colors=['#ef4444','#6366f1','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
+  const cols=4,rows=Math.ceil(data.slice(0,8).length/cols);
+  const cw=W/cols,rh=H/rows;
+  const bubbles=data.slice(0,8).map(([l,n],i)=>{
+    const col=i%cols,row=Math.floor(i/cols);
+    const cx=col*cw+cw/2,cy=row*rh+rh/2;
+    const r=Math.max(18,Math.round(n/max*38));
+    const label=l.length>10?l.substring(0,9)+'…':l;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[i%colors.length]}" fill-opacity="0.8"/>`
+      +`<text x="${cx}" y="${cy-2}" text-anchor="middle" style="font-size:8px;fill:white;font-weight:700;">${label}</text>`
+      +`<text x="${cx}" y="${cy+12}" text-anchor="middle" style="font-size:11px;fill:white;font-weight:800;">${n}</text>`;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;">${bubbles.join('')}</svg>`;
+}
+
+// Piramide/funnel per seniority
+function renderFunnel(id, data){
+  const el=document.getElementById(id);if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
+  const SENIORITY_ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','senior_director','head','vp','c_level'];
+  const sorted=data.slice().sort((a,b)=>{
+    const ia=SENIORITY_ORDER.indexOf(a[0]);
+    const ib=SENIORITY_ORDER.indexOf(b[0]);
+    return (ia===-1?99:ia)-(ib===-1?99:ib);
+  });
+  const max=Math.max(...sorted.map(([,n])=>n));
+  const colors=['#6366f1','#818cf8','#10b981','#34d399','#f59e0b','#fbbf24','#ef4444','#f87171','#8b5cf6','#a78bfa'];
+  el.innerHTML=sorted.map(([l,n],i)=>{
+    const pct=Math.round(n/max*100);
+    const barW=Math.max(10,pct);
+    const label=toLabel(l);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div style="font-size:11px;color:var(--text2);width:130px;text-align:right;">${label}</div>
+      <div style="flex:1;display:flex;align-items:center;gap:6px;">
+        <div style="height:20px;background:${colors[i%colors.length]};border-radius:3px;width:${barW}%;min-width:4px;transition:width 0.3s;"></div>
+        <span style="font-size:12px;font-weight:700;color:var(--text);">${n}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Barre RAL con gradiente colore
+function renderRalGradient(id, listings){
+  const el=document.getElementById(id);if(!el)return;
+  const byArea={};
+  listings.forEach(l=>{
+    const area=l.functional_area_v2||l.functional_area;
+    if(!area||(!l.ral_min&&!l.ral_max))return;
+    if(!byArea[area])byArea[area]=[];
+    byArea[area].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+  });
+  const data=Object.entries(byArea).map(([a,v])=>[toLabel(a),Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]);
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato RAL</div>';return;}
+  const max=data[0][1],min=data[data.length-1][1];
+  const getColor=v=>{
+    const t=(v-min)/(max-min||1);
+    const r=Math.round(239-t*(239-16));
+    const g=Math.round(68+t*(185-68));
+    const b=Math.round(68+t*(129-68));
+    return `rgb(${r},${g},${b})`;
+  };
+  el.innerHTML=data.map(([l,v])=>{
+    const pct=Math.round((v-min)/(max-min||1)*100);
+    const color=getColor(v);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+      <div style="font-size:11px;color:var(--text2);width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${l}</div>
+      <div style="flex:1;background:var(--surface2);border-radius:4px;height:16px;overflow:hidden;">
+        <div style="width:${Math.max(pct,5)}%;height:100%;background:${color};border-radius:4px;"></div>
+      </div>
+      <div style="font-size:12px;font-weight:700;color:${color};width:44px;text-align:right;">€${(v/1000).toFixed(0)}k</div>
+    </div>`;
+  }).join('');
+}
+
+// Box plot per percentili RAL
+function renderBoxPlot(id, listings){
+  const el=document.getElementById(id);if(!el)return;
+  const withRal=listings.filter(l=>l.ral_min||l.ral_max);
+  if(withRal.length<3){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti (min 3 annunci con RAL)</div>';return;}
+  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const p=n=>mids[Math.floor(mids.length*n/100)]||0;
+  const avg=Math.round(mids.reduce((a,b)=>a+b)/mids.length);
+  const p10=p(10),p25=p(25),med=p(50),p75=p(75),p90=p(90);
+  const W=460,H=120,PAD=40;
+  const allVals=[p10,p25,med,avg,p75,p90];
+  const minV=Math.min(...allVals),maxV=Math.max(...allVals);
+  const scaleX=v=>PAD+(v-minV)/(maxV-minV||1)*(W-PAD*2);
+  const x10=scaleX(p10),x25=scaleX(p25),xMed=scaleX(med),xAvg=scaleX(avg),x75=scaleX(p75),x90=scaleX(p90);
+  const mid=H/2;
+  const fmt=v=>'€'+(v/1000).toFixed(0)+'k';
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;overflow:visible;">
+    <!-- Linea base -->
+    <line x1="${x10}" y1="${mid}" x2="${x90}" y2="${mid}" stroke="var(--border)" stroke-width="2"/>
+    <!-- Box IQR -->
+    <rect x="${x25}" y="${mid-18}" width="${x75-x25}" height="36" fill="#6366f1" fill-opacity="0.25" stroke="#6366f1" stroke-width="1.5" rx="3"/>
+    <!-- Mediana -->
+    <line x1="${xMed}" y1="${mid-20}" x2="${xMed}" y2="${mid+20}" stroke="#10b981" stroke-width="3"/>
+    <!-- Media -->
+    <line x1="${xAvg}" y1="${mid-14}" x2="${xAvg}" y2="${mid+14}" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2"/>
+    <!-- Whiskers -->
+    <line x1="${x10}" y1="${mid-10}" x2="${x10}" y2="${mid+10}" stroke="var(--text2)" stroke-width="2"/>
+    <line x1="${x90}" y1="${mid-10}" x2="${x90}" y2="${mid+10}" stroke="var(--text2)" stroke-width="2"/>
+    <!-- Labels -->
+    <text x="${x10}" y="${mid+32}" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P10</text>
+    <text x="${x10}" y="${mid+42}" text-anchor="middle" style="font-size:9px;fill:var(--text2);">${fmt(p10)}</text>
+    <text x="${x25}" y="${mid-26}" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P25 ${fmt(p25)}</text>
+    <text x="${xMed}" y="${mid-28}" text-anchor="middle" style="font-size:10px;fill:#10b981;font-weight:700;">Med ${fmt(med)}</text>
+    <text x="${xAvg}" y="${mid+38}" text-anchor="middle" style="font-size:9px;fill:#f59e0b;">Avg ${fmt(avg)}</text>
+    <text x="${x75}" y="${mid-26}" text-anchor="middle" style="font-size:9px;fill:#6366f1;">P75 ${fmt(p75)}</text>
+    <text x="${x90}" y="${mid+32}" text-anchor="middle" style="font-size:9px;fill:var(--text2);">P90</text>
+    <text x="${x90}" y="${mid+42}" text-anchor="middle" style="font-size:9px;fill:var(--text2);">${fmt(p90)}</text>
+    <!-- Legenda -->
+    <rect x="4" y="4" width="10" height="10" fill="#10b981" rx="2"/>
+    <text x="18" y="13" style="font-size:9px;fill:var(--text2);">Mediana</text>
+    <line x1="70" y1="9" x2="82" y2="9" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4,2"/>
+    <text x="86" y="13" style="font-size:9px;fill:var(--text2);">Media</text>
+    <text x="4" y="26" style="font-size:9px;fill:var(--text2);">${withRal.length} annunci con RAL</text>
+  </svg>`;
 }
 
 /* ── LISTINGS ── */
@@ -7705,8 +7845,17 @@ function renderDemandScatter(){
   const maxDiv=Math.max(..._demandData.map(d=>d.distinct_roles),1);
   const maxScore=Math.max(..._demandData.map(d=>parseFloat(d.demand_score||0)),1);
   const scoreColor=s=>s>=75?'#ef4444':s>=50?'#f59e0b':s>=25?'#6366f1':'#6b7280';
-  const dots=_demandData.slice(0,40).map(d=>{const x=PAD+(d.total_listings/maxVol)*(W-PAD*2);const y=H-PAD-(d.distinct_roles/maxDiv)*(H-PAD*2);const r=6+parseFloat(d.demand_score||0)/maxScore*14;const col=scoreColor(parseFloat(d.demand_score||0));const label=d.ragione_sociale.length>20?d.ragione_sociale.substring(0,18)+'…':d.ragione_sociale;return`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" fill-opacity="0.7" stroke="${col}" stroke-width="1"><title>${d.ragione_sociale} — Score: ${d.demand_score}</title></circle><text x="${x.toFixed(1)}" y="${(y-r-3).toFixed(1)}" text-anchor="middle" style="font-size:8px;fill:var(--text2);">${label}</text>`;}).join('');
+  const dots=_demandData.slice(0,40).map(function(d){
+    const x=PAD+(d.total_listings/maxVol)*(W-PAD*2);
+    const y=H-PAD-(d.distinct_roles/maxDiv)*(H-PAD*2);
+    const r=6+parseFloat(d.demand_score||0)/maxScore*14;
+    const col=scoreColor(parseFloat(d.demand_score||0));
+    const label=d.ragione_sociale.length>20?d.ragione_sociale.substring(0,18)+'…':d.ragione_sociale;
+    return '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r.toFixed(1)+'" fill="'+col+'" fill-opacity="0.7" stroke="'+col+'" stroke-width="1"><title>'+d.ragione_sociale+'</title></circle>'
+      +'<text x="'+x.toFixed(1)+'" y="'+(y-r-3).toFixed(1)+'" text-anchor="middle" style="font-size:8px;fill:var(--text2);">'+label+'</text>';
+  }).join('');
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;"><line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/><line x1="${PAD}" y1="${H-PAD}" x2="${W-PAD}" y2="${H-PAD}" stroke="var(--border)" stroke-width="1"/><text x="${W/2}" y="${H-8}" text-anchor="middle" style="font-size:10px;fill:var(--text2);">Volume annunci →</text><text x="14" y="${H/2}" text-anchor="middle" transform="rotate(-90,14,${H/2})" style="font-size:10px;fill:var(--text2);">Diversità ↑</text>${dots}</svg>`;
+}
 }
 
 /* ═══ PULSE ANIMATION CSS ═══ */
