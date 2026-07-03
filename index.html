@@ -439,10 +439,12 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">Aree funzionali</div>
           <div id="chart-area"></div>
+          <div id="ai-desc-area" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Sottoaree</div>
           <div id="chart-subarea"></div>
+          <div id="ai-desc-subarea" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -451,10 +453,12 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">Famiglie di ruolo</div>
           <div id="chart-role-family"></div>
+          <div id="ai-desc-role-family" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Ruoli canonici più richiesti</div>
           <div id="chart-canonical-role"></div>
+          <div id="ai-desc-canonical-role" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -462,10 +466,12 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">Area terapeutica</div>
           <div id="chart-therapeutic"></div>
+          <div id="ai-desc-therapeutic" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Distribuzione seniority</div>
           <div id="chart-seniority"></div>
+          <div id="ai-desc-seniority" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -474,10 +480,12 @@ a.job-link:hover{text-decoration:underline;}
         <div class="chart-card">
           <div class="chart-card-title">RAL media per area funzionale</div>
           <div id="chart-ral"></div>
+          <div id="ai-desc-ral" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
         <div class="chart-card">
           <div class="chart-card-title">Distribuzione percentili RAL</div>
           <div id="chart-percentiles"></div>
+          <div id="ai-desc-percentiles" style="margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;min-height:20px;border-top:1px solid var(--border);padding-top:8px;"></div>
         </div>
       </div>
 
@@ -4219,6 +4227,9 @@ async function renderQueryResults(data, contextLabel){
   // Insights
   renderInsights(data, now);
 
+  // Genera descrizioni AI per i grafici (asincrono, non blocca il rendering)
+  generateChartDescriptions(data);
+
   // AI Summary — asincrono
   const aiCard=document.getElementById('dash-ai-card');
   if(aiCard)aiCard.style.display='block';
@@ -4231,6 +4242,102 @@ async function renderQueryResults(data, contextLabel){
   }).catch(()=>{document.getElementById('dash-ai-text').textContent='AI summary non disponibile.';});
 
   _dashListings=data;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   MARKET OVERVIEW — AI DESCRIPTIONS PER CHART
+═══════════════════════════════════════════════════ */
+
+const CHART_PROMPTS = {
+  'chart-area': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione delle aree funzionali basata su ${count} annunci di lavoro: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano cosa emerge da questa distribuzione, quale area domina e perché è significativo per il settore Life Sciences italiano. Sii preciso e professionale.`,
+  'chart-subarea': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione delle sottoaree professionali basata su ${count} annunci: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano i ruoli più ricercati, cosa dicono sulla struttura organizzativa delle aziende Life Sciences e quali figure sono più critiche.`,
+  'chart-role-family': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione delle famiglie di ruolo basata su ${count} annunci: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano la composizione del mercato, quale famiglia di ruolo predomina e cosa indica sulla strategia di hiring delle aziende Life Sciences.`,
+  'chart-canonical-role': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questi ruoli canonici più ricercati basati su ${count} annunci: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano quali figure professionali sono più richieste, il loro ruolo strategico nel settore e cosa indica la domanda per executive search.`,
+  'chart-therapeutic': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione per area terapeutica basata su ${count} annunci: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano quali aree terapeutiche trainano il mercato del lavoro, quali sono in crescita e cosa indica per le strategie commerciali delle aziende farmaceutiche.`,
+  'chart-seniority': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione per seniority basata su ${count} annunci: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano il livello di esperienza richiesto dal mercato, se le aziende cercano profili senior o junior e cosa indica per la gestione dei talenti nel settore.`,
+  'chart-ral': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione delle RAL medie per area funzionale basata su ${count} annunci con retribuzione: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano i differenziali salariali tra le aree, quali funzioni sono meglio remunerate e cosa indica per il posizionamento competitivo delle aziende.`,
+  'chart-percentiles': (data, count) => `Sei un analista del mercato Life Sciences italiano. Analizza questa distribuzione percentile delle RAL basata su ${count} annunci con retribuzione: ${JSON.stringify(data)}. Scrivi 2-3 frasi che spiegano la distribuzione salariale del mercato, l'ampiezza del range e cosa significano questi valori per il salary benchmarking nel settore Life Sciences italiano.`,
+};
+
+let _lastDescriptionCount = 0;
+
+async function generateChartDescriptions(data){
+  const count = data.length;
+
+  // Controlla se le descrizioni sono già salvate per questo numero di annunci
+  try{
+    const saved = await api('market_ai_descriptions?listings_count=eq.'+count+'&select=chart_id,description');
+    if(saved.length === Object.keys(CHART_PROMPTS).length){
+      // Tutte le descrizioni esistono — caricale dal DB
+      saved.forEach(row=>{
+        const el=document.getElementById('ai-desc-'+row.chart_id.replace('chart-',''));
+        if(el)el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+row.description;
+      });
+      console.log('Descrizioni caricate dal DB ('+count+' annunci)');
+      return;
+    }
+  }catch(e){console.warn('Errore lettura descrizioni DB:',e.message);}
+
+  // Genera le descrizioni una per una
+  for(const [chartId, promptFn] of Object.entries(CHART_PROMPTS)){
+    const descId='ai-desc-'+chartId.replace('chart-','');
+    const el=document.getElementById(descId);
+    if(!el)continue;
+
+    el.innerHTML='<span style="color:var(--text2);font-size:10px;">⏳ Generazione analisi AI...</span>';
+
+    // Prepara i dati specifici per quel grafico
+    let chartData=[];
+    if(chartId==='chart-area'){
+      chartData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area').slice(0,8);
+    }else if(chartId==='chart-subarea'){
+      chartData=countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,8);
+    }else if(chartId==='chart-role-family'){
+      chartData=countBy(data.filter(l=>l.role_family),'role_family').slice(0,8);
+    }else if(chartId==='chart-canonical-role'){
+      chartData=countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8);
+    }else if(chartId==='chart-therapeutic'){
+      chartData=countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8);
+    }else if(chartId==='chart-seniority'){
+      chartData=countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,8);
+    }else if(chartId==='chart-ral'){
+      const byArea={};
+      data.forEach(l=>{if(!l.functional_area_v2||(!l.ral_min&&!l.ral_max))return;if(!byArea[l.functional_area_v2])byArea[l.functional_area_v2]=[];byArea[l.functional_area_v2].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));});
+      chartData=Object.entries(byArea).map(([a,v])=>[a,Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    }else if(chartId==='chart-percentiles'){
+      const withRal=data.filter(l=>l.ral_min||l.ral_max);
+      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const p=n=>mids[Math.floor(mids.length*n/100)]||0;
+      chartData=[['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b,0)/mids.length)],['P75',p(75)],['P90',p(90)]];
+    }
+
+    try{
+      const prompt=promptFn(chartData, count);
+      const description=await callAIPowerful(prompt, 200);
+
+      el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+description;
+
+      // Salva nel DB (upsert)
+      try{
+        await api('market_ai_descriptions','POST',{
+          chart_id:chartId,
+          description:description,
+          listings_count:count
+        });
+      }catch(saveErr){
+        // Se esiste già, aggiorna
+        try{await api('market_ai_descriptions?chart_id=eq.'+chartId,'PATCH',{description,listings_count:count,generated_at:new Date().toISOString()});}
+        catch(e2){}
+      }
+
+      await new Promise(r=>setTimeout(r,2000)); // 2s tra chiamate
+
+    }catch(e){
+      el.innerHTML='<span style="color:var(--text2);font-size:10px;">Analisi AI non disponibile</span>';
+      console.warn('AI desc error per '+chartId+':',e.message);
+    }
+  }
 }
 
 /* Override loadDashboard per usare il query builder */
