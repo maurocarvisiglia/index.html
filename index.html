@@ -4196,8 +4196,8 @@ async function renderQueryResults(data, contextLabel){
   renderClickableBar('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,10),'accent','therapeutic_area',data);
   renderClickableBar('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen'),'blue','seniority',data);
   renderRal('chart-ral',data);
-  renderBar('chart-companies',countBy(data,'ragione_sociale').filter(d=>d[0]).slice(0,8),'blue');
-  renderClickableBar('chart-sector',countBy(data.map(l=>({...l,_sec:l.sector_v2||l.sector})),'_sec').slice(0,8),'accent','sector',data);
+  // Rimosso: chart-companies e chart-sector non più presenti nella view
+  // Rimosso: chart-companies e chart-sector non più presenti nella view
 
   // Percentili RAL
   if(withRal.length>=3){
