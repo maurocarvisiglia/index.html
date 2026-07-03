@@ -4838,7 +4838,7 @@ async function generateMarketSignals(){
   if(btn){btn.textContent='⏳ Analisi...';btn.disabled=true;}
 
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=500');
+    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=3000');
 
     // Calcola score globali
     const momentum=calcHiringMomentum(data);
@@ -4912,13 +4912,8 @@ async function generateMarketSignals(){
     });
     const salaryData=Object.entries(byArea).map(([a,vals])=>[a,Math.round(vals.reduce((s,v)=>s+v)/vals.length)]).sort((a,b)=>b[1]-a[1]).slice(0,8);
     const maxSal=Math.max(...salaryData.map(d=>d[1]),1);
-    const salEl=document.getElementById('signals-salary-intel');
-    if(salEl)salEl.innerHTML=salaryData.map(([a,avg])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="font-size:11px;">${a.replace(/_/g,' ')}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(avg/maxSal*100)}%;background:var(--accent)"></div></div>
-        <div class="bar-count" style="color:var(--accent);font-size:11px;">€${(avg/1000).toFixed(0)}k</div>
-      </div>`).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">RAL non disponibile</div>';
+    // Salary Intelligence → Box plot
+    renderBoxPlot('signals-salary-intel', data);
 
     // Segnali specifici
     const signals=detectMarketSignals(data,data);
@@ -4932,11 +4927,50 @@ async function generateMarketSignals(){
         </div>
       </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Nessun segnale significativo rilevato — aggiungi più annunci per attivare il motore</div>';
 
-    // AI Summary globale
-    const aiResult=await generateDashboardAISummary(data,'');
-    document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
-    const aiInsEl=document.getElementById('signals-ai-insights');
-    if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+    // AI Summary dedicato per Market Signals
+    try{
+      const d30count=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
+      const d90count=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-90*864e5)).length;
+      const topTA=Object.entries(taCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const topCo=Object.entries(byCoD30).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const withRalCount=data.filter(l=>l.ral_min||l.ral_max).length;
+      const sigPrompt='Sei un analista senior di market intelligence specializzato nel settore Life Sciences italiano. '+
+        'Analizza questi segnali di mercato e genera un briefing di intelligence con trend emergenti e alert strategici. '+
+        'DATI: Annunci totali: '+data.length+'. Ultimi 30gg: '+d30count+'. Ultimi 90gg: '+d90count+'. '+
+        'Score mercato: Momentum='+momentum+'/100, Salary='+salary+'/100, Depth='+depth+'/100, Scarcity='+scarcity+'/100. '+
+        'Top TA per momentum: '+topTA.map(([t,n])=>t+' ('+n+')').join(', ')+'. '+
+        'Aziende più attive (30gg): '+topCo.map(([c,n])=>c+' ('+n+')').join(', ')+'. '+
+        'Compliance RAL: '+Math.round(withRalCount/data.length*100)+'%. '+
+        'Segnali rilevati: '+signals.slice(0,5).map(s=>s.title).join(', ')+'. '+
+        'Rispondi SOLO con JSON: {"summary":"<paragrafo di 3-4 frasi che descrive lo stato attuale del mercato Life Sciences, i trend emergenti e i segnali più significativi>","insights":['+
+        '{"text":"<trend più significativo con dati specifici>","type":"positive"},'+
+        '{"text":"<area terapeutica o segmento in crescita>","type":"positive"},'+
+        '{"text":"<opportunità commerciale per MC Pharma basata sui segnali>","type":"positive"},'+
+        '{"text":"<alert o segnale di attenzione>","type":"warning"}]}';
+      const sigRaw=await callAIPowerful(sigPrompt,700);
+      const aiResult=JSON.parse(sigRaw.replace(/```json|```/g,'').trim());
+      document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
+      const aiInsEl=document.getElementById('signals-ai-insights');
+      if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+    }catch(e){
+      console.warn('Market Signals AI error:',e.message);
+      document.getElementById('signals-ai-text').textContent='Dati calcolati: '+data.length+' annunci analizzati. Momentum: '+momentum+'/100.';
+    }
+
+    // Salva segnali in market_signals
+    try{
+      const cutoff=new Date(Date.now()-7*864e5).toISOString();
+      await api('market_signals?created_at=lt.'+cutoff,'DELETE');
+      for(const sig of signals.slice(0,10)){
+        await api('market_signals','POST',{
+          signal_type:sig.badge||'info',
+          title:sig.title,
+          description:sig.desc,
+          score:momentum,
+          created_at:new Date().toISOString()
+        });
+      }
+    }catch(e){console.warn('Save signals error:',e.message);}
 
   }catch(e){
     toast('Errore Market Signals: '+e.message,'error');
