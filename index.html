@@ -962,30 +962,36 @@ a.job-link:hover{text-decoration:underline;}
       <div class="chart-card">
         <div class="chart-card-title">RAL per seniority</div>
         <div id="ruolo-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-ral-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Top aziende</div>
         <div id="ruolo-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-companies" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
     <div class="chart-grid" style="margin-bottom:20px;">
       <div class="chart-card">
         <div class="chart-card-title">Area terapeutica</div>
         <div id="ruolo-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-ta" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Distribuzione geografica</div>
         <div id="ruolo-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-geo" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
     <div class="chart-grid" style="margin-bottom:20px;">
       <div class="chart-card">
         <div class="chart-card-title">Distribuzione seniority</div>
         <div id="ruolo-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Field vs HQ</div>
         <div id="ruolo-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+          <div id="ai-rdesc-fieldhq" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
 
@@ -2807,6 +2813,8 @@ async function analyzeRuolo(){
 
       // Confronto ruoli simili
       loadRuoloComparisons(search);
+      // Descrizioni AI sotto i grafici
+      generateRuoloChartDescriptions(data,search);
     }else{
       const aiCard=document.getElementById('ruolo-ai-card');
       if(aiCard)aiCard.style.display='none';
@@ -3434,37 +3442,82 @@ function hideEnrichmentProgress(){
 
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
-  const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
-  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const median=mids.length?mids[Math.floor(mids.length/2)]:null;
+  const p25=mids.length?mids[Math.floor(mids.length*0.25)]:null;
+  const p75=mids.length?mids[Math.floor(mids.length*0.75)]:null;
+  const avgRal=mids.length?Math.round(mids.reduce((a,b)=>a+b)/mids.length):null;
+  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const bySen=Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]);
+  const byGeo=Object.entries(data.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const d30=new Date(Date.now()-30*864e5);
+  const recent30=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
+  const ralBySen=Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]);
+  const fmt=v=>v?'€'+(v/1000).toFixed(0)+'k':'n.d.';
 
-  const prompt=`Sei un esperto headhunter specializzato nel settore Life Sciences italiano.
-Analizza questi dati di mercato per la figura "${searchTerm}" e genera un intelligence report in italiano.
-
-DATI:
-- Annunci totali: ${data.length}
-- Aziende che assumono: ${new Set(data.map(l=>l.company_name).filter(Boolean)).size}
-- RAL media: ${avgRal?`€${(avgRal/1000).toFixed(0)}k`:'n.d.'}
-- Compliance RAL: ${Math.round(withRal.length/data.length*100)}%
-- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
-- Top aree terapeutiche: ${topTA.map(([t,n])=>`${t} (${n})`).join(', ')||'n.d.'}
-
-JSON con struttura ESATTA:
-{
-  "summary": "<2-3 frasi professionali sul profilo di mercato di questa figura>",
-  "insights": [
-    {"text": "<insight 1: domanda di mercato e trend>", "type": "positive"},
-    {"text": "<insight 2: salary benchmark vs mercato>", "type": "positive"},
-    {"text": "<insight 3: opportunità commerciale per un headhunter>", "type": "positive"},
-    {"text": "<insight 4: area di attenzione o variabilità>", "type": "warning"}
-  ]
-}`;
+  const aiPrompt='Sei un analista senior di executive search specializzato nel settore Life Sciences italiano, con expertise in compensation e talent market. '+
+    'Analizza questi dati di mercato per la figura "'+searchTerm+'" e produci un report di market intelligence approfondito in italiano. '+
+    'DATI: Annunci totali: '+data.length+'. Pubblicati negli ultimi 30 giorni: '+recent30+'. '+
+    'Aziende attive: '+new Set(data.map(l=>l.ragione_sociale||l.company_name).filter(Boolean)).size+'. '+
+    'Compliance RAL: '+Math.round(withRal.length/data.length*100)+'%. '+
+    'RAL media: '+fmt(avgRal)+'. Mediana: '+fmt(median)+'. P25: '+fmt(p25)+'. P75: '+fmt(p75)+'. '+
+    'RAL per seniority: '+ralBySen.slice(0,5).map(([s,v])=>s+' '+fmt(v)).join(', ')+'. '+
+    'Top aziende: '+topCo.map(([c,n])=>c+' ('+n+')').join(', ')+'. '+
+    'Aree terapeutiche: '+(topTA.length?topTA.map(([t,n])=>t+' ('+n+')').join(', '):'non specificata')+'. '+
+    'Seniority: '+bySen.slice(0,5).map(([s,n])=>s+' ('+n+')').join(', ')+'. '+
+    'Regioni: '+byGeo.map(([r,n])=>r+' ('+n+')').join(', ')+'. '+
+    'Rispondi SOLO con JSON valido: {"summary":"<paragrafo 4-5 frasi: profilo di mercato, benchmark salariale, aziende attive, aree terapeutiche, contesto Life Sciences>","insights":['+
+    '{"text":"<analisi salary benchmark: range P25-P75, mediana, differenziali seniority>","type":"positive"},'+
+    '{"text":"<analisi domanda: trend recente, aziende piu attive, concentrazione geografica>","type":"positive"},'+
+    '{"text":"<opportunita commerciale per MC Pharma: quali aziende contattare, timing>","type":"positive"},'+
+    '{"text":"<profilo candidato ideale: seniority piu richiesta, competenze, provenienza>","type":"positive"},'+
+    '{"text":"<fattori di rischio: scarsita candidati, variabilita salariale, stagionalita>","type":"warning"}]}';
 
   try{
-    const raw=await callAI(prompt,500);
+    const raw=await callAIPowerful(aiPrompt,800);
     return JSON.parse(raw.replace(/```json|```/g,'').trim());
   }catch(e){
-    return{summary:`${data.length} annunci per "${searchTerm}" nel database. ${new Set(data.map(l=>l.company_name).filter(Boolean)).size} aziende attive.`,insights:[]};
+    console.warn('generateRuoloAISummary error:',e.message);
+    return{summary:data.length+' annunci per "'+searchTerm+'". '+new Set(data.map(l=>l.company_name).filter(Boolean)).size+' aziende attive. RAL mediana: '+fmt(median)+'.',
+    insights:[{text:'Top aziende: '+topCo.slice(0,3).map(([c,n])=>c+' ('+n+')').join(', '),type:'positive'},{text:'Compliance RAL: '+Math.round(withRal.length/data.length*100)+'%',type:'positive'}]};
+  }
+}
+
+
+async function generateRuoloChartDescriptions(data, searchTerm){
+  const withRal=data.filter(l=>l.ral_min||l.ral_max);
+  const charts=[
+    {id:'ai-rdesc-seniority',
+     getData:()=>Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Seniority: '+d.map(([s,v])=>s+': '+v).join(', ')+'. Scrivi 1-2 frasi sul livello di esperienza richiesto dal mercato.'},
+    {id:'ai-rdesc-companies',
+     getData:()=>Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Top aziende: '+d.map(([c,v])=>c+' ('+v+')').join(', ')+'. Scrivi 1-2 frasi sulle aziende piu attive e opportunita per MC Pharma.'},
+    {id:'ai-rdesc-ral-seniority',
+     getData:()=>Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'". RAL per seniority ('+withRal.length+' annunci con RAL): '+d.map(([s,v])=>s+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. Scrivi 1-2 frasi sui differenziali salariali.'},
+    {id:'ai-rdesc-ta',
+     getData:()=>Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Aree terapeutiche: '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi su quali TA trainano la domanda.'},
+    {id:'ai-rdesc-geo',
+     getData:()=>Object.entries(data.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,6),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Regioni: '+d.map(([r,v])=>r+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla concentrazione geografica.'},
+    {id:'ai-rdesc-fieldhq',
+     getData:()=>Object.entries(data.filter(l=>l.field_hq).reduce((acc,l)=>{acc[l.field_hq]=(acc[l.field_hq]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),
+     prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'". Field vs HQ: '+d.map(([t,v])=>t+': '+v).join(', ')+'. Scrivi 1-2 frasi sulla natura operativa di questa figura.'},
+  ];
+  for(const chart of charts){
+    const el=document.getElementById(chart.id);
+    if(!el)continue;
+    const chartData=chart.getData();
+    if(!chartData.length){el.innerHTML='';continue;}
+    el.innerHTML='<span style="color:var(--text2);font-size:10px;">⏳ AI in analisi...</span>';
+    try{
+      const desc=await callAIPowerful(chart.prompt(chartData,data.length),150);
+      el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+desc;
+    }catch(e){el.innerHTML='';}
+    await new Promise(r=>setTimeout(r,2000));
   }
 }
 
