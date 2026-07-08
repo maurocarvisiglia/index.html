@@ -2751,14 +2751,32 @@ async function analyzeRuolo(){
     const baseFilters=sectorF+areaF+taF;
 
     let data=[];
+    // Funzione match preciso: il termine deve essere una parola intera nel titolo
+    const matchesTerm=(title,term)=>{
+      if(!title)return false;
+      const t=title.toLowerCase();
+      const tk=term.toLowerCase();
+      // Usa word boundary \b per match preciso
+      try{
+        const re=new RegExp('\\b'+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');
+        return re.test(t);
+      }catch(e){
+        return t.includes(tk);
+      }
+    };
+
     if(searchTerms.length){
-      // Una query per termine — unisce i risultati senza duplicati
       const seenIds=new Set();
       for(const term of searchTerms){
         const enc=encodeURIComponent(term);
         const q=baseQ+baseFilters+'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)';
         const res=await api(q);
-        res.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
+        // Filtro preciso lato client: il termine deve essere parola intera
+        const filtered=res.filter(l=>
+          matchesTerm(l.job_title,term)||
+          matchesTerm(l.canonical_role,term)
+        );
+        filtered.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
       }
     } else {
       data=await api(baseQ+baseFilters);
