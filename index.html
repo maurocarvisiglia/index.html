@@ -889,6 +889,17 @@ a.job-link:hover{text-decoration:underline;}
         <input type="text" id="ruolo-search" placeholder="es. Medical Advisor; ISF; Product Specialist (separa con ; o ,)" style="width:100%;font-size:14px;padding:10px 14px;" onkeydown="if(event.key==='Enter')analyzeRuolo()">
         <button onclick="analyzeRuolo()" style="margin-top:8px;padding:8px 20px;border-radius:8px;border:none;background:var(--accent);color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Cerca</button>
       </div>
+    </div>
+    <!-- Box suggerimenti figure correlate -->
+    <div id="ruolo-suggestions-box" style="display:none;background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:16px 18px;margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--accent);">🤖 Figure correlate suggerite da Gemini</div>
+        <button onclick="applyRuoloSuggestions()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:white;font-size:12px;font-weight:600;cursor:pointer;">✓ Espandi ricerca</button>
+      </div>
+      <div id="ruolo-suggestions-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text2);">Spunta le figure da includere nella ricerca, poi clicca Espandi ricerca.</div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end;">
       <div class="filter-group">
         <div class="filter-label">Settore</div>
         <select id="ruolo-sector" onchange="analyzeRuolo()">
@@ -2706,6 +2717,14 @@ async function analyzeRuolo(){
   const searchRaw=(document.getElementById('ruolo-search')?.value||'').trim();
   const searchTerms=searchRaw.split(/[;,]+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
   const search=searchRaw.toLowerCase();
+
+  // Suggerisci figure correlate solo per ricerche singole
+  if(searchTerms.length===1&&searchRaw&&searchRaw!==_lastSuggestionsSearch){
+    suggestRelatedRoles(searchRaw);
+  } else if(searchTerms.length>1||!searchRaw){
+    const box=document.getElementById('ruolo-suggestions-box');
+    if(box)box.style.display='none';
+  }
   const sector=document.getElementById('ruolo-sector')?.value||'';
   const area=document.getElementById('ruolo-area')?.value||'';
   const ta=document.getElementById('ruolo-ta')?.value||'';
@@ -3448,6 +3467,87 @@ function hideEnrichmentProgress(){
 /* ══════════════════════════════════════════════
    ANALISI RUOLO — AI SUMMARY + CONFRONTO RUOLI
    ══════════════════════════════════════════════ */
+
+
+// ── ESPANSIONE SEMANTICA RICERCA RUOLO ──
+let _lastSuggestionsSearch = '';
+
+async function suggestRelatedRoles(searchTerm){
+  if(!searchTerm||searchTerm.length<2)return;
+
+  // Controlla localStorage per suggerimenti già salvati
+  const cacheKey='ruolo_suggestions_'+searchTerm.toLowerCase().trim();
+  const cached=localStorage.getItem(cacheKey);
+  let suggestions=[];
+
+  if(cached){
+    try{suggestions=JSON.parse(cached);}catch(e){}
+  }
+
+  if(!suggestions.length){
+    // Chiama Gemini per suggerimenti semantici
+    try{
+      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. '+
+        'Per la figura professionale "'+searchTerm+'" indica le figure professionali correlate o simili nel settore Life Sciences italiano. '+
+        'Considera sinonimi, varianti di nomenclatura e ruoli della stessa famiglia professionale. '+
+        'Rispondi SOLO con un array JSON di stringhe, massimo 8 figure, ordinate per rilevanza. '+
+        'Esempio: ["Informatore Scientifico del Farmaco","Medical Representative","Product Specialist","Sales Specialist","Key Account Manager"] '+
+        'Non includere la figura originale "'+searchTerm+'" nell\u0027array.';
+      const raw=await callGemini(prompt,200);
+      const cleaned=raw.replace(/```json|```/g,'').trim();
+      suggestions=JSON.parse(cleaned);
+      if(Array.isArray(suggestions)&&suggestions.length){
+        localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+      }
+    }catch(e){
+      console.warn('suggestRelatedRoles error:',e.message);
+      return;
+    }
+  }
+
+  if(!suggestions.length)return;
+
+  // Mostra il box suggerimenti
+  const box=document.getElementById('ruolo-suggestions-box');
+  const list=document.getElementById('ruolo-suggestions-list');
+  if(!box||!list)return;
+
+  // Recupera selezioni precedenti dalla memoria
+  const selKey='ruolo_selected_'+searchTerm.toLowerCase().trim();
+  const prevSelected=JSON.parse(localStorage.getItem(selKey)||'[]');
+
+  list.innerHTML=suggestions.map((s,i)=>{
+    const isChecked=prevSelected.includes(s)||prevSelected.length===0;
+    return '<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--surface2);border-radius:6px;cursor:pointer;font-size:12px;">'
+      +'<input type="checkbox" class="ruolo-sug-cb" data-role="'+s.replace(/"/g,'&quot;')+'" '+(isChecked?'checked':'')+' style="cursor:pointer;">'
+      +'<span>'+s+'</span>'
+      +'</label>';
+  }).join('');
+
+  box.style.display='block';
+  _lastSuggestionsSearch=searchTerm;
+}
+
+function applyRuoloSuggestions(){
+  const checkboxes=document.querySelectorAll('.ruolo-sug-cb:checked');
+  const selected=Array.from(checkboxes).map(cb=>cb.dataset.role).filter(Boolean);
+  if(!selected.length){toast('Seleziona almeno una figura','warning');return;}
+
+  // Salva selezione in localStorage
+  const selKey='ruolo_selected_'+_lastSuggestionsSearch.toLowerCase().trim();
+  localStorage.setItem(selKey,JSON.stringify(selected));
+
+  // Aggiorna campo ricerca con i termini selezionati
+  const inp=document.getElementById('ruolo-search');
+  if(inp){
+    const current=inp.value.trim();
+    inp.value=current+'; '+selected.join('; ');
+  }
+
+  // Nascondi box e avvia analisi
+  document.getElementById('ruolo-suggestions-box').style.display='none';
+  analyzeRuolo();
+}
 
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
