@@ -2753,16 +2753,10 @@ async function analyzeRuolo(){
     let data=[];
     // Funzione match preciso: il termine deve essere una parola intera nel titolo
     const matchesTerm=(title,term)=>{
-      if(!title)return false;
-      const t=title.toLowerCase();
-      const tk=term.toLowerCase();
-      // Usa word boundary \b per match preciso
-      try{
-        const re=new RegExp('\\b'+tk.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i');
-        return re.test(t);
-      }catch(e){
-        return t.includes(tk);
-      }
+      if(!title||!term)return false;
+      const t=' '+title.toLowerCase().replace(/[^a-z0-9àèéìòùäöü]/g,' ')+' ';
+      const tk=' '+term.toLowerCase().replace(/[^a-z0-9àèéìòùäöü]/g,' ')+' ';
+      return t.includes(tk);
     };
 
     if(searchTerms.length){
@@ -3505,21 +3499,31 @@ async function suggestRelatedRoles(searchTerm){
   if(!suggestions.length){
     // Chiama Gemini per suggerimenti semantici
     try{
-      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. '+
-        'Per la figura professionale "'+searchTerm+'" indica le figure professionali correlate o simili nel settore Life Sciences italiano. '+
-        'Considera sinonimi, varianti di nomenclatura e ruoli della stessa famiglia professionale. '+
-        'Rispondi SOLO con un array JSON di stringhe, massimo 8 figure, ordinate per rilevanza. '+
-        'Esempio: ["Informatore Scientifico del Farmaco","Medical Representative","Product Specialist","Sales Specialist","Key Account Manager"] '+
-        'Non includere la figura originale "'+searchTerm+'" nell\u0027array.';
+      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Per la figura "'+searchTerm+'" elenca le figure professionali correlate o sinonimi usati nel settore Life Sciences italiano. Rispondi SOLO con un array JSON di stringhe, max 8 elementi, senza testo aggiuntivo. Esempio: ["Informatore Scientifico del Farmaco","Medical Representative","Product Specialist"]';
       const raw=await callGemini(prompt,200);
-      const cleaned=raw.replace(/```json|```/g,'').trim();
-      suggestions=JSON.parse(cleaned);
-      if(Array.isArray(suggestions)&&suggestions.length){
+      const cleaned=raw.replace(/```json|```|\n/g,'').trim();
+      const parsed=JSON.parse(cleaned);
+      if(Array.isArray(parsed)&&parsed.length){
+        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2);
         localStorage.setItem(cacheKey,JSON.stringify(suggestions));
       }
     }catch(e){
       console.warn('suggestRelatedRoles error:',e.message);
-      return;
+      // Fallback: mappa locale essenziale
+      const fallbackMap={
+        'isf':['Informatore Scientifico del Farmaco','Medical Representative','Product Specialist','Sales Specialist'],
+        'informatore':['ISF','Medical Representative','Informatore Scientifico','Product Specialist'],
+        'msl':['Medical Science Liaison','Medical Advisor','Medical Manager','Clinical Liaison'],
+        'product manager':['Brand Manager','Marketing Manager','Marketing Specialist','Product Director'],
+        'market access':['HEOR Manager','Pricing Manager','Reimbursement Manager','Government Affairs'],
+        'regulatory':['Regulatory Affairs Manager','Drug Safety','Pharmacovigilance','RA Specialist'],
+        'cra':['Clinical Research Associate','Clinical Monitor','Clinical Project Manager','Study Manager'],
+        'quality':['QA Manager','Quality Assurance','Quality Control','QC Analyst','Validation'],
+        'medical advisor':['Medical Manager','MSL','Medical Science Liaison','Clinical Advisor'],
+        'kam':['Key Account Manager','National Account Manager','Business Development','Sales Manager'],
+      };
+      const key=searchTerm.toLowerCase().trim();
+      suggestions=fallbackMap[key]||[];
     }
   }
 
