@@ -2766,10 +2766,8 @@ async function analyzeRuolo(){
         const q=baseQ+baseFilters+'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)';
         const res=await api(q);
         // Filtro preciso lato client: il termine deve essere parola intera
-        const filtered=res.filter(l=>
-          matchesTerm(l.job_title,term)||
-          matchesTerm(l.canonical_role,term)
-        );
+        // Cerca solo su job_title per evitare falsi positivi da canonical_role mal classificati
+        const filtered=res.filter(l=>matchesTerm(l.job_title,term));
         filtered.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
       }
     } else {
