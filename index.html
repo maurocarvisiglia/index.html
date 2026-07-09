@@ -3538,7 +3538,12 @@ async function suggestRelatedRoles(searchTerm){
       const cleaned=raw.replace(/```json|```/g,'').trim();
       const parsed=JSON.parse(cleaned);
       if(Array.isArray(parsed)&&parsed.length){
-        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2&&uniqueRoles.includes(s));
+        // Match case-insensitive contro i ruoli nel DB
+        const rolesLower=uniqueRoles.map(r=>r.toLowerCase());
+        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2).map(s=>{
+          const idx=rolesLower.indexOf(s.toLowerCase());
+          return idx>=0?uniqueRoles[idx]:null;
+        }).filter(Boolean);
         if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
       }
     }catch(e){
