@@ -3544,37 +3544,46 @@ function applyRuoloSuggestions(){
 
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
-  const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
-  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
-
-  const prompt=`Sei un esperto headhunter specializzato nel settore Life Sciences italiano.
-Analizza questi dati di mercato per la figura "${searchTerm}" e genera un intelligence report in italiano.
-
-DATI:
-- Annunci totali: ${data.length}
-- Aziende che assumono: ${new Set(data.map(l=>l.company_name).filter(Boolean)).size}
-- RAL media: ${avgRal?`€${(avgRal/1000).toFixed(0)}k`:'n.d.'}
-- Compliance RAL: ${Math.round(withRal.length/data.length*100)}%
-- Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
-- Top aree terapeutiche: ${topTA.map(([t,n])=>`${t} (${n})`).join(', ')||'n.d.'}
-
-JSON con struttura ESATTA:
-{
-  "summary": "<2-3 frasi professionali sul profilo di mercato di questa figura>",
-  "insights": [
-    {"text": "<insight 1: domanda di mercato e trend>", "type": "positive"},
-    {"text": "<insight 2: salary benchmark vs mercato>", "type": "positive"},
-    {"text": "<insight 3: opportunità commerciale per un headhunter>", "type": "positive"},
-    {"text": "<insight 4: area di attenzione o variabilità>", "type": "warning"}
-  ]
-}`;
-
+  const mids=trimmedRal(withRal);
+  const median=mids.length?mids[Math.floor(mids.length/2)]:null;
+  const p25=mids.length?mids[Math.floor(mids.length*0.25)]:null;
+  const p75=mids.length?mids[Math.floor(mids.length*0.75)]:null;
+  const avgRal=mids.length?Math.round(mids.reduce((a,b)=>a+b)/mids.length):null;
+  const topCo=Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const topTA=Object.entries(data.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const bySen=Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]);
+  const byGeo=Object.entries(data.reduce((acc,l)=>{const r=l.region||(l.location||'').split(',').pop().trim()||'N/D';acc[r]=(acc[r]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const d30=new Date(Date.now()-30*864e5);
+  const recent30=data.filter(l=>l.published_date&&new Date(l.published_date)>d30).length;
+  const fmt=v=>v?'€'+(v/1000).toFixed(0)+'k':'n.d.';
+  const aiPrompt='Sei un analista senior di executive search specializzato nel settore Life Sciences italiano. '+
+    'Analizza questi dati per "'+searchTerm+'" e genera un report in italiano. '+
+    'DATI: Annunci: '+data.length+'. Ultimi 30gg: '+recent30+'. Aziende: '+new Set(data.map(l=>l.ragione_sociale||l.company_name).filter(Boolean)).size+'. '+
+    'RAL: media='+fmt(avgRal)+' mediana='+fmt(median)+' P25='+fmt(p25)+' P75='+fmt(p75)+'. '+
+    'Top aziende: '+topCo.map(([c,n])=>c+' ('+n+')').join(', ')+'. '+
+    'TA: '+(topTA.length?topTA.map(([t,n])=>t+' ('+n+')').join(', '):'n.d.')+'. '+
+    'Seniority: '+bySen.slice(0,4).map(([s,n])=>s+' ('+n+')').join(', ')+'. '+
+    'Regioni: '+byGeo.map(([r,n])=>r+' ('+n+')').join(', ')+'. '+
+    'Rispondi SOLO con JSON: {"summary":"<4-5 frasi su mercato, benchmark salariale, aziende, aree terapeutiche>","insights":['+
+    '{"text":"<salary benchmark P25-P75 e differenziali seniority>","type":"positive"},'+
+    '{"text":"<domanda hiring: trend, aziende attive, geo>","type":"positive"},'+
+    '{"text":"<opportunita commerciale per MC Pharma>","type":"positive"},'+
+    '{"text":"<profilo candidato ideale: seniority, competenze>","type":"positive"},'+
+    '{"text":"<rischi: scarsita, variabilita salariale>","type":"warning"}]}';
   try{
-    const raw=await callAI(prompt,500);
+    const raw=await callAIPowerful(aiPrompt,800);
     return JSON.parse(raw.replace(/```json|```/g,'').trim());
   }catch(e){
-    return{summary:`${data.length} annunci per "${searchTerm}" nel database. ${new Set(data.map(l=>l.company_name).filter(Boolean)).size} aziende attive.`,insights:[]};
+    console.warn('generateRuoloAISummary error:',e.message);
+    return{
+      summary:data.length+' annunci per "'+searchTerm+'". '+new Set(data.map(l=>l.company_name).filter(Boolean)).size+' aziende attive. RAL mediana: '+fmt(median)+'.',
+      insights:[
+        {text:'Top aziende: '+topCo.slice(0,3).map(([c,n])=>c+' ('+n+')').join(', '),type:'positive'},
+        {text:'Compliance RAL: '+Math.round(withRal.length/data.length*100)+'% degli annunci riporta la retribuzione',type:'positive'},
+        {text:'Ultimi 30gg: '+recent30+' nuovi annunci pubblicati',type:'positive'},
+        {text:'Seniority prevalente: '+bySen[0]?.[0]||'n.d.',type:'positive'}
+      ]
+    };
   }
 }
 
