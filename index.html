@@ -3523,33 +3523,26 @@ async function suggestRelatedRoles(searchTerm){
   }
 
   if(!suggestions.length){
-    // Chiama Gemini per suggerimenti semantici
     try{
-      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Per la figura "'+searchTerm+'" elenca le figure professionali correlate o sinonimi usati nel settore Life Sciences italiano. Rispondi SOLO con un array JSON di stringhe, max 8 elementi, senza testo aggiuntivo. Esempio: ["Informatore Scientifico del Farmaco","Medical Representative","Product Specialist"]';
-      const raw=await callGemini(prompt,200);
-      const cleaned=raw.replace(/```json|```|\n/g,'').trim();
+      // Carica canonical_role distinti presenti nel DB
+      const rolesData=await api('job_listings?select=canonical_role&canonical_role=not.is.null&limit=3000');
+      const uniqueRoles=[...new Set(rolesData.map(r=>r.canonical_role).filter(Boolean))].sort();
+
+      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. '+
+        'Questo e il mio database di figure professionali: '+uniqueRoles.slice(0,80).join('; ')+'. '+
+        'Per la figura "'+searchTerm+'" seleziona da questa lista le figure piu simili per ambito funzionale. '+
+        'IMPORTANTE: scegli solo figure dello stesso ambito (es. per customer care scegli assistenza/supporto clienti; per ISF scegli ruoli commerciali field; per regulatory scegli ruoli regolatori). '+
+        'Rispondi SOLO con un array JSON di stringhe prese esattamente dalla lista sopra, max 6 elementi. Nessun testo aggiuntivo.';
+
+      const raw=await callGemini(prompt,300);
+      const cleaned=raw.replace(/```json|```/g,'').trim();
       const parsed=JSON.parse(cleaned);
       if(Array.isArray(parsed)&&parsed.length){
-        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2);
-        localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2&&uniqueRoles.includes(s));
+        if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
       }
     }catch(e){
       console.warn('suggestRelatedRoles error:',e.message);
-      // Fallback: mappa locale essenziale
-      const fallbackMap={
-        'isf':['Informatore Scientifico del Farmaco','Medical Representative','Product Specialist','Sales Specialist'],
-        'informatore':['ISF','Medical Representative','Informatore Scientifico','Product Specialist'],
-        'msl':['Medical Science Liaison','Medical Advisor','Medical Manager','Clinical Liaison'],
-        'product manager':['Brand Manager','Marketing Manager','Marketing Specialist','Product Director'],
-        'market access':['HEOR Manager','Pricing Manager','Reimbursement Manager','Government Affairs'],
-        'regulatory':['Regulatory Affairs Manager','Drug Safety','Pharmacovigilance','RA Specialist'],
-        'cra':['Clinical Research Associate','Clinical Monitor','Clinical Project Manager','Study Manager'],
-        'quality':['QA Manager','Quality Assurance','Quality Control','QC Analyst','Validation'],
-        'medical advisor':['Medical Manager','MSL','Medical Science Liaison','Clinical Advisor'],
-        'kam':['Key Account Manager','National Account Manager','Business Development','Sales Manager'],
-      };
-      const key=searchTerm.toLowerCase().trim();
-      suggestions=fallbackMap[key]||[];
     }
   }
 
