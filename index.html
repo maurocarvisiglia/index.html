@@ -963,30 +963,25 @@ a.job-link:hover{text-decoration:underline;}
       <div class="chart-card">
         <div class="chart-card-title">RAL per seniority</div>
         <div id="ruolo-chart-ral-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        <div id="ai-rdesc-ral-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">Top aziende</div>
         <div id="ruolo-chart-companies"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        <div id="ai-rdesc-companies" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
-    <div class="chart-grid" style="margin-bottom:20px;">
-      <div class="chart-card">
-        <div class="chart-card-title">Area terapeutica</div>
-        <div id="ruolo-chart-ta"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">Distribuzione geografica</div>
-        <div id="ruolo-chart-geo"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
-      </div>
-    </div>
+
     <div class="chart-grid" style="margin-bottom:20px;">
       <div class="chart-card">
         <div class="chart-card-title">Distribuzione seniority</div>
         <div id="ruolo-chart-seniority"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        <div id="ai-rdesc-seniority" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Field vs HQ</div>
-        <div id="ruolo-chart-fieldhq"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        <div class="chart-card-title">Trend RAL nel tempo</div>
+        <div id="ruolo-chart-trend"><div style="padding:24px;text-align:center;color:var(--text2);">—</div></div>
+        <div id="ai-rdesc-trend" style="margin-top:8px;font-size:11px;color:var(--text2);line-height:1.6;min-height:16px;border-top:1px solid var(--border);padding-top:8px;"></div>
       </div>
     </div>
 
@@ -2695,6 +2690,14 @@ async function analyzeRuolo(){
   const searchRaw=(document.getElementById('ruolo-search')?.value||'').trim();
   const searchTerms=searchRaw.split(/[;,]+/).map(t=>t.trim().toLowerCase()).filter(Boolean);
   const search=searchRaw.toLowerCase();
+  // Suggerisci figure correlate (delay per non sovraccaricare API)
+  if(searchRaw&&searchRaw!==_lastSuggestionsSearch){
+    const firstTerm=searchTerms[0]||searchRaw;
+    setTimeout(()=>suggestRelatedRoles(firstTerm),3000);
+  } else if(!searchRaw){
+    const box=document.getElementById('ruolo-suggestions-box');
+    if(box)box.style.display='none';
+  }
   const sector=document.getElementById('ruolo-sector')?.value||'';
   const area=document.getElementById('ruolo-area')?.value||'';
   const ta=document.getElementById('ruolo-ta')?.value||'';
@@ -2707,7 +2710,7 @@ async function analyzeRuolo(){
   const emptyMsg='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Cerca un ruolo</div>';
   if(!searchTerms.length&&!area&&!sector&&!ta){
     document.getElementById('ruolo-table').innerHTML='<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Inizia a cercare</div><div class="empty-sub">Digita il nome di una figura professionale per analizzarla</div></div>';
-    ['ruolo-chart-seniority','ruolo-chart-companies','ruolo-chart-ral-seniority','ruolo-chart-geo','ruolo-chart-ta','ruolo-chart-fieldhq'].forEach(id=>{
+    ['ruolo-chart-seniority','ruolo-chart-companies','ruolo-chart-ral-seniority','ruolo-chart-trend'].forEach(id=>{
       const el=document.getElementById(id);if(el)el.innerHTML=emptyMsg;
     });
     return;
@@ -2768,36 +2771,44 @@ async function analyzeRuolo(){
     const byCo={}; data.forEach(l=>{const k=l.company_name||'N/D';byCo[k]=(byCo[k]||0)+1;});
     renderRuoloBar('ruolo-chart-companies',Object.entries(byCo).sort((a,b)=>b[1]-a[1]).slice(0,8),'accent');
 
-    // Chart RAL per seniority
-    const ralBySen={};
+    // RAL per seniority — Box plot con P25/Mediana/P75
+    const SENORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','head','vp','c_level'];
+    const bySenRal={};
     withRal.forEach(l=>{
-      const k=l.seniority_v2||l.seniority||'N/D';
-      if(!ralBySen[k])ralBySen[k]=[];
-      ralBySen[k].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const s=l.seniority_v2||l.seniority||'N/D';
+      if(!bySenRal[s])bySenRal[s]=[];
+      const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+      if(v>=10000&&v<=500000)bySenRal[s].push(v);
     });
-    const ralSenData=Object.entries(ralBySen).map(([k,v])=>[k,Math.round(v.reduce((a,b)=>a+b,0)/v.length)]).sort((a,b)=>b[1]-a[1]);
-    const maxRal=Math.max(...ralSenData.map(d=>d[1]),1);
     const ralSenEl=document.getElementById('ruolo-chart-ral-seniority');
     if(ralSenEl){
-      ralSenEl.innerHTML=ralSenData.length?ralSenData.map(([l,v])=>`
-        <div class="bar-row">
-          <div class="bar-label">${l}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${(v/maxRal*100).toFixed(1)}%;background:var(--success)"></div></div>
-          <div class="bar-count" style="width:60px;font-size:11px;color:var(--success)">€${(v/1000).toFixed(0)}k</div>
-        </div>`).join(''):emptyMsg;
+      const colors=['#6366f1','#818cf8','#10b981','#34d399','#f59e0b','#fbbf24','#ef4444','#f87171'];
+      const entries=Object.entries(bySenRal).filter(([,v])=>v.length>=1).sort((a,b)=>{const ia=SENORDER.indexOf(a[0]),ib=SENORDER.indexOf(b[0]);return(ia===-1?99:ia)-(ib===-1?99:ib);});
+      const allVals=[].concat(...entries.map(([,v])=>v));
+      const globalMax=allVals.length?Math.max(...allVals):100000;
+      const globalMin=allVals.length?Math.min(...allVals):10000;
+      const scale=v=>Math.round((v-globalMin)/(globalMax-globalMin||1)*100);
+      const rows=entries.map(([s,vals],i)=>{
+        const sorted=vals.slice().sort((a,b)=>a-b);
+        const cut=Math.max(0,Math.floor(sorted.length*0.05));
+        const trimmed=sorted.length>4?sorted.slice(cut,sorted.length-cut):sorted;
+        const p=n=>trimmed[Math.max(0,Math.floor(trimmed.length*n/100))]||0;
+        const p25=p(25),med=p(50),p75=p(75),col=colors[i%colors.length];
+        const fmt=v=>'€'+(v/1000).toFixed(0)+'k';
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+          +'<div style="font-size:11px;color:var(--text2);width:110px;text-align:right;">'+toLabel(s)+'</div>'
+          +'<div style="flex:1;position:relative;height:20px;background:var(--surface2);border-radius:3px;overflow:hidden;">'
+            +'<div style="position:absolute;left:'+scale(p25)+'%;width:'+(scale(p75)-scale(p25))+'%;height:100%;background:'+col+';opacity:0.3;"></div>'
+            +'<div style="position:absolute;left:'+scale(med)+'%;width:3px;height:100%;background:'+col+';"></div>'
+          +'</div>'
+          +'<div style="font-size:10px;color:var(--text2);width:120px;text-align:right;">'+fmt(p25)+' / <b>'+fmt(med)+'</b> / '+fmt(p75)+'</div>'
+          +'</div>';
+      }).join('');
+      ralSenEl.innerHTML=rows||'<div style="padding:16px;text-align:center;color:var(--text2);">Dati RAL insufficienti</div>';
     }
 
-    // Chart area terapeutica
-    const byTA={}; data.filter(l=>l.therapeutic_area).forEach(l=>{const k=l.therapeutic_area;byTA[k]=(byTA[k]||0)+1;});
-    renderRuoloBar('ruolo-chart-ta',Object.entries(byTA).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
-
-    // Chart geografia
-    const byGeo={}; data.forEach(l=>{const loc=l.region||(l.location||'').split(',')[0].trim()||'N/D';byGeo[loc]=(byGeo[loc]||0)+1;});
-    renderRuoloBar('ruolo-chart-geo',Object.entries(byGeo).sort((a,b)=>b[1]-a[1]).slice(0,8),'');
-
-    // Chart Field vs HQ
-    const byFH={}; data.filter(l=>l.field_hq).forEach(l=>{byFH[l.field_hq]=(byFH[l.field_hq]||0)+1;});
-    renderRuoloBar('ruolo-chart-fieldhq',Object.entries(byFH).sort((a,b)=>b[1]-a[1]),'blue');
+    // Trend RAL nel tempo
+    renderRuoloRalTrend('ruolo-chart-trend',data);
 
     // AI Summary — asincrono
     if(search&&data.length>0){
@@ -2812,6 +2823,8 @@ async function analyzeRuolo(){
 
       // Confronto ruoli simili
       loadRuoloComparisons(search);
+      // Descrizioni AI sotto i grafici
+      generateRuoloChartDescriptions(data,search);
     }else{
       const aiCard=document.getElementById('ruolo-ai-card');
       if(aiCard)aiCard.style.display='none';
@@ -3436,6 +3449,98 @@ function hideEnrichmentProgress(){
 /* ══════════════════════════════════════════════
    ANALISI RUOLO — AI SUMMARY + CONFRONTO RUOLI
    ══════════════════════════════════════════════ */
+
+
+function renderRuoloRalTrend(id,data){
+  const el=document.getElementById(id);if(!el)return;
+  const withRal=data.filter(l=>l.ral_min||l.ral_max);
+  if(withRal.length<3){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti per il trend</div>';return;}
+  const byMonth={};
+  withRal.forEach(l=>{
+    if(!l.published_date)return;
+    const d=new Date(l.published_date),key=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
+    if(!byMonth[key])byMonth[key]=[];
+    const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+    if(v>=10000&&v<=500000)byMonth[key].push(v);
+  });
+  const months=Object.keys(byMonth).sort().slice(-12);
+  if(months.length<2){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati storici insufficienti</div>';return;}
+  const points=months.map(m=>{const vals=byMonth[m].sort((a,b)=>a-b);return{m,med:vals[Math.floor(vals.length/2)],n:vals.length};});
+  const W=460,H=160,PAD=40,PADt=20,meds=points.map(p=>p.med);
+  const minV=Math.min(...meds),maxV=Math.max(...meds);
+  const sx=i=>PAD+(i/(points.length-1))*(W-PAD*2),sy=v=>H-PADt-(v-minV)/(maxV-minV||1)*(H-PADt*2);
+  const polyline=points.map((p,i)=>sx(i)+','+sy(p.med)).join(' ');
+  const area=points.map((p,i)=>sx(i)+','+sy(p.med)).join(' ')+' '+sx(points.length-1)+','+(H-PADt)+' '+sx(0)+','+(H-PADt);
+  const dots=points.map((p,i)=>'<circle cx="'+sx(i)+'" cy="'+sy(p.med)+'" r="4" fill="#6366f1" stroke="var(--surface)" stroke-width="2"><title>'+p.m+': €'+(p.med/1000).toFixed(0)+'k ('+p.n+' ann.)</title></circle>').join('');
+  const labels=points.filter((_,i)=>i===0||i===points.length-1||i%3===0).map(p=>{const i=points.indexOf(p);return '<text x="'+sx(i)+'" y="'+(H-4)+'" text-anchor="middle" style="font-size:8px;fill:var(--text2);">'+p.m.substring(5)+'/'+p.m.substring(2,4)+'</text>';}).join('');
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;"><polygon points="'+area+'" fill="#6366f1" fill-opacity="0.08"/><polyline points="'+polyline+'" fill="none" stroke="#6366f1" stroke-width="2" stroke-linejoin="round"/>'+dots+labels+'<text x="'+W/2+'" y="14" text-anchor="middle" style="font-size:9px;fill:var(--text2);">RAL mediana mensile — '+withRal.length+' annunci con RAL</text></svg>';
+}
+
+async function generateRuoloChartDescriptions(data,searchTerm){
+  const withRal=data.filter(l=>l.ral_min||l.ral_max);
+  const charts=[
+    {id:'ai-rdesc-seniority',getData:()=>Object.entries(data.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';acc[s]=(acc[s]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]),prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Seniority: '+d.map(([s,v])=>s+': '+v).join(', ')+'. Scrivi 1-2 frasi sul livello di esperienza richiesto.'},
+    {id:'ai-rdesc-companies',getData:()=>Object.entries(data.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8),prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'" ('+n+' annunci). Top aziende: '+d.map(([c,v])=>c+' ('+v+')').join(', ')+'. Scrivi 1-2 frasi sulle aziende piu attive e opportunita MC Pharma.'},
+    {id:'ai-rdesc-ral-seniority',getData:()=>Object.entries(withRal.reduce((acc,l)=>{const s=l.seniority_v2||'n/d';if(!acc[s])acc[s]=[];acc[s].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));return acc;},{})).map(([s,v])=>[s,Math.round(v.reduce((a,b)=>a+b)/v.length)]).sort((a,b)=>b[1]-a[1]),prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'". RAL per seniority: '+d.map(([s,v])=>s+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. Scrivi 1-2 frasi sui differenziali salariali.'},
+    {id:'ai-rdesc-trend',getData:()=>{const byM={};data.filter(l=>l.ral_min||l.ral_max).forEach(l=>{if(!l.published_date)return;const m=l.published_date.substring(0,7);if(!byM[m])byM[m]=[];const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);if(v>=10000)byM[m].push(v);});return Object.entries(byM).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([m,v])=>[m,Math.round(v.reduce((a,b)=>a+b)/v.length)]);},prompt:(d,n)=>'Analisi Ruolo Life Sciences "'+searchTerm+'". Trend RAL mediana: '+d.map(([m,v])=>m+' €'+(v/1000).toFixed(0)+'k').join(', ')+'. Scrivi 1-2 frasi sull\u0027andamento del mercato retributivo.'},
+  ];
+  for(const chart of charts){
+    const el=document.getElementById(chart.id);if(!el)continue;
+    const chartData=chart.getData();if(!chartData.length){el.innerHTML='';continue;}
+    el.innerHTML='<span style="color:var(--text2);font-size:10px;">⏳ AI in analisi...</span>';
+    try{const desc=await callAIPowerful(chart.prompt(chartData,data.length),150);el.innerHTML='<span style="color:var(--accent);font-size:10px;font-weight:600;">AI ▸ </span>'+desc;}
+    catch(e){el.innerHTML='';}
+    await new Promise(r=>setTimeout(r,2000));
+  }
+}
+
+let _lastSuggestionsSearch='';
+async function suggestRelatedRoles(searchTerm){
+  if(!searchTerm||searchTerm.length<2)return;
+  const cacheKey='ruolo_suggestions_'+searchTerm.toLowerCase().trim();
+  const cached=localStorage.getItem(cacheKey);
+  let suggestions=[];
+  if(cached){try{suggestions=JSON.parse(cached);}catch(e){}}
+  if(!suggestions.length){
+    try{
+      const rolesData=await api('job_listings?select=canonical_role&canonical_role=not.is.null&limit=3000');
+      const uniqueRoles=[...new Set(rolesData.map(r=>r.canonical_role).filter(Boolean))].sort();
+      const rolesLower=uniqueRoles.map(r=>r.toLowerCase());
+      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Questo e il mio database di figure professionali: '+uniqueRoles.slice(0,80).join('; ')+'. Per la figura "'+searchTerm+'" seleziona da questa lista le figure piu simili per ambito funzionale. IMPORTANTE: scegli solo figure dello stesso ambito. Rispondi SOLO con un array JSON di stringhe prese esattamente dalla lista, max 6 elementi.';
+      const raw=await callAI(prompt,300);
+      const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+      if(Array.isArray(parsed)&&parsed.length){
+        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2).map(s=>{const idx=rolesLower.indexOf(s.toLowerCase());return idx>=0?uniqueRoles[idx]:null;}).filter(Boolean);
+        if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+      }
+    }catch(e){console.warn('suggestRelatedRoles:',e.message);}
+  }
+  if(!suggestions.length)return;
+  const box=document.getElementById('ruolo-suggestions-box');
+  const list=document.getElementById('ruolo-suggestions-list');
+  if(!box||!list)return;
+  const selKey='ruolo_selected_'+searchTerm.toLowerCase().trim();
+  const prevSelected=JSON.parse(localStorage.getItem(selKey)||'[]');
+  list.innerHTML=suggestions.map(s=>'<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--surface2);border-radius:6px;cursor:pointer;font-size:12px;"><input type="checkbox" class="ruolo-sug-cb" data-role="'+s.replace(/"/g,'&quot;')+'" '+(prevSelected.includes(s)||prevSelected.length===0?'checked':'')+' style="cursor:pointer;"><span>'+s+'</span></label>').join('');
+  box.style.display='block';
+  _lastSuggestionsSearch=searchTerm;
+}
+
+function applyRuoloSuggestions(){
+  const checkboxes=document.querySelectorAll('.ruolo-sug-cb:checked');
+  const selected=Array.from(checkboxes).map(cb=>cb.dataset.role).filter(Boolean);
+  if(!selected.length){toast('Seleziona almeno una figura','warning');return;}
+  const selKey='ruolo_selected_'+_lastSuggestionsSearch.toLowerCase().trim();
+  localStorage.setItem(selKey,JSON.stringify(selected));
+  const inp=document.getElementById('ruolo-search');
+  if(inp){
+    const existing=inp.value.split(/[;,]+/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+    const toAdd=selected.filter(s=>!existing.includes(s.toLowerCase()));
+    if(toAdd.length)inp.value=inp.value.trim()+'; '+toAdd.join('; ');
+  }
+  document.getElementById('ruolo-suggestions-box').style.display='none';
+  analyzeRuolo();
+}
 
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
