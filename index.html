@@ -1816,6 +1816,20 @@ const MISTRAL_API_KEY='9QiiL4yLkKWlNkuidArKXa4qGQN5MGW2';
 const MISTRAL_URL='https://api.mistral.ai/v1/chat/completions';
 const GEMINI_API_KEY='AQ.Ab8RN6JT2eVy_cB19SKmNmW5Vc6JOy2QwBPdvh5szfjR43MuYw';
 const GEMINI_URL='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+// Calcola valori RAL con trimming 5% per eliminare outlier
+function trimmedRal(listings){
+  const vals=listings
+    .filter(l=>l.ral_min||l.ral_max)
+    .map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max))
+    .filter(v=>v>=10000&&v<=500000)
+    .sort((a,b)=>a-b);
+  if(vals.length<=2)return vals;
+  // Trim 5% inferiore e 5% superiore
+  const cut=Math.max(1,Math.floor(vals.length*0.05));
+  return vals.slice(cut, vals.length-cut);
+}
+
 const GROQ_MODEL='llama-3.1-8b-instant';
 
 // ── VOCATIONS ──
@@ -2719,9 +2733,11 @@ async function analyzeRuolo(){
   const search=searchRaw.toLowerCase();
 
   // Suggerisci figure correlate solo per ricerche singole
-  if(searchTerms.length===1&&searchRaw&&searchRaw!==_lastSuggestionsSearch){
-    suggestRelatedRoles(searchRaw);
-  } else if(searchTerms.length>1||!searchRaw){
+  if(searchRaw&&searchRaw!==_lastSuggestionsSearch){
+    // Usa il primo termine come base per i suggerimenti
+    const firstTerm=searchTerms[0]||searchRaw;
+    suggestRelatedRoles(firstTerm);
+  } else if(!searchRaw){
     const box=document.getElementById('ruolo-suggestions-box');
     if(box)box.style.display='none';
   }
@@ -2788,7 +2804,7 @@ async function analyzeRuolo(){
     document.getElementById('ruolo-kpi-ral-pct').textContent=`${ralPct}%`;
 
     if(withRal.length){
-      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const mids=trimmedRal(withRal);
       const avg=Math.round(mids.reduce((a,b)=>a+b,0)/mids.length);
       const median=mids[Math.floor(mids.length/2)];
       const mins=withRal.filter(l=>l.ral_min).map(l=>l.ral_min);
@@ -3093,7 +3109,7 @@ async function renderRoleComparison(roleName, currentListings){
       const withRal = data.filter(l=>l.ral_min||l.ral_max);
       const avg = withRal.length ? Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length) : null;
       const d30 = data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
-      const sorted = withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const sorted = trimmedRal(withRal);
       const p50 = sorted.length ? sorted[Math.floor(sorted.length*0.5)] : null;
       const p75 = sorted.length ? sorted[Math.floor(sorted.length*0.75)] : null;
       return {name:peer, total:data.length, avg, p50, p75, d30, ralCount:withRal.length};
@@ -3557,11 +3573,14 @@ function applyRuoloSuggestions(){
   const selKey='ruolo_selected_'+_lastSuggestionsSearch.toLowerCase().trim();
   localStorage.setItem(selKey,JSON.stringify(selected));
 
-  // Aggiorna campo ricerca con i termini selezionati
+  // Aggiorna campo ricerca con i termini selezionati (senza duplicati)
   const inp=document.getElementById('ruolo-search');
   if(inp){
-    const current=inp.value.trim();
-    inp.value=current+'; '+selected.join('; ');
+    const existing=inp.value.split(/[;,]+/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+    const toAdd=selected.filter(s=>!existing.includes(s.toLowerCase()));
+    if(toAdd.length){
+      inp.value=inp.value.trim()+'; '+toAdd.join('; ');
+    }
   }
 
   // Nascondi box e avvia analisi
@@ -3571,7 +3590,7 @@ function applyRuoloSuggestions(){
 
 async function generateRuoloAISummary(data, searchTerm){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const mids=trimmedRal(withRal);
   const median=mids.length?mids[Math.floor(mids.length/2)]:null;
   const p25=mids.length?mids[Math.floor(mids.length*0.25)]:null;
   const p75=mids.length?mids[Math.floor(mids.length*0.75)]:null;
@@ -3701,7 +3720,7 @@ async function loadRuoloComparisons(searchTerm){
 
 async function generateRoleIntelAISummary(listings, benchmarks, roleName){
   const withRal=listings.filter(l=>l.ral_min||l.ral_max);
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const mids=trimmedRal(withRal);
   const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
   const topCo=Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';if(c)acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const topTA=Object.entries(listings.reduce((acc,l)=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')acc[l.therapeutic_area]=(acc[l.therapeutic_area]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -4521,7 +4540,7 @@ async function generateChartDescriptions(data){
       chartData=Object.entries(byArea).map(([a,v])=>[a,Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]).slice(0,8);
     }else if(chartId==='chart-percentiles'){
       const withRal=data.filter(l=>l.ral_min||l.ral_max);
-      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+      const mids=trimmedRal(withRal);
       const p=n=>mids[Math.floor(mids.length*n/100)]||0;
       chartData=[['P25',p(25)],['Mediana',p(50)],['Media',Math.round(mids.reduce((a,b)=>a+b,0)/mids.length)],['P75',p(75)],['P90',p(90)]];
     }
@@ -5202,7 +5221,8 @@ function renderRalGradient(id,listings){
     const area=l.functional_area_v2||l.functional_area;
     if(!area||(!l.ral_min&&!l.ral_max))return;
     if(!byArea[area])byArea[area]=[];
-    byArea[area].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    const rv=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+    if(rv>=10000&&rv<=500000)byArea[area].push(rv);
   });
   const data=Object.entries(byArea).map(([a,v])=>[toLabel(a),Math.round(v.reduce((x,y)=>x+y)/v.length)]).sort((a,b)=>b[1]-a[1]);
   if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato RAL</div>';return;}
@@ -5228,7 +5248,7 @@ function renderBoxPlot(id,listings){
   const el=document.getElementById(id);if(!el)return;
   const withRal=listings.filter(l=>l.ral_min||l.ral_max);
   if(withRal.length<3){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti</div>';return;}
-  const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+  const mids=trimmedRal(withRal);
   const p=n=>mids[Math.floor(mids.length*n/100)]||0;
   const avg=Math.round(mids.reduce((a,b)=>a+b)/mids.length);
   const p10=p(10),p25=p(25),med=p(50),p75=p(75),p90=p(90);
