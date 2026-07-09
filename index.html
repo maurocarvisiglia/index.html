@@ -2724,9 +2724,9 @@ async function analyzeRuolo(){
 
   // Suggerisci figure correlate solo per ricerche singole
   if(searchRaw&&searchRaw!==_lastSuggestionsSearch){
-    // Usa il primo termine come base per i suggerimenti
+    // Usa il primo termine come base — delay per non sovraccaricare le API
     const firstTerm=searchTerms[0]||searchRaw;
-    suggestRelatedRoles(firstTerm);
+    setTimeout(()=>suggestRelatedRoles(firstTerm),3000);
   } else if(!searchRaw){
     const box=document.getElementById('ruolo-suggestions-box');
     if(box)box.style.display='none';
@@ -3534,7 +3534,7 @@ async function suggestRelatedRoles(searchTerm){
         'IMPORTANTE: scegli solo figure dello stesso ambito (es. per customer care scegli assistenza/supporto clienti; per ISF scegli ruoli commerciali field; per regulatory scegli ruoli regolatori). '+
         'Rispondi SOLO con un array JSON di stringhe prese esattamente dalla lista sopra, max 6 elementi. Nessun testo aggiuntivo.';
 
-      const raw=await callGemini(prompt,300);
+      const raw=await callAI(prompt,300);
       const cleaned=raw.replace(/```json|```/g,'').trim();
       const parsed=JSON.parse(cleaned);
       if(Array.isArray(parsed)&&parsed.length){
