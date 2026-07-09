@@ -2772,8 +2772,17 @@ async function analyzeRuolo(){
         const q=baseQ+baseFilters+'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)';
         const res=await api(q);
         // Filtro preciso lato client: il termine deve essere parola intera
-        // Cerca solo su job_title per evitare falsi positivi da canonical_role mal classificati
-        const filtered=res.filter(l=>matchesTerm(l.job_title,term));
+        // Cerca su job_title (priorità) o canonical_role
+        // Per canonical_role: accetta solo se il job_title non contiene termini chiaramente non correlati
+        const UNRELATED=['audioprotesista','ottico','corriere','farmacista collaboratore','back office','addetto vendite','agente','assicurazioni','capo squadra','fotovoltaic'];
+        const filtered=res.filter(l=>{
+          if(matchesTerm(l.job_title,term))return true;
+          if(matchesTerm(l.canonical_role,term)){
+            const tl=(l.job_title||'').toLowerCase();
+            return !UNRELATED.some(u=>tl.includes(u));
+          }
+          return false;
+        });
         filtered.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
       }
     } else {
