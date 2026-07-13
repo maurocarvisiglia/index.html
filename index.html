@@ -3390,6 +3390,7 @@ async function runMassReclassify(){
   // Carica tutti gli annunci: sia quelli con canonical_role NULL sia quelli con valori fuori vocabolario
   const all = await api('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc&limit=2000');
   const toProcess = all.filter(l => !l.canonical_role || !VALID_ROLES.has(l.canonical_role));
+  console.log('Esempi fuori vocabolario:', toProcess.slice(0,3).map(l=>l.canonical_role||'NULL'));
 
   console.log('Totale annunci:', all.length);
   console.log('Da processare:', toProcess.length);
@@ -3425,7 +3426,7 @@ async function runMassReclassify(){
     const l=needsAI[i];
     try{
       const result=await normalizeJobTitle(l.job_title);
-      if(result.canonical_role&&VALID_ROLES.has(result.canonical_role)){
+      if(result.canonical_role){
         await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:result.canonical_role,role_family:result.role_family||null});
         aiHit++;
       } else {
