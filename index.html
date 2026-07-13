@@ -2663,6 +2663,10 @@ async function analyzeRuolo(){
   // Suggerisci figure correlate (delay per non sovraccaricare API)
   if(searchRaw&&searchRaw!==_lastSuggestionsSearch){
     const firstTerm=searchTerms[0]||searchRaw;
+    // Mostra subito box con stato caricamento
+    const boxEarly=document.getElementById('ruolo-suggestions-box');
+    const listEarly=document.getElementById('ruolo-suggestions-list');
+    if(boxEarly&&listEarly){listEarly.innerHTML='<div style="color:var(--text2);font-size:12px;">⏳ Cerco figure correlate nel database...</div>';boxEarly.style.display='block';}
     setTimeout(()=>suggestRelatedRoles(firstTerm),3000);
   } else if(!searchRaw){
     const box=document.getElementById('ruolo-suggestions-box');
@@ -3655,7 +3659,16 @@ async function suggestRelatedRoles(searchTerm){
       }
     }catch(e){console.warn('suggestRelatedRoles:',e.message);}
   }
-  if(!suggestions.length)return;
+  if(!suggestions.length){
+    const box=document.getElementById('ruolo-suggestions-box');
+    const list=document.getElementById('ruolo-suggestions-list');
+    if(box&&list){
+      list.innerHTML='<div style="color:var(--text2);font-size:12px;">Nessuna figura correlata trovata nel database per "'+searchTerm+'"</div>';
+      box.style.display='block';
+      setTimeout(()=>{if(box)box.style.display='none';},3000);
+    }
+    return;
+  }
   const box=document.getElementById('ruolo-suggestions-box');
   const list=document.getElementById('ruolo-suggestions-list');
   if(!box||!list)return;
@@ -4157,6 +4170,15 @@ async function generateScarcityReport(){
 async function generateRuoloReport(){
   const searchTerm=(document.getElementById('ruolo-search')?.value||'').trim();
   if(!searchTerm){toast('Esegui prima una ricerca','warning');return;}
+
+  // Check dati pronti
+  const _checkTot=document.getElementById('ruolo-kpi-total')?.textContent||'';
+  if(!_checkTot||_checkTot==='—'){toast('Esegui prima una ricerca e attendi il caricamento dei dati','warning');return;}
+  const _checkAI=document.getElementById('ruolo-ai-text')?.textContent||'';
+  const _aiReady=_checkAI&&_checkAI.indexOf('⏳')===-1&&_checkAI.indexOf('Clicca')===-1&&_checkAI.length>20;
+  if(!_aiReady){
+    if(!confirm("L'analisi AI non è ancora completata. Il report potrebbe essere incompleto.\nVuoi procedere comunque?"))return;
+  }
 
   const totale=document.getElementById('ruolo-kpi-total')?.textContent||'—';
   const aziende=document.getElementById('ruolo-kpi-companies')?.textContent||'—';
