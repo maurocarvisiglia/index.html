@@ -527,6 +527,7 @@ a.job-link:hover{text-decoration:underline;}
         <div id="admin-only-actions" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
           <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
           <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza, classifica e completa tutti i campi">🔮 2. Completa dati</button>
+          <button class="btn btn-secondary" onclick="runMassReclassify()" style="border-color:#f59e0b;color:#f59e0b;" title="Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario">🔄 Riclassifica tutto</button>
           <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
           <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
           <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
@@ -3286,6 +3287,156 @@ Scrivi solo 1-2 frasi professionali e concrete sul forecast. Nessun JSON, solo t
    POST-IMPORT ENRICHMENT PIPELINE
    Completamento automatico di tutti i campi
    ══════════════════════════════════════════════ */
+
+
+// ── RICLASSIFICAZIONE MASSIVA — usa vocabolario chiuso aggiornato ──
+async function runMassReclassify(){
+  if(!confirm('Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario?\nOperazione lunga, non chiudere la pagina.'))return;
+
+  // Vocabolario chiuso — tutti i canonical_role validi
+  const VALID_ROLES=new Set([
+    'Informatore Scientifico del Farmaco','Informatore Scientifico del Dispositivo Medico',
+    'Medical Representative','Product Specialist','Clinical Sales Specialist','Sales Specialist',
+    'Key Account Manager','National Account Manager','Area Manager Commercial',
+    'Business Development Manager','Field Sales Manager',
+    'Medical Science Liaison','Medical Advisor','Medical Manager','Medical Director','Medical Information Specialist',
+    'Product Manager','Brand Manager','Marketing Manager','Marketing Specialist','Omnichannel Manager','Digital Marketing Manager',
+    'Market Access Manager','Market Access Specialist','HEOR Manager','Pricing Manager','Government Affairs Manager','Market Research Analyst',
+    'Regulatory Affairs Manager','Regulatory Affairs Specialist',
+    'Pharmacovigilance Manager','Pharmacovigilance Specialist',
+    'Quality Assurance Manager','Quality Assurance Specialist','Quality Control Analyst','Validation Specialist','Qualified Person',
+    'Clinical Research Associate (CRA)','Clinical Project Manager','Clinical Trial Manager','Clinical Operations Manager','Clinical Data Manager','Biostatistician',
+    'Production Manager','Operatore di Produzione','Plant Manager','Process Engineer','Production Planner','Manutentore',
+    'Supply Chain Manager','Operations Manager','Industry Technical Consultant',
+    'Research Scientist','Laboratory Researcher','R&D Manager','Biologo/A',
+    'Direttore','Country Manager','Farmacista Direttore','Project Manager',
+    'Controller','Finance Business Partner','HR Business Partner','Data Analyst'
+  ]);
+
+  // Regex-map aggiornato con vocabolario chiuso
+  const REGEX_MAP=[
+    {re:/\binformatore scientifico del farmaco\b|\bisf\b/i,cr:'Informatore Scientifico del Farmaco',rf:'commercial'},
+    {re:/\binformatore scientifico del dispositivo|isf.*dispositivo/i,cr:'Informatore Scientifico del Dispositivo Medico',rf:'commercial'},
+    {re:/\bmedical science liaison\b|\bmsl\b/i,cr:'Medical Science Liaison',rf:'medical_affairs'},
+    {re:/\bmedical advisor\b/i,cr:'Medical Advisor',rf:'medical_affairs'},
+    {re:/\bmedical manager\b|\bmedical director\b|\bmedical affairs manager\b/i,cr:'Medical Manager',rf:'medical_affairs'},
+    {re:/\bmedical information\b/i,cr:'Medical Information Specialist',rf:'medical_affairs'},
+    {re:/\bmedical representative\b|\bmedical rep\b/i,cr:'Medical Representative',rf:'commercial'},
+    {re:/\bproduct specialist\b/i,cr:'Product Specialist',rf:'commercial'},
+    {re:/\bclinical sales specialist\b/i,cr:'Clinical Sales Specialist',rf:'commercial'},
+    {re:/\bsales specialist\b/i,cr:'Sales Specialist',rf:'commercial'},
+    {re:/\bnational account manager\b|\bnam\b/i,cr:'National Account Manager',rf:'commercial'},
+    {re:/\bkey account manager\b|\bkam\b|\bkey account\b/i,cr:'Key Account Manager',rf:'commercial'},
+    {re:/\barea manager\b|\bregional manager\b|\bdistrict manager\b|\bterritory manager\b/i,cr:'Area Manager Commercial',rf:'commercial'},
+    {re:/\bbusiness development manager\b|\bbd manager\b/i,cr:'Business Development Manager',rf:'business_development'},
+    {re:/\bproduct manager\b/i,cr:'Product Manager',rf:'marketing'},
+    {re:/\bbrand manager\b/i,cr:'Brand Manager',rf:'marketing'},
+    {re:/\bmarketing manager\b/i,cr:'Marketing Manager',rf:'marketing'},
+    {re:/\bmarketing specialist\b/i,cr:'Marketing Specialist',rf:'marketing'},
+    {re:/\bomnichannel\b/i,cr:'Omnichannel Manager',rf:'marketing'},
+    {re:/\bdigital marketing\b/i,cr:'Digital Marketing Manager',rf:'marketing'},
+    {re:/\bmarket access manager\b/i,cr:'Market Access Manager',rf:'market_access'},
+    {re:/\bmarket access specialist\b|\bmarket access\b/i,cr:'Market Access Specialist',rf:'market_access'},
+    {re:/\bheor\b/i,cr:'HEOR Manager',rf:'market_access'},
+    {re:/\bpricing manager\b/i,cr:'Pricing Manager',rf:'market_access'},
+    {re:/\bgovernment affairs\b/i,cr:'Government Affairs Manager',rf:'market_access'},
+    {re:/\bmarket research\b/i,cr:'Market Research Analyst',rf:'market_access'},
+    {re:/\bregulatory affairs manager\b/i,cr:'Regulatory Affairs Manager',rf:'regulatory_quality'},
+    {re:/\bregulatory affairs\b|\bra specialist\b/i,cr:'Regulatory Affairs Specialist',rf:'regulatory_quality'},
+    {re:/\bpharmacovigilance manager\b/i,cr:'Pharmacovigilance Manager',rf:'regulatory_quality'},
+    {re:/\bpharmacovigilance\b|\bdrug safety\b|\bfarmacovigilanza\b/i,cr:'Pharmacovigilance Specialist',rf:'regulatory_quality'},
+    {re:/\bquality assurance manager\b|\bqa manager\b/i,cr:'Quality Assurance Manager',rf:'regulatory_quality'},
+    {re:/\bquality assurance\b|\bqa specialist\b|\bquality specialist\b/i,cr:'Quality Assurance Specialist',rf:'regulatory_quality'},
+    {re:/\bquality control\b|\bqc analyst\b/i,cr:'Quality Control Analyst',rf:'regulatory_quality'},
+    {re:/\bvalidation specialist\b/i,cr:'Validation Specialist',rf:'regulatory_quality'},
+    {re:/\bqualified person\b|\bqp\b/i,cr:'Qualified Person',rf:'regulatory_quality'},
+    {re:/\bclinical research associate\b|\bcra\b/i,cr:'Clinical Research Associate (CRA)',rf:'clinical_operations'},
+    {re:/\bclinical project manager\b/i,cr:'Clinical Project Manager',rf:'clinical_operations'},
+    {re:/\bclinical trial manager\b/i,cr:'Clinical Trial Manager',rf:'clinical_operations'},
+    {re:/\bclinical operations manager\b/i,cr:'Clinical Operations Manager',rf:'clinical_operations'},
+    {re:/\bclinical data manager\b/i,cr:'Clinical Data Manager',rf:'clinical_operations'},
+    {re:/\bbiostatistician\b/i,cr:'Biostatistician',rf:'clinical_operations'},
+    {re:/\bproduction manager\b/i,cr:'Production Manager',rf:'manufacturing'},
+    {re:/\boperatore di produzione\b|\baddetto produzione\b/i,cr:'Operatore di Produzione',rf:'manufacturing'},
+    {re:/\bplant manager\b/i,cr:'Plant Manager',rf:'manufacturing'},
+    {re:/\bprocess engineer\b/i,cr:'Process Engineer',rf:'manufacturing'},
+    {re:/\bproduction planner\b/i,cr:'Production Planner',rf:'manufacturing'},
+    {re:/\bmanutentore\b|\bmanutenzione\b/i,cr:'Manutentore',rf:'manufacturing'},
+    {re:/\bsupply chain manager\b|\bsupply chain\b/i,cr:'Supply Chain Manager',rf:'manufacturing'},
+    {re:/\boperations manager\b/i,cr:'Operations Manager',rf:'manufacturing'},
+    {re:/\bindustry technical consultant\b/i,cr:'Industry Technical Consultant',rf:'manufacturing'},
+    {re:/\bresearch scientist\b/i,cr:'Research Scientist',rf:'scientific_rd'},
+    {re:/\blaboratory researcher\b|\blaboratory scientist\b/i,cr:'Laboratory Researcher',rf:'scientific_rd'},
+    {re:/\br&d manager\b/i,cr:'R&D Manager',rf:'scientific_rd'},
+    {re:/\bbiologo\b/i,cr:'Biologo/A',rf:'scientific_rd'},
+    {re:/\bcountry manager\b/i,cr:'Country Manager',rf:'general_management'},
+    {re:/\bfarmacista direttore\b/i,cr:'Farmacista Direttore',rf:'general_management'},
+    {re:/\bproject manager\b/i,cr:'Project Manager',rf:'general_management'},
+    {re:/\bcontroller\b/i,cr:'Controller',rf:'support'},
+    {re:/\bfinance business partner\b/i,cr:'Finance Business Partner',rf:'support'},
+    {re:/\bhr business partner\b|\bhrbp\b/i,cr:'HR Business Partner',rf:'support'},
+    {re:/\bdata analyst\b/i,cr:'Data Analyst',rf:'support'},
+  ];
+
+  const showP=(msg,pct)=>{
+    const el=document.getElementById('enrichment-progress')||document.createElement('div');
+    if(!el.id){el.id='enrichment-progress';el.style='position:fixed;bottom:20px;right:20px;background:#1c1c1c;color:#fff;padding:16px 20px;border-radius:10px;font-size:12px;z-index:9999;max-width:380px;border:1px solid #6366f1;';document.body.appendChild(el);}
+    el.innerHTML='<div style="font-weight:700;margin-bottom:6px;">🔄 Riclassificazione massiva</div><div>'+msg+'</div><div style="margin-top:8px;background:#333;border-radius:4px;height:6px;"><div style="width:'+pct+'%;height:6px;background:#6366f1;border-radius:4px;transition:width 0.3s;"></div></div>';
+  };
+
+  showP('Carico annunci da riclassificare...', 2);
+  await loadTaxonomy();
+
+  // Carica tutti gli annunci: sia quelli con canonical_role NULL sia quelli con valori fuori vocabolario
+  const all = await api('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc&limit=2000');
+  const toProcess = all.filter(l => !l.canonical_role || !VALID_ROLES.has(l.canonical_role));
+
+  showP('Trovati '+toProcess.length+' annunci da riclassificare. Avvio...', 5);
+
+  let done=0, regexHit=0, aiHit=0, skipped=0;
+  const needsAI=[];
+
+  // Fase 1: regex veloce
+  for(const l of toProcess){
+    const tl=(l.job_title||'').toLowerCase();
+    let matched=false;
+    for(const {re,cr,rf} of REGEX_MAP){
+      if(re.test(tl)){
+        try{
+          await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:cr,role_family:rf});
+          regexHit++;matched=true;
+        }catch(e){}
+        break;
+      }
+    }
+    if(!matched)needsAI.push(l);
+    done++;
+    if(done%20===0)showP('Fase 1 — Regex: '+regexHit+' classificati. '+needsAI.length+' per AI...',Math.round(5+done/toProcess.length*40));
+  }
+
+  showP('Fase 1 completata: '+regexHit+' con regex. Avvio AI su '+needsAI.length+' annunci...',45);
+
+  // Fase 2: AI sui residui
+  for(let i=0;i<needsAI.length;i++){
+    const l=needsAI[i];
+    try{
+      const result=await normalizeJobTitle(l.job_title);
+      if(result.canonical_role&&VALID_ROLES.has(result.canonical_role)){
+        await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:result.canonical_role,role_family:result.role_family||null});
+        aiHit++;
+      } else {
+        skipped++;
+      }
+    }catch(e){skipped++;}
+    const pct=Math.round(45+((i+1)/needsAI.length)*50);
+    if(i%5===0)showP('Fase 2 — AI: '+aiHit+' classificati, '+skipped+' saltati. ('+i+'/'+needsAI.length+')',pct);
+    await new Promise(r=>setTimeout(r,2500));
+  }
+
+  showP('✅ Completato! Regex: '+regexHit+' | AI: '+aiHit+' | Saltati: '+skipped,100);
+  toast('Riclassificazione completata: '+(regexHit+aiHit)+' annunci aggiornati','success');
+  setTimeout(()=>{const el=document.getElementById('enrichment-progress');if(el)el.remove();},8000);
+}
 
 async function runPostImportEnrichment(newCount){
   // Mostra progress bar
