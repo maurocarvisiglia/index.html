@@ -8306,6 +8306,77 @@ function loadGeoModule(){
   // Pagina vuota - aspetta ricerca utente
 }
 
+
+// ── MAPPATURA PROVINCE → REGIONE (107 province italiane) ──
+const PROVINCE_TO_REGION={
+  'AG':'Sicilia','AL':'Piemonte','AN':'Marche','AO':'Valle dAosta','AP':'Marche',
+  'AQ':'Abruzzo','AR':'Toscana','AT':'Piemonte','AV':'Campania','BA':'Puglia',
+  'BG':'Lombardia','BI':'Piemonte','BL':'Veneto','BN':'Campania','BO':'Emilia-Romagna',
+  'BR':'Puglia','BS':'Lombardia','BT':'Puglia','BZ':'Trentino-Alto Adige','CA':'Sardegna',
+  'CB':'Molise','CE':'Campania','CH':'Abruzzo','CL':'Sicilia','CN':'Piemonte',
+  'CO':'Lombardia','CR':'Lombardia','CS':'Calabria','CT':'Sicilia','CW':'Molise',
+  'CZ':'Calabria','EN':'Sicilia','FC':'Emilia-Romagna','FE':'Emilia-Romagna','FG':'Puglia',
+  'FI':'Toscana','FM':'Marche','FR':'Lazio','GE':'Liguria','GO':'Friuli-Venezia Giulia',
+  'GR':'Toscana','IM':'Liguria','IS':'Molise','KR':'Calabria','LC':'Lombardia',
+  'LE':'Puglia','LI':'Toscana','LO':'Lombardia','LT':'Lazio','LU':'Toscana',
+  'MB':'Lombardia','MC':'Marche','ME':'Sicilia','MI':'Lombardia','MN':'Lombardia',
+  'MO':'Emilia-Romagna','MS':'Toscana','MT':'Basilicata','NA':'Campania','NO':'Piemonte',
+  'NU':'Sardegna','OR':'Sardegna','PA':'Sicilia','PC':'Emilia-Romagna','PD':'Veneto',
+  'PE':'Abruzzo','PG':'Umbria','PI':'Toscana','PN':'Friuli-Venezia Giulia','PO':'Toscana',
+  'PR':'Emilia-Romagna','PT':'Toscana','PU':'Marche','PV':'Lombardia','PZ':'Basilicata',
+  'RA':'Emilia-Romagna','RC':'Calabria','RE':'Emilia-Romagna','RG':'Sicilia','RI':'Lazio',
+  'RM':'Lazio','RN':'Emilia-Romagna','RO':'Veneto','SA':'Campania','SI':'Toscana',
+  'SO':'Lombardia','SP':'Liguria','SR':'Sicilia','SS':'Sardegna','SU':'Sardegna',
+  'SV':'Liguria','TA':'Puglia','TE':'Abruzzo','TN':'Trentino-Alto Adige','TO':'Piemonte',
+  'TP':'Sicilia','TR':'Umbria','TS':'Friuli-Venezia Giulia','TV':'Veneto','UD':'Friuli-Venezia Giulia',
+  'VA':'Lombardia','VB':'Piemonte','VC':'Piemonte','VE':'Veneto','VI':'Veneto',
+  'VR':'Veneto','VT':'Lazio','VV':'Calabria',
+  // Nomi estesi comuni
+  'MILANO':'Lombardia','ROMA':'Lazio','TORINO':'Piemonte','NAPOLI':'Campania',
+  'BOLOGNA':'Emilia-Romagna','FIRENZE':'Toscana','GENOVA':'Liguria','VENEZIA':'Veneto',
+  'BARI':'Puglia','CATANIA':'Sicilia','PALERMO':'Sicilia','VERONA':'Veneto',
+  'BRESCIA':'Lombardia','BERGAMO':'Lombardia','PADOVA':'Veneto','TRIESTE':'Friuli-Venezia Giulia',
+  'MODENA':'Emilia-Romagna','PARMA':'Emilia-Romagna','REGGIO EMILIA':'Emilia-Romagna',
+  'MONZA':'Lombardia','COMO':'Lombardia','VARESE':'Lombardia','PAVIA':'Lombardia',
+  'CREMONA':'Lombardia','MANTOVA':'Lombardia','LECCO':'Lombardia','LODI':'Lombardia',
+  'SONDRIO':'Lombardia','PERUGIA':'Umbria','ANCONA':'Marche','PESCARA':'Abruzzo',
+  'CAGLIARI':'Sardegna','SASSARI':'Sardegna','TRENTO':'Trentino-Alto Adige',
+  'BOLZANO':'Trentino-Alto Adige','UDINE':'Friuli-Venezia Giulia','PORDENONE':'Friuli-Venezia Giulia',
+  'TREVISO':'Veneto','VICENZA':'Veneto','ROVIGO':'Veneto','BELLUNO':'Veneto',
+  'LATINA':'Lazio','FROSINONE':'Lazio','RIETI':'Lazio','VITERBO':'Lazio',
+  'SALERNO':'Campania','CASERTA':'Campania','AVELLINO':'Campania','BENEVENTO':'Campania',
+  'TARANTO':'Puglia','FOGGIA':'Puglia','LECCE':'Puglia','BRINDISI':'Puglia',
+  'REGGIO CALABRIA':'Calabria','COSENZA':'Calabria','CATANZARO':'Calabria',
+  'SIRACUSA':'Sicilia','RAGUSA':'Sicilia','AGRIGENTO':'Sicilia','TRAPANI':'Sicilia',
+  'MESSINA':'Sicilia','CALTANISSETTA':'Sicilia','ENNA':'Sicilia',
+  'POTENZA':'Basilicata','MATERA':'Basilicata',
+  'CAMPOBASSO':'Molise','ISERNIA':'Molise',
+  'LAQUILA':'Abruzzo','TERAMO':'Abruzzo','CHIETI':'Abruzzo',
+  'CUNEO':'Piemonte','ASTI':'Piemonte','ALESSANDRIA':'Piemonte','NOVARA':'Piemonte',
+  'BIELLA':'Piemonte','VERCELLI':'Piemonte','VERBANIA':'Piemonte','AOSTA':'Valle dAosta',
+  'IMPERIA':'Liguria','SAVONA':'Liguria','LA SPEZIA':'Liguria',
+  'PIACENZA':'Emilia-Romagna','FERRARA':'Emilia-Romagna','RAVENNA':'Emilia-Romagna',
+  'FORLÌ':'Emilia-Romagna','RIMINI':'Emilia-Romagna','CESENA':'Emilia-Romagna',
+  'MASSA':'Toscana','LUCCA':'Toscana','PISTOIA':'Toscana','PRATO':'Toscana',
+  'LIVORNO':'Toscana','PISA':'Toscana','AREZZO':'Toscana','SIENA':'Toscana',
+  'GROSSETO':'Toscana','TERNI':'Umbria','MACERATA':'Marche','ASCOLI PICENO':'Marche',
+  'FERMO':'Marche','PESARO':'Marche'
+};
+
+function getRegionFromProvince(province){
+  if(!province)return null;
+  const p=province.trim().toUpperCase().replace(/\./g,'');
+  // Match sigla (2 lettere)
+  if(p.length<=3&&PROVINCE_TO_REGION[p])return PROVINCE_TO_REGION[p];
+  // Match nome esteso
+  if(PROVINCE_TO_REGION[p])return PROVINCE_TO_REGION[p];
+  // Match parziale sul nome
+  for(const[k,v] of Object.entries(PROVINCE_TO_REGION)){
+    if(k.length>3&&(p.includes(k)||k.includes(p)))return v;
+  }
+  return null;
+}
+
 async function runGeoAnalysis(){
   const roleEl=document.getElementById('geo-search-role');
   const areaEl=document.getElementById('geo-filter-area');
@@ -8322,7 +8393,7 @@ async function runGeoAnalysis(){
   if(resultsEl)resultsEl.style.display='none';
   toast('⏳ Analisi geografica...');
   try{
-    const baseQ='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&region=not.is.null&order=published_date.desc&limit=2000';
+    const baseQ='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&order=published_date.desc&limit=2000';
     const areaFilter=area?'&functional_area_v2=eq.'+encodeURIComponent(area):'';
     const senFilter=seniority?'&seniority_v2=eq.'+encodeURIComponent(seniority):'';
     // Una query per ogni termine — poi unisco i risultati rimuovendo duplicati
@@ -8344,10 +8415,10 @@ async function runGeoAnalysis(){
       if(emptyEl)emptyEl.style.display='';
       return;
     }
-    // Aggrega per regione usando campo region
+    // Aggrega per regione — usa region DB o la deriva dalla provincia
     const byRegion={};
     _geoRoleData.forEach(l=>{
-      const region=l.region||null;
+      const region=l.region||getRegionFromProvince(l.province)||getRegionFromProvince(l.location)||null;
       if(!region)return;
       if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{},provinces:{}};
       byRegion[region].count++;
@@ -8357,8 +8428,9 @@ async function runGeoAnalysis(){
       const prov=l.province||'—';byRegion[region].provinces[prov]=(byRegion[region].provinces[prov]||0)+1;
     });
     const regions=Object.values(byRegion).sort((a,b)=>b.count-a.count);
-    const allRal=_geoRoleData.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
-    const avgRal=allRal.length?Math.round(allRal.reduce((a,b)=>a+b)/allRal.length):null;
+    const allRalRaw=_geoRoleData.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+    const allRalSorted=trimmedRal(_geoRoleData.filter(l=>l.ral_min||l.ral_max));
+    const avgRal=allRalSorted.length?allRalSorted[Math.floor(allRalSorted.length/2)]:null;
     const _s=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
     _s('geo-kpi-total',_geoRoleData.length);
     _s('geo-kpi-regions',regions.length);
@@ -8389,7 +8461,7 @@ async function runGeoAnalysis(){
 function showGeoRegionDetail(idx){
   const byRegion={};
   _geoRoleData.forEach(l=>{
-    const region=l.region||null;
+    const region=l.region||getRegionFromProvince(l.province)||getRegionFromProvince(l.location)||null;
     if(!region)return;
     if(!byRegion[region])byRegion[region]={name:region,count:0,ral:[],seniority:{},companies:{},provinces:{}};
     byRegion[region].count++;
@@ -8776,7 +8848,7 @@ function renderDemandScatter(){
         <div class="stat-card"><div class="stat-label">Annunci trovati</div><div class="stat-value" id="geo-kpi-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Regioni attive</div><div class="stat-value" id="geo-kpi-regions">—</div></div>
         <div class="stat-card"><div class="stat-label">Top regione</div><div class="stat-value" style="font-size:14px;" id="geo-kpi-top">—</div></div>
-        <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="geo-kpi-ral">—</div></div>
+        <div class="stat-card"><div class="stat-label">RAL mediana</div><div class="stat-value" id="geo-kpi-ral">—</div></div>
       </div>
 
       <!-- Sezione 1: Distribuzione per regione -->
