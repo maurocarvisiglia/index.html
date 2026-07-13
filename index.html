@@ -3391,6 +3391,10 @@ async function runMassReclassify(){
   const all = await api('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc&limit=2000');
   const toProcess = all.filter(l => !l.canonical_role || !VALID_ROLES.has(l.canonical_role));
 
+  console.log('Totale annunci:', all.length);
+  console.log('Da processare:', toProcess.length);
+  console.log('Taxonomy cache:', _taxonomyCache?.length, 'Alias cache:', Object.keys(_aliasCache||{}).length);
+  if(toProcess.length>0)console.log('Esempio da processare:', toProcess[0].job_title, '→', toProcess[0].canonical_role);
   showP('Trovati '+toProcess.length+' annunci da riclassificare. Avvio...', 5);
 
   let done=0, regexHit=0, aiHit=0, skipped=0;
