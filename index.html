@@ -8072,6 +8072,7 @@ async function runCompetitorAnalysis(){
   try{
     const ms=days*864e5;
     const since=new Date(Date.now()-ms).toISOString().split('T')[0];
+    const prevSince=new Date(Date.now()-ms*2).toISOString().split('T')[0];
     const enc=encodeURIComponent(role);
 
     // Espandi la ricerca con alias e canonical_role correlati
@@ -8116,27 +8117,39 @@ async function runCompetitorAnalysis(){
       +'&published_date=gte.'+since
       +'&order=published_date.desc&limit=1000');
 
+    // Carica periodo precedente per trend reale
+    const dataPrev=await api('job_listings?select=ragione_sociale,company_name,published_date'
+      +'&or=('+orParts+')'
+      +'&published_date=gte.'+prevSince+'&published_date=lt.'+since
+      +'&limit=500');
+    const byCompanyPrev={};
+    dataPrev.forEach(l=>{const c=l.ragione_sociale||l.company_name||'N/D';byCompanyPrev[c]=(byCompanyPrev[c]||0)+1;});
+
     if(!data.length){
       document.getElementById('cm-empty').textContent='Nessun annuncio trovato per "'+role+'" negli ultimi '+days+' giorni';
       return;
     }
 
     const byCompany={};
-    const halfMs=ms/2;
-    const halfSince=new Date(Date.now()-halfMs);
     data.forEach(l=>{
       const c=l.ragione_sociale||l.company_name||'N/D';
-      if(!byCompany[c])byCompany[c]={name:c,total:0,recent:0,rals:[],listings:[]};
+      if(!byCompany[c])byCompany[c]={name:c,total:0,prev:0,rals:[],listings:[]};
       byCompany[c].total++;
-      if(l.published_date&&new Date(l.published_date)>halfSince)byCompany[c].recent++;
       const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
       if(v&&v>=10000&&v<=500000)byCompany[c].rals.push(v);
       byCompany[c].listings.push(l);
     });
+    // Aggiungi dati periodo precedente
+    Object.entries(byCompanyPrev).forEach(([c,n])=>{
+      if(!byCompany[c])byCompany[c]={name:c,total:0,prev:0,rals:[],listings:[]};
+      byCompany[c].prev=n;
+    });
 
     const companies=Object.values(byCompany).sort((a,b)=>b.total-a.total);
     const totalAds=data.length;
-    const avgAds=totalAds/companies.length;
+    // Media solo su aziende con almeno 2 annunci (evita distorsione da aziende sporadiche)
+    const activeCompanies=companies.filter(c=>c.total>=2);
+    const avgAds=activeCompanies.length>0?activeCompanies.reduce((s,c)=>s+c.total,0)/activeCompanies.length:totalAds/companies.length;
     const maxAds=Math.max(...companies.map(c=>c.total),1);
 
     const withRalAll=data.filter(l=>l.ral_min||l.ral_max);
@@ -8172,9 +8185,10 @@ async function runCompetitorAnalysis(){
     const tbody=document.getElementById('cm-tbody');
     tbody.innerHTML=companies.map(c=>{
       const ralMed=c.rals.length?c.rals.slice().sort((a,b)=>a-b)[Math.floor(c.rals.length/2)]:null;
-      const trendPct=c.recent/c.total;
-      const trendIcon=trendPct>0.6?'\u25b2 Accelera':trendPct>0.3?'\u2192 Stabile':'\u25bc Rallenta';
-      const trendCol=trendPct>0.6?'#10b981':trendPct>0.3?'#f59e0b':'#ef4444';
+      // Trend reale: confronto periodo corrente vs periodo precedente
+      const trendDelta=c.prev>0?((c.total-c.prev)/c.prev*100):c.total>0?100:0;
+      const trendIcon=trendDelta>20?'\u25b2 Accelera':trendDelta<-20?'\u25bc Rallenta':'\u2192 Stabile';
+      const trendCol=trendDelta>20?'#10b981':trendDelta<-20?'#ef4444':'#f59e0b';
       const vsMkt=Math.round((c.total/avgAds-1)*100);
       const vsMktCol=vsMkt>20?'#10b981':vsMkt<-20?'#ef4444':'#f59e0b';
       const pct=Math.round(c.total/maxAds*100);
