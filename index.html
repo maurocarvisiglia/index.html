@@ -1919,15 +1919,36 @@ async function importVocationsCSV(event){
     else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
     else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
     else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
-    let seniority_v2='specialist';
-    if(/\bstage\b|\bintern\b|tirocinio/.test(tl))seniority_v2='internship';
-    else if(/\bjunior\b|\bentry\b|neolaure/.test(tl))seniority_v2='entry_level';
-    else if(/\bsenior\b|\bsr\.\b/.test(tl))seniority_v2='senior_specialist';
-    else if(/\bmanager\b|responsabile/.test(tl))seniority_v2='manager';
-    else if(/\bdirector\b|direttore/.test(tl))seniority_v2='director';
-    else if(/\bhead\b|head of/.test(tl))seniority_v2='head_of';
-    else if(/\bvp\b|vice president/.test(tl))seniority_v2='vp';
-    else if(/\bassociate\b/.test(tl))seniority_v2='associate';
+    // ── CLASSIFICAZIONE SENIORITY — sistema a priorità ──
+    // Regola: valuta prima i livelli più alti, poi scendi
+    // "Senior Manager" → senior_manager (non solo "senior")
+    let seniority_v2='specialist'; // default
+    if(/\bceo\b|\bcfo\b|\bcmo\b|\bcso\b|\bcoo\b|general manager|managing director|amministratore delegato/.test(tl)){
+      seniority_v2='c_level';
+    } else if(/\bvp\b|vice president|vice-president/.test(tl)){
+      seniority_v2='head_of';
+    } else if(/\bhead of\b|head of\b/.test(tl)){
+      seniority_v2='head_of';
+    } else if(/senior.*director|sr.*director|director.*senior/.test(tl)){
+      seniority_v2='director';
+    } else if(/\bdirector\b|direttore|direttrice/.test(tl)){
+      seniority_v2='director';
+    } else if(/senior.*manager|sr.*manager|manager.*senior|principal manager|group manager/.test(tl)){
+      seniority_v2='senior_manager';
+    } else if(/\bmanager\b|responsabile|\bhead\b/.test(tl)){
+      seniority_v2='manager';
+    } else if(/\blead\b(?!.*specialist)|team lead|leading/.test(tl)&&!/\bsenior\b/.test(tl)){
+      seniority_v2='manager';
+    } else if(/\bsenior\b|\bsr\.\b|\bsr \b|\bexpert\b|esperto|principal(?!.*consultant)|senior specialist/.test(tl)){
+      seniority_v2='senior_specialist';
+    } else if(/\bstage\b|\bintern\b|tirocinio|apprendist/.test(tl)){
+      seniority_v2='internship';
+    } else if(/\bjunior\b|\bjr\.\b|\bjr \b|\bentry\b|neolaure|graduate|neo.?laure/.test(tl)){
+      seniority_v2='entry_level';
+    } else if(/\bassociate\b|coordinat/.test(tl)){
+      seniority_v2='associate';
+    }
+    // default rimane 'specialist'
     // ── CLASSIFICAZIONE AREA TERAPEUTICA (2 livelli) ──
     let therapeutic_area=null;
     let therapeutic_area_sub=null;
