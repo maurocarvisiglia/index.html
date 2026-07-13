@@ -8106,8 +8106,9 @@ async function runCompetitorAnalysis(){
       sugBox.style.display='block';
     }
 
-    // Costruisci OR query con tutti i termini
-    const allTerms=[role,...[...extraRoles].filter(r=>document.querySelector('.cm-sug-cb[data-role="'+r.replace(/"/g,'&quot;')+'"]')?.checked!==false)];
+    // Costruisci OR query con tutti i termini — usa checkbox se presenti
+    const checkedRoles=[...document.querySelectorAll('.cm-sug-cb:checked')].map(cb=>cb.dataset.role).filter(Boolean);
+    const allTerms=[role,...(checkedRoles.length>0?checkedRoles:[...extraRoles].slice(0,5))];
     const orParts=allTerms.map(t=>'job_title.ilike.*'+encodeURIComponent(t)+'*,canonical_role.ilike.*'+encodeURIComponent(t)+'*').join(',');
 
     const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
@@ -8223,6 +8224,53 @@ async function runCompetitorAnalysis(){
     document.getElementById('cm-empty').textContent='Errore: '+e.message;
     console.error('runCompetitorAnalysis error:',e);
   }
+}
+
+
+let _cmSuggestTimer=null;
+async function suggestCMRoles(term){
+  clearTimeout(_cmSuggestTimer);
+  const sugBox=document.getElementById('cm-suggestions-box');
+  const sugList=document.getElementById('cm-suggestions-list');
+  if(!sugBox||!sugList)return;
+  if(!term||term.length<2){sugBox.style.display='none';return;}
+
+  _cmSuggestTimer=setTimeout(async()=>{
+    await loadTaxonomy();
+    const termLower=term.toLowerCase();
+    const extraRoles=new Map(); // role -> role_family
+
+    // 1. Match diretto negli alias
+    for(const[alias,data] of Object.entries(_aliasCache||{})){
+      if(alias.toLowerCase().includes(termLower)||termLower.includes(alias.toLowerCase())){
+        if(data.canonical_role)extraRoles.set(data.canonical_role,data.role_family||'');
+      }
+    }
+
+    // 2. Match nella taxonomy
+    const matchedTax=(_taxonomyCache||[]).filter(t=>
+      t.canonical_role.toLowerCase().includes(termLower)||termLower.includes(t.canonical_role.toLowerCase())
+    );
+
+    // 3. Aggiungi tutti i ruoli della stessa role_family
+    matchedTax.forEach(t=>{
+      extraRoles.set(t.canonical_role,t.role_family||'');
+      (_taxonomyCache||[]).filter(x=>x.role_family===t.role_family&&x.role_family).forEach(x=>{
+        extraRoles.set(x.canonical_role,x.role_family||'');
+      });
+    });
+
+    // Rimuovi il termine stesso
+    extraRoles.forEach((rf,r)=>{if(r.toLowerCase()===termLower)extraRoles.delete(r);});
+
+    if(extraRoles.size===0){sugBox.style.display='none';return;}
+
+    sugList.innerHTML=[...extraRoles.keys()].slice(0,8).map(r=>
+      '<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:var(--surface);border-radius:6px;cursor:pointer;font-size:11px;border:1px solid var(--border);">'
+      +'<input type="checkbox" class="cm-sug-cb" data-role="'+r.replace(/"/g,'&quot;')+'" checked style="cursor:pointer;"> '+r+'</label>'
+    ).join('');
+    sugBox.style.display='block';
+  },600);
 }
 
 async function loadPositioningAnalysis(){runCompetitorAnalysis();}
@@ -8544,7 +8592,8 @@ function renderDemandScatter(){
           <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
           <input type="text" id="cm-role-input" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
             style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
-            onkeydown="if(event.key==='Enter')runCompetitorAnalysis()">
+            onkeydown="if(event.key==='Enter')runCompetitorAnalysis()"
+            oninput="suggestCMRoles(this.value)">
         </div>
         <div style="flex:1;min-width:180px;">
           <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">AZIENDA DI RIFERIMENTO <span style="font-weight:400;">(opzionale)</span></div>
