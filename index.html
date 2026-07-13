@@ -211,7 +211,6 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-role-intel" onclick="showView('role-intel',this)">🎯 Role Intelligence</button>
     <button class="nav-btn" id="nav-commercial" onclick="showView('commercial',this)" style="border-color:#10b981;color:#10b981;">💼 Commercial</button>
     <button class="nav-btn" id="nav-signals" onclick="showView('signals',this)" style="border-color:#a78bfa;color:#a78bfa;">📡 Market Signals</button>
-    <button class="nav-btn" id="nav-compliance" onclick="showView('compliance',this)" style="border-color:var(--accent2);color:var(--accent2);">⚖️ D.Lgs. 96/2026</button>
     <button class="nav-btn" id="nav-scarcity" onclick="showView('scarcity',this)" style="border-color:#f59e0b;color:#f59e0b;">🎯 Talent Scarcity</button>
     <button class="nav-btn" id="nav-competitor" onclick="showView('competitor',this)" style="border-color:#06b6d4;color:#06b6d4;">🔬 Competitor Monitor</button>
     <button class="nav-btn" id="nav-geo" onclick="showView('geo',this)" style="border-color:#10b981;color:#10b981;">🗺️ Geographic</button>
@@ -823,60 +822,6 @@ a.job-link:hover{text-decoration:underline;}
     <div id="signals-list"></div>
   </div>
 
-  <!-- COMPLIANCE D.Lgs. 96/2026 -->
-  <div class="view" id="view-compliance">
-    <div class="section-header">
-      <div class="section-title">⚖️ Compliance D.Lgs. 96/2026 <span style="font-size:13px;color:var(--text2);font-weight:400;">Trasparenza retributiva</span></div>
-      <button class="btn btn-pdf" onclick="exportCompliancePDF()">⬇ Esporta Report</button>
-    </div>
-
-    <!-- Intro box -->
-    <div style="background:linear-gradient(135deg,#1C3557,#2E6DA4);border-radius:16px;padding:28px 32px;margin-bottom:28px;color:white;">
-      <div style="font-size:20px;font-weight:800;margin-bottom:8px;">D.Lgs. 96/2026 — In vigore dal 7 giugno 2026</div>
-      <div style="font-size:14px;opacity:.85;line-height:1.6;">La normativa italiana sulla trasparenza retributiva impone alle aziende di indicare il range salariale negli annunci di lavoro. MC Pharma monitora il livello di adeguamento nel settore Life Sciences.</div>
-    </div>
-
-    <!-- KPI compliance -->
-    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:28px;" id="compliance-kpi">
-      <div class="stat-card"><div class="stat-label">Annunci totali</div><div class="stat-value" id="comp-total">—</div><div class="stat-sub">monitorati</div></div>
-      <div class="stat-card" style="border-color:var(--success)"><div class="stat-label">✅ Conformi</div><div class="stat-value" id="comp-ok" style="color:var(--success)">—</div><div class="stat-sub" id="comp-ok-pct"></div></div>
-      <div class="stat-card" style="border-color:var(--danger)"><div class="stat-label">❌ Non conformi</div><div class="stat-value" id="comp-no" style="color:var(--danger)">—</div><div class="stat-sub" id="comp-no-pct"></div></div>
-      <div class="stat-card"><div class="stat-label">RAL media</div><div class="stat-value" id="comp-ral-avg">—</div><div class="stat-sub">annunci conformi</div></div>
-      <div class="stat-card"><div class="stat-label">Aziende conformi</div><div class="stat-value" id="comp-companies">—</div><div class="stat-sub">almeno 1 annuncio con RAL</div></div>
-    </div>
-
-    <!-- Grafici -->
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">Compliance per settore</div>
-        <div id="comp-chart-sector"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">Compliance per area funzionale</div>
-        <div id="comp-chart-area"></div>
-      </div>
-    </div>
-
-    <div class="chart-grid" style="margin-bottom:24px;">
-      <div class="chart-card">
-        <div class="chart-card-title">Top aziende conformi (più RAL indicate)</div>
-        <div id="comp-chart-companies-ok"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">Trend conformità nel tempo</div>
-        <div id="comp-chart-trend"></div>
-      </div>
-    </div>
-
-    <!-- Tabella annunci conformi -->
-    <div class="table-wrap">
-      <div class="table-header">
-        <div class="table-title">Annunci con RAL indicata — esempi virtuosi</div>
-        <div class="table-count" id="comp-listings-count">—</div>
-      </div>
-      <div id="comp-listings-body"></div>
-    </div>
-  </div>
 
 
 
@@ -2700,7 +2645,7 @@ function showView(name,btn){
   if(name==='role-intel'){loadRoleIntelligence();loadRoleList();}
   if(name==='signals')generateMarketSignals();
   // commercial: no auto-load
-  if(name==='compliance')loadCompliance();
+
   if(name==='scarcity')loadScarcityIndex();
   if(name==='competitor')initCompetitorMonitor();
   if(name==='geo')loadGeoModule();
@@ -3318,7 +3263,7 @@ async function runMassReclassify(){
 
   // Regex-map aggiornato con vocabolario chiuso
   const REGEX_MAP=[
-    {re:/\binformatore scientifico del farmaco\b|\bisf\b/i,cr:'Informatore Scientifico del Farmaco',rf:'commercial'},
+    {re:/informatore scientifico del farmaco|\bisf\b/i,cr:'Informatore Scientifico del Farmaco',rf:'commercial'},
     {re:/\binformatore scientifico del dispositivo|isf.*dispositivo/i,cr:'Informatore Scientifico del Dispositivo Medico',rf:'commercial'},
     {re:/\bmedical science liaison\b|\bmsl\b/i,cr:'Medical Science Liaison',rf:'medical_affairs'},
     {re:/\bmedical advisor\b/i,cr:'Medical Advisor',rf:'medical_affairs'},
