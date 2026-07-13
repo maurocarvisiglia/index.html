@@ -8238,21 +8238,25 @@ async function suggestCMRoles(term){
   _cmSuggestTimer=setTimeout(async()=>{
     await loadTaxonomy();
     const termLower=term.toLowerCase();
-    console.log('suggestCMRoles term:',termLower,'aliases:',Object.keys(_aliasCache||{}).length,'taxonomy:',(_taxonomyCache||[]).length);
-    console.log('alias keys sample:',Object.keys(_aliasCache||{}).slice(0,5));
+
     const extraRoles=new Map(); // role -> role_family
 
-    // 1. Match diretto negli alias
+    // 1. Match negli alias — esatto, parziale, o acronimo
     for(const[alias,data] of Object.entries(_aliasCache||{})){
-      if(alias.toLowerCase().includes(termLower)||termLower.includes(alias.toLowerCase())){
+      const aLow=alias.toLowerCase();
+      // match se: alias contiene term, term contiene alias, oppure sono uguali
+      if(aLow===termLower||aLow.includes(termLower)||termLower.includes(aLow)){
         if(data.canonical_role)extraRoles.set(data.canonical_role,data.role_family||'');
       }
     }
 
-    // 2. Match nella taxonomy
-    const matchedTax=(_taxonomyCache||[]).filter(t=>
-      t.canonical_role.toLowerCase().includes(termLower)||termLower.includes(t.canonical_role.toLowerCase())
-    );
+    // 2. Match nella taxonomy — sul canonical_role
+    const matchedTax=(_taxonomyCache||[]).filter(t=>{
+      const cLow=t.canonical_role.toLowerCase();
+      return cLow.includes(termLower)||termLower.includes(cLow)||
+        // Match su parole singole del canonical_role
+        t.canonical_role.split(' ').some(w=>w.toLowerCase().startsWith(termLower));
+    });
 
     // 3. Aggiungi tutti i ruoli della stessa role_family
     matchedTax.forEach(t=>{
