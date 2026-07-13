@@ -8056,106 +8056,140 @@ function renderScarcityBubble(data){
 
 /* ═══ COMPETITOR MONITOR ═══ */
 async function initCompetitorMonitor(){
-  try{
-    const roles=await api('job_listings?select=canonical_role&canonical_role=not.is.null&order=canonical_role');
-    const companies=await api('job_listings?select=ragione_sociale&ragione_sociale=not.is.null&order=ragione_sociale');
-    const uniqueCompanies=[...new Set(companies.map(c=>c.ragione_sociale))].sort();
-    document.getElementById('pos-company-select').innerHTML='<option value="">— Seleziona l\'azienda da analizzare —</option>'+uniqueCompanies.map(c=>`<option value="${c}">${c}</option>`).join('');
-  }catch(e){console.error('initCompetitorMonitor error:',e);}
+  // Niente da inizializzare — ricerca testo libero
 }
 
-async function loadPositioningAnalysis(){
-  const role=document.getElementById('pos-role-input').value.trim();
-  const company=document.getElementById('pos-company-select').value;
-  if(!role||!company){alert('Seleziona sia il ruolo che l\'azienda');return;}
+async function runCompetitorAnalysis(){
+  const role=(document.getElementById('cm-role-input')?.value||'').trim();
+  const refCompany=(document.getElementById('cm-company-input')?.value||'').trim();
+  const days=parseInt(document.getElementById('cm-period')?.value||'90');
+  if(!role){toast('Inserisci una figura professionale','warning');return;}
 
-  document.getElementById('pos-result').style.display='none';
-  document.getElementById('pos-empty').textContent='⏳ Caricamento...';
-  document.getElementById('pos-empty').style.display='';
+  document.getElementById('cm-results').style.display='none';
+  document.getElementById('cm-empty').innerHTML='⏳ Analisi in corso...';
+  document.getElementById('cm-empty').style.display='';
 
   try{
-    // Carica tutti i competitor per quel ruolo
-    const data=await api('rpc/get_role_competitors','POST',{p_role:role});
+    const ms=days*864e5;
+    const since=new Date(Date.now()-ms).toISOString().split('T')[0];
+    const enc=encodeURIComponent(role);
+
+    const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
+      +'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)'
+      +'&published_date=gte.'+since
+      +'&order=published_date.desc&limit=1000');
+
     if(!data.length){
-      document.getElementById('pos-empty').textContent='Nessun dato disponibile per questo ruolo';
+      document.getElementById('cm-empty').textContent='Nessun annuncio trovato per "'+role+'" negli ultimi '+days+' giorni';
       return;
     }
 
-    // Calcola media di mercato (annunci_90d)
-    const all90d=data.map(r=>parseInt(r.annunci_90d||0));
-    const avg90d=all90d.reduce((a,b)=>a+b,0)/all90d.length;
+    const byCompany={};
+    const halfMs=ms/2;
+    const halfSince=new Date(Date.now()-halfMs);
+    data.forEach(l=>{
+      const c=l.ragione_sociale||l.company_name||'N/D';
+      if(!byCompany[c])byCompany[c]={name:c,total:0,recent:0,rals:[],listings:[]};
+      byCompany[c].total++;
+      if(l.published_date&&new Date(l.published_date)>halfSince)byCompany[c].recent++;
+      const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+      if(v&&v>=10000&&v<=500000)byCompany[c].rals.push(v);
+      byCompany[c].listings.push(l);
+    });
 
-    // Trova l'azienda selezionata
-    const own=data.find(r=>r.ragione_sociale===company);
-    const own90d=own?parseInt(own.annunci_90d||0):0;
+    const companies=Object.values(byCompany).sort((a,b)=>b.total-a.total);
+    const totalAds=data.length;
+    const avgAds=totalAds/companies.length;
+    const maxAds=Math.max(...companies.map(c=>c.total),1);
 
-    // Posizionamento
-    let badge,label,badgeColor;
-    if(!own){
-      badge='❓'; label='Azienda non trovata per questo ruolo'; badgeColor='var(--text2)';
-    } else if(own90d>avg90d*1.2){
-      badge='🟢'; label='Sopra mercato'; badgeColor='#10b981';
-    } else if(own90d<avg90d*0.8){
-      badge='🔴'; label='Sotto mercato'; badgeColor='#ef4444';
+    const withRalAll=data.filter(l=>l.ral_min||l.ral_max);
+    const midsAll=trimmedRal(withRalAll);
+    const medAll=midsAll.length?midsAll[Math.floor(midsAll.length/2)]:null;
+    const p25All=midsAll.length?midsAll[Math.floor(midsAll.length*0.25)]:null;
+    const p75All=midsAll.length?midsAll[Math.floor(midsAll.length*0.75)]:null;
+    const fmt=v=>'\u20ac'+(v/1000).toFixed(0)+'k';
+
+    document.getElementById('cm-kpi-companies').textContent=companies.length;
+    document.getElementById('cm-kpi-period-label').textContent='ultimi '+days+' giorni';
+    document.getElementById('cm-kpi-total').textContent=totalAds;
+    document.getElementById('cm-kpi-ral').textContent=medAll?fmt(medAll):'n.d.';
+    document.getElementById('cm-kpi-ral-range').textContent=p25All&&p75All?fmt(p25All)+' \u2014 '+fmt(p75All):'dati insufficienti';
+    document.getElementById('cm-table-role').textContent=role;
+    document.getElementById('cm-table-count').textContent=companies.length+' aziende, '+totalAds+' annunci';
+
+    const refCard=document.getElementById('cm-kpi-ref-card');
+    if(refCompany){
+      const refData=companies.find(c=>c.name.toLowerCase().includes(refCompany.toLowerCase()));
+      if(refData){
+        const refPct=Math.round(refData.total/avgAds*100-100);
+        const refLabel=refPct>20?'Sopra mercato \u2191':refPct<-20?'Sotto mercato \u2193':'In linea con mercato \u2192';
+        const refCol=refPct>20?'#10b981':refPct<-20?'#ef4444':'#f59e0b';
+        document.getElementById('cm-kpi-ref-name').textContent=refData.name;
+        document.getElementById('cm-kpi-ref-pos').innerHTML='<span style="color:'+refCol+';font-weight:700;">'+refLabel+'</span><br><span style="color:var(--text2);">'+refData.total+' annunci (media: '+avgAds.toFixed(1)+')</span>';
+        if(refCard)refCard.style.display='';
+      }
     } else {
-      badge='🟡'; label='In linea con il mercato'; badgeColor='#f59e0b';
+      if(refCard)refCard.style.display='none';
     }
 
-    // Aggiorna KPI
-    document.getElementById('pos-kpi-own').textContent=own90d;
-    document.getElementById('pos-kpi-avg').textContent=avg90d.toFixed(1);
-    document.getElementById('pos-kpi-count').textContent=data.length;
-    document.getElementById('pos-badge').textContent=badge;
-    document.getElementById('pos-badge').style.color=badgeColor;
-    document.getElementById('pos-label').textContent=label;
-    document.getElementById('pos-role-label').textContent=role;
-    document.getElementById('pos-table-count').textContent=data.length+' aziende';
+    const tbody=document.getElementById('cm-tbody');
+    tbody.innerHTML=companies.map(c=>{
+      const ralMed=c.rals.length?c.rals.slice().sort((a,b)=>a-b)[Math.floor(c.rals.length/2)]:null;
+      const trendPct=c.recent/c.total;
+      const trendIcon=trendPct>0.6?'\u25b2 Accelera':trendPct>0.3?'\u2192 Stabile':'\u25bc Rallenta';
+      const trendCol=trendPct>0.6?'#10b981':trendPct>0.3?'#f59e0b':'#ef4444';
+      const vsMkt=Math.round((c.total/avgAds-1)*100);
+      const vsMktCol=vsMkt>20?'#10b981':vsMkt<-20?'#ef4444':'#f59e0b';
+      const pct=Math.round(c.total/maxAds*100);
+      const isRef=refCompany&&c.name.toLowerCase().includes(refCompany.toLowerCase());
+      return '<tr style="border-bottom:1px solid var(--border);background:'+(isRef?'rgba(6,182,212,0.06)':'')+'">'
+        +'<td style="padding:10px 16px;font-weight:'+(isRef?700:500)+';color:'+(isRef?'#06b6d4':'var(--text)')+';">'+(isRef?'\u2605 ':'')+c.name+'</td>'
+        +'<td style="padding:10px 12px;text-align:center;font-weight:700;color:var(--text);">'+c.total+'</td>'
+        +'<td style="padding:10px 12px;text-align:center;color:var(--accent);font-weight:600;">'+(ralMed?fmt(ralMed):'\u2014')+'</td>'
+        +'<td style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:'+trendCol+';">'+trendIcon+'</td>'
+        +'<td style="padding:10px 16px;"><div style="background:var(--surface2);border-radius:3px;height:6px;overflow:hidden;"><div style="width:'+pct+'%;height:100%;background:'+(isRef?'#06b6d4':'var(--accent)')+';border-radius:3px;"></div></div></td>'
+        +'<td style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:'+vsMktCol+';">'+(vsMkt>0?'+':'')+vsMkt+'%</td>'
+        +'</tr>';
+    }).join('');
 
-    // Tabella: ordina per annunci_90d desc, evidenzia l'azienda selezionata
-    const sorted=[...data].sort((a,b)=>parseInt(b.annunci_90d||0)-parseInt(a.annunci_90d||0));
-    const max90d=Math.max(...sorted.map(r=>parseInt(r.annunci_90d||0)),1);
+    try{
+      const topCos=companies.slice(0,5).map(c=>c.name+' ('+c.total+')').join(', ');
+      const aiPrompt='Sei un analista senior di executive search Life Sciences italiano. '
+        +'Analizza questo mercato per "'+role+'" negli ultimi '+days+' giorni. '
+        +'Dati: '+companies.length+' aziende, '+totalAds+' annunci, RAL mediana '+(medAll?fmt(medAll):'n.d.')+'. '
+        +'Top aziende: '+topCos+'. '+(refCompany?'Cliente di riferimento: '+refCompany+'. ':'')
+        +'JSON: {"summary":"<3 frasi: chi domina, intensita competitiva, implicazioni>","insights":['
+        +'{"text":"<top aziende e strategia hiring>","type":"positive"},'
+        +'{"text":"<opportunita commerciale MC Pharma>","type":"positive"},'
+        +'{"text":"<benchmark RAL>","type":"positive"},'
+        +'{"text":"<rischio o alert>","type":"warning"}]}';
+      const raw=await callAIPowerful(aiPrompt,600);
+      const aiRes=JSON.parse(raw.replace(/```json|```/g,'').trim());
+      document.getElementById('cm-ai-text').textContent=aiRes.summary||'';
+      const aiIns=document.getElementById('cm-ai-insights');
+      if(aiIns&&aiRes.insights)aiIns.innerHTML=aiRes.insights.map(i=>'<div class="ai-insight-item '+(i.type||'')+'">'+i.text+'</div>').join('');
+    }catch(e){
+      document.getElementById('cm-ai-text').textContent=companies.length+' aziende competono per "'+role+'". Top: '+companies.slice(0,3).map(c=>c.name).join(', ')+'.';
+    }
 
-    document.getElementById('pos-table-body').innerHTML=`<table>
-      <thead><tr>
-        <th>Azienda</th>
-        <th style="text-align:center;width:80px;">Annunci 90gg</th>
-        <th style="text-align:center;width:80px;">Totale</th>
-        <th style="width:140px;">vs Media</th>
-        <th style="width:100px;">Posizione</th>
-      </tr></thead>
-      <tbody>${sorted.map(r=>{
-        const r90=parseInt(r.annunci_90d||0);
-        const isOwn=r.ragione_sociale===company;
-        const pct=Math.round(r90/max90d*100);
-        const diff=avg90d>0?((r90-avg90d)/avg90d*100):0;
-        const diffLabel=diff>20?'↑ Sopra':diff<-20?'↓ Sotto':'→ In linea';
-        const diffColor=diff>20?'#10b981':diff<-20?'#ef4444':'#f59e0b';
-        return `<tr style="background:${isOwn?'rgba(6,182,212,0.08)':''};">
-          <td style="font-weight:${isOwn?700:400};color:${isOwn?'#06b6d4':'var(--text)'};">
-            ${isOwn?'★ ':''}${r.ragione_sociale}
-          </td>
-          <td style="text-align:center;font-weight:700;">${r90}</td>
-          <td style="text-align:center;color:var(--text2);">${r.annunci||0}</td>
-          <td>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="flex:1;background:var(--surface2);border-radius:3px;height:5px;overflow:hidden;">
-                <div style="width:${pct}%;height:100%;background:${isOwn?'#06b6d4':'var(--accent)'};border-radius:3px;"></div>
-              </div>
-              <span style="font-size:10px;color:var(--text2);width:24px;text-align:right;">${r90}</span>
-            </div>
-          </td>
-          <td style="font-size:12px;font-weight:600;color:${diffColor};">${diffLabel}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>`;
+    document.getElementById('cm-listings-count').textContent=data.length+' annunci';
+    document.getElementById('cm-listings-body').innerHTML='<table><thead><tr><th>Ruolo</th><th>Azienda</th><th>RAL</th><th>Seniority</th><th>Sede</th><th>Data</th></tr></thead><tbody>'
+      +data.slice(0,30).map(l=>{
+        const ralTxt=l.ral_min||l.ral_max?'<span class="ral-range">\u20ac'+(l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?')+' \u2013 \u20ac'+(l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?')+'</span>':'\u2014';
+        const title=l.url?'<a href="'+l.url+'" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">'+l.job_title+'</a>':'<strong>'+l.job_title+'</strong>';
+        return '<tr><td>'+title+'</td><td style="font-size:12px;">'+(l.ragione_sociale||l.company_name||'\u2014')+'</td><td>'+ralTxt+'</td><td style="font-size:11px;color:var(--text2);">'+(l.seniority_v2||'\u2014')+'</td><td style="font-size:11px;">'+(l.location||'\u2014')+'</td><td style="font-size:11px;">'+(l.published_date?l.published_date.substring(0,10):'\u2014')+'</td></tr>';
+      }).join('')+'</tbody></table>'
+      +(data.length>30?'<div style="padding:12px 24px;font-size:12px;color:var(--text2);border-top:1px solid var(--border);">Mostrati i primi 30 di '+data.length+'</div>':'');
 
-    document.getElementById('pos-empty').style.display='none';
-    document.getElementById('pos-result').style.display='';
+    document.getElementById('cm-empty').style.display='none';
+    document.getElementById('cm-results').style.display='';
   }catch(e){
-    document.getElementById('pos-empty').textContent='Errore: '+e.message;
-    console.error('loadPositioningAnalysis error:',e);
+    document.getElementById('cm-empty').textContent='Errore: '+e.message;
+    console.error('runCompetitorAnalysis error:',e);
   }
 }
+
+async function loadPositioningAnalysis(){runCompetitorAnalysis();}
 /* ═══ GEOGRAPHIC HEATMAP ═══ */
 let _geoRoleData=[];
 
@@ -8455,60 +8489,111 @@ function renderDemandScatter(){
 <!-- ── COMPETITOR MONITOR VIEW ── -->
 <div class="view" id="view-competitor">
   <div style="padding:24px 32px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
-      <div><div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div><div style="font-size:13px;color:var(--text2);margin-top:4px;">Analizza quali aziende competono per gli stessi profili</div></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <div style="font-size:22px;font-weight:700;color:var(--text);">🔬 Competitor Hiring Monitor</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;">Chi assume la stessa figura del tuo cliente — e quanto paga</div>
+      </div>
     </div>
-    <!-- ── PANNELLO POSIZIONAMENTO VS MERCATO ── -->
-    <div id="comp-panel-positioning">
-      <div style="display:flex;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Posizione / Ruolo (testo libero)</div>
-          <input type="text" id="pos-role-input" placeholder="es. Medical Advisor, ISF, KAM, MSL..."
+
+    <!-- Barra ricerca unica -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:2;min-width:200px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">FIGURA PROFESSIONALE</div>
+          <input type="text" id="cm-role-input" placeholder="es. ISF, Medical Advisor, KAM, MSL..."
             style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;"
-            onkeydown="if(event.key==='Enter')loadPositioningAnalysis()">
+            onkeydown="if(event.key==='Enter')runCompetitorAnalysis()">
         </div>
-        <div style="flex:1;min-width:200px;">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Azienda da analizzare</div>
-          <select id="pos-company-select" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;"><option value="">— Seleziona —</option></select>
+        <div style="flex:1;min-width:180px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">AZIENDA DI RIFERIMENTO <span style="font-weight:400;">(opzionale)</span></div>
+          <input type="text" id="cm-company-input" placeholder="es. Chiesi, Novartis..."
+            style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;box-sizing:border-box;">
         </div>
-        <div style="display:flex;align-items:flex-end;">
-          <button onclick="loadPositioningAnalysis()" style="padding:10px 20px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:600;cursor:pointer;">🔍 Analizza</button>
+        <div style="flex:1;min-width:120px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">PERIODO</div>
+          <select id="cm-period" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="30">30 giorni</option>
+            <option value="60">60 giorni</option>
+            <option value="90" selected>90 giorni</option>
+            <option value="180">6 mesi</option>
+          </select>
         </div>
-      </div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:16px;">💡 Scrivi parte del titolo — es. "advisor", "informatore", "key account"</div>
-
-      <!-- Risultato posizionamento -->
-      <div id="pos-result" style="display:none;">
-
-        <!-- Hero: posizione azienda vs mercato -->
-        <div style="display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px;">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
-            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Posizionamento</div>
-            <div id="pos-badge" style="font-size:28px;font-weight:800;margin-bottom:6px;">—</div>
-            <div id="pos-label" style="font-size:13px;color:var(--text2);">—</div>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-            <div class="stat-card"><div class="stat-label">Annunci 90gg (azienda)</div><div class="stat-value" id="pos-kpi-own">—</div></div>
-            <div class="stat-card"><div class="stat-label">Media mercato 90gg</div><div class="stat-value" id="pos-kpi-avg">—</div></div>
-            <div class="stat-card"><div class="stat-label">Aziende nel mercato</div><div class="stat-value" id="pos-kpi-count">—</div></div>
-          </div>
-        </div>
-
-        <!-- Tabella competitor con indicatore -->
-        <div class="table-wrap">
-          <div class="table-header">
-            <div class="table-title">📊 Mercato — <span id="pos-role-label">—</span></div>
-            <div class="table-count" id="pos-table-count">—</div>
-          </div>
-          <div id="pos-table-body"></div>
-        </div>
-      </div>
-
-      <div id="pos-empty" style="padding:40px;text-align:center;color:var(--text2);font-size:13px;">
-        Seleziona un ruolo e un'azienda, poi clicca Analizza
+        <button onclick="runCompetitorAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
       </div>
     </div>
 
+    <!-- Risultati -->
+    <div id="cm-empty" style="padding:60px;text-align:center;color:var(--text2);font-size:13px;">
+      Inserisci una figura professionale e clicca Analizza
+    </div>
+
+    <div id="cm-results" style="display:none;">
+
+      <!-- KPI riga -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div class="chart-card" style="padding:16px 18px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:6px;">Aziende attive</div>
+          <div style="font-size:26px;font-weight:800;color:var(--text);" id="cm-kpi-companies">—</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;" id="cm-kpi-period-label">nel periodo</div>
+        </div>
+        <div class="chart-card" style="padding:16px 18px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:6px;">Annunci totali</div>
+          <div style="font-size:26px;font-weight:800;color:var(--text);" id="cm-kpi-total">—</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;">per questa figura</div>
+        </div>
+        <div class="chart-card" style="padding:16px 18px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:6px;">RAL mediana offerta</div>
+          <div style="font-size:26px;font-weight:800;color:var(--accent);" id="cm-kpi-ral">—</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px;" id="cm-kpi-ral-range">P25 — P75</div>
+        </div>
+        <div class="chart-card" style="padding:16px 18px;" id="cm-kpi-ref-card" style="display:none;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:6px;">Azienda riferimento</div>
+          <div style="font-size:16px;font-weight:800;color:#06b6d4;line-height:1.2;" id="cm-kpi-ref-name">—</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px;" id="cm-kpi-ref-pos">—</div>
+        </div>
+      </div>
+
+      <!-- Tabella competitor principale -->
+      <div class="chart-card" style="padding:0;overflow:hidden;margin-bottom:20px;">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:13px;font-weight:700;color:var(--text);">📊 Chi assume — <span id="cm-table-role">—</span></div>
+          <div style="font-size:11px;color:var(--text2);" id="cm-table-count">—</div>
+        </div>
+        <div id="cm-table-body" style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);">
+                <th style="padding:10px 16px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">Azienda</th>
+                <th style="padding:10px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">Annunci</th>
+                <th style="padding:10px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">RAL media</th>
+                <th style="padding:10px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">Trend</th>
+                <th style="padding:10px 16px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">Intensità</th>
+                <th style="padding:10px 12px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);">vs Mercato</th>
+              </tr>
+            </thead>
+            <tbody id="cm-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- AI Analysis -->
+      <div class="ai-summary-card" style="margin-bottom:20px;">
+        <div class="ai-summary-header">🤖 AI Competitive Intelligence</div>
+        <div class="ai-summary-text" id="cm-ai-text">—</div>
+        <div class="ai-insights-grid" id="cm-ai-insights"></div>
+      </div>
+
+      <!-- Annunci recenti del ruolo -->
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">📋 Annunci recenti</div>
+          <div class="table-count" id="cm-listings-count">—</div>
+        </div>
+        <div id="cm-listings-body"></div>
+      </div>
+
+    </div>
   </div>
 </div>
 
