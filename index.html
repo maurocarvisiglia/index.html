@@ -761,56 +761,59 @@ a.job-link:hover{text-decoration:underline;}
       <button class="btn btn-primary" onclick="generateMarketSignals()" id="btn-signals" style="background:#7c3aed;border-color:#7c3aed;">🔄 Aggiorna segnali</button>
     </div>
 
-    <!-- Score overview -->
-    <div class="score-grid" id="signals-score-grid" style="margin-bottom:28px;">
-      <div class="score-card">
-        <div class="score-card-label">Hiring Momentum</div>
-        <div class="score-ring" id="score-momentum" style="margin:0 auto;">—</div>
-        <div class="score-bar"><div class="score-bar-fill" id="score-momentum-bar" style="width:0%;background:var(--success)"></div></div>
+    <!-- KPI contestualizzati — 4 metriche reali -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;" id="signals-kpi-grid">
+      <div class="chart-card" style="padding:18px 20px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:8px;">Nuovi annunci 30gg</div>
+        <div style="font-size:28px;font-weight:800;color:var(--text);" id="sig-kpi-new30">—</div>
+        <div style="font-size:11px;margin-top:4px;" id="sig-kpi-new30-delta"></div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px;">vs 30gg precedenti</div>
       </div>
-      <div class="score-card">
-        <div class="score-card-label">Salary Attractiveness</div>
-        <div class="score-ring" id="score-salary" style="margin:0 auto;">—</div>
-        <div class="score-bar"><div class="score-bar-fill" id="score-salary-bar" style="width:0%;background:var(--accent)"></div></div>
+      <div class="chart-card" style="padding:18px 20px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:8px;">Aziende attive</div>
+        <div style="font-size:28px;font-weight:800;color:var(--text);" id="sig-kpi-companies">—</div>
+        <div style="font-size:11px;margin-top:4px;" id="sig-kpi-companies-delta"></div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px;">ultime 4 settimane</div>
       </div>
-      <div class="score-card">
-        <div class="score-card-label">Market Depth</div>
-        <div class="score-ring" id="score-depth" style="margin:0 auto;">—</div>
-        <div class="score-bar"><div class="score-bar-fill" id="score-depth-bar" style="width:0%;background:var(--accent2)"></div></div>
+      <div class="chart-card" style="padding:18px 20px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:8px;">RAL mediana mercato</div>
+        <div style="font-size:28px;font-weight:800;color:var(--accent);" id="sig-kpi-ral">—</div>
+        <div style="font-size:11px;margin-top:4px;color:var(--text2);" id="sig-kpi-ral-range"></div>
+        <div style="font-size:10px;color:var(--text2);margin-top:4px;">P25 — P75</div>
       </div>
-      <div class="score-card">
-        <div class="score-card-label">Talent Scarcity</div>
-        <div class="score-ring" id="score-scarcity" style="margin:0 auto;">—</div>
-        <div class="score-bar"><div class="score-bar-fill" id="score-scarcity-bar" style="width:0%;background:var(--danger)"></div></div>
+      <div class="chart-card" style="padding:18px 20px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-bottom:8px;">Top ruolo richiesto</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text);line-height:1.3;" id="sig-kpi-toprole">—</div>
+        <div style="font-size:11px;margin-top:6px;color:var(--text2);" id="sig-kpi-toprole-sub"></div>
       </div>
     </div>
 
     <!-- AI Summary globale -->
-    <div class="ai-summary-card" id="signals-ai-summary">
+    <div class="ai-summary-card" id="signals-ai-summary" style="margin-bottom:24px;">
       <div class="ai-summary-header">🤖 AI Market Intelligence</div>
       <div class="ai-summary-text" id="signals-ai-text">Clicca "Aggiorna segnali" per generare l'analisi AI del mercato Life Sciences.</div>
       <div class="ai-insights-grid" id="signals-ai-insights"></div>
     </div>
 
-    <!-- Segnali per area terapeutica -->
+    <!-- Grafici principali -->
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
-        <div class="chart-card-title">🔥 Therapeutic Area Momentum</div>
+        <div class="chart-card-title">🔥 Therapeutic Area — ultimi 90gg</div>
         <div id="signals-ta-momentum"></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">🚀 Top aziende in crescita</div>
+        <div class="chart-card-title">🚀 Aziende più attive — ultimi 30gg <span style="font-size:10px;color:var(--text2);font-weight:400;">(min. 3 annunci)</span></div>
         <div id="signals-company-growth"></div>
       </div>
     </div>
 
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
-        <div class="chart-card-title">📈 Ruoli in crescita</div>
+        <div class="chart-card-title">📈 Ruoli più ricercati — ultimi 90gg</div>
         <div id="signals-role-growth"></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">💶 Salary Intelligence</div>
+        <div class="chart-card-title">💶 RAL mediana per area funzionale <span style="font-size:10px;color:var(--text2);font-weight:400;">(n. annunci)</span></div>
         <div id="signals-salary-intel"></div>
       </div>
     </div>
@@ -5152,88 +5155,121 @@ async function generateMarketSignals(){
 
   try{
     const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=3000');
-
-    // Calcola score globali
-    const momentum=calcHiringMomentum(data);
-    const salary=calcSalaryAttractiveness(data);
-    const depth=calcMarketDepth(data);
-    const scarcity=calcTalentScarcity(data);
-
-    renderScore('score-momentum','score-momentum-bar',momentum,'','velocità crescita');
-    renderScore('score-salary','score-salary-bar',salary,'','competitività RAL');
-    renderScore('score-depth','score-depth-bar',depth,'','profondità mercato');
-    renderScore('score-scarcity','score-scarcity-bar',scarcity,'','difficoltà reperimento');
-
-    // TA Momentum
     const now=Date.now();
-    const d90=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(now-90*864e5));
+    const ms30=30*864e5, ms60=60*864e5, ms90=90*864e5;
+
+    const d30=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(now-ms30));
+    const d30to60=data.filter(l=>{if(!l.published_date)return false;const d=new Date(l.published_date);return d<=new Date(now-ms30)&&d>new Date(now-ms60);});
+    const d90=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(now-ms90));
+
+    // ── KPI 1: Nuovi annunci 30gg con variazione ──
+    const new30=d30.length;
+    const prev30=d30to60.length;
+    const delta30=prev30>0?Math.round((new30-prev30)/prev30*100):0;
+    const kpiNew=document.getElementById('sig-kpi-new30');
+    const kpiDelta=document.getElementById('sig-kpi-new30-delta');
+    if(kpiNew)kpiNew.textContent=new30;
+    if(kpiDelta){
+      const col=delta30>0?'var(--success)':delta30<0?'var(--danger)':'var(--text2)';
+      kpiDelta.innerHTML=`<span style="color:${col};font-weight:700;">${delta30>0?'+':''}${delta30}%</span>`;
+    }
+
+    // ── KPI 2: Aziende attive 30gg con variazione ──
+    const cos30=new Set(d30.map(l=>l.ragione_sociale||l.company_name).filter(Boolean));
+    const cos60=new Set(d30to60.map(l=>l.ragione_sociale||l.company_name).filter(Boolean));
+    const kpiCo=document.getElementById('sig-kpi-companies');
+    const kpiCoDelta=document.getElementById('sig-kpi-companies-delta');
+    if(kpiCo)kpiCo.textContent=cos30.size;
+    if(kpiCoDelta){
+      const diff=cos30.size-cos60.size;
+      const col=diff>0?'var(--success)':diff<0?'var(--danger)':'var(--text2)';
+      kpiCoDelta.innerHTML=`<span style="color:${col};font-weight:700;">${diff>0?'+':''}${diff} aziende</span>`;
+    }
+
+    // ── KPI 3: RAL mediana con range P25-P75 ──
+    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    const mids=trimmedRal(withRal);
+    const kpiRal=document.getElementById('sig-kpi-ral');
+    const kpiRalRange=document.getElementById('sig-kpi-ral-range');
+    if(mids.length>=3){
+      const med=mids[Math.floor(mids.length/2)];
+      const p25=mids[Math.floor(mids.length*0.25)];
+      const p75=mids[Math.floor(mids.length*0.75)];
+      if(kpiRal)kpiRal.textContent='€'+(med/1000).toFixed(0)+'k';
+      if(kpiRalRange)kpiRalRange.textContent='€'+(p25/1000).toFixed(0)+'k — €'+(p75/1000).toFixed(0)+'k';
+    } else {
+      if(kpiRal)kpiRal.textContent='n.d.';
+    }
+
+    // ── KPI 4: Top ruolo richiesto 30gg ──
+    const roleD30={};
+    d30.forEach(l=>{const r=l.canonical_role;if(r&&r!=='N/A')roleD30[r]=(roleD30[r]||0)+1;});
+    const topRole=Object.entries(roleD30).sort((a,b)=>b[1]-a[1])[0];
+    const kpiRole=document.getElementById('sig-kpi-toprole');
+    const kpiRoleSub=document.getElementById('sig-kpi-toprole-sub');
+    if(topRole){
+      if(kpiRole)kpiRole.textContent=topRole[0];
+      if(kpiRoleSub)kpiRoleSub.textContent=topRole[1]+' annunci negli ultimi 30gg';
+    }
+
+    // ── TA Momentum (90gg) ──
     const taCount={};
     d90.forEach(l=>{if(l.therapeutic_area&&l.therapeutic_area!=='not_applicable')taCount[l.therapeutic_area]=(taCount[l.therapeutic_area]||0)+1;});
     const maxTA=Math.max(...Object.values(taCount),1);
     const taEl=document.getElementById('signals-ta-momentum');
     if(taEl)taEl.innerHTML=Object.entries(taCount).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([ta,n])=>{
-      const score=Math.round(n/maxTA*100);
-      return `<div class="bar-row">
-        <div class="bar-label">${ta}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${score}%;background:${score>70?'var(--success)':score>40?'var(--accent)':'var(--text2)'}"></div></div>
-        <div class="bar-count">${n}</div>
-      </div>`;
+      const pct=Math.round(n/maxTA*100);
+      const col=pct>70?'var(--success)':pct>40?'var(--accent)':'var(--text2)';
+      return '<div class="bar-row"><div class="bar-label">'+toLabel(ta)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:'+col+'"></div></div><div class="bar-count">'+n+'</div></div>';
     }).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">Dati TA non disponibili</div>';
 
-    // Top company growth
-    const byCoD30={};
-    const byCoD60={};
-    data.forEach(l=>{
-      const c=l.ragione_sociale||l.company_name;if(!c)return;
-      const d=new Date(l.published_date);
-      if(d>new Date(now-30*864e5))byCoD30[c]=(byCoD30[c]||0)+1;
-      else if(d>new Date(now-60*864e5))byCoD60[c]=(byCoD60[c]||0)+1;
-    });
-    const coGrowth=Object.entries(byCoD30).map(([c,n30])=>{
-      const n60=byCoD60[c]||0;
-      const growth=n60>0?Math.round((n30-n60)/n60*100):n30>0?100:0;
-      return[c,n30,growth];
-    }).sort((a,b)=>b[2]-a[2]).slice(0,8);
-    const maxN=Math.max(...coGrowth.map(d=>d[1]),1);
+    // ── Aziende più attive 30gg (minimo 3 annunci, no percentuali fasulle) ──
     const coEl=document.getElementById('signals-company-growth');
-    if(coEl)coEl.innerHTML=coGrowth.map(([c,n,g])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="font-size:11px;">${c.substring(0,20)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/maxN*100)}%;background:${g>0?'var(--success)':'var(--text2)'}"></div></div>
-        <div class="bar-count" style="color:${g>0?'var(--success)':'var(--text2)'};">${g>0?'+':''}${g}%</div>
-      </div>`).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">Dati insufficienti</div>';
+    const coRank=Object.entries(
+      d30.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name;if(c)acc[c]=(acc[c]||0)+1;return acc;},{})
+    ).filter(([,n])=>n>=3).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const maxCoN=Math.max(...coRank.map(d=>d[1]),1);
+    if(coEl)coEl.innerHTML=coRank.length?coRank.map(([c,n])=>{
+      const prev=d30to60.filter(l=>(l.ragione_sociale||l.company_name)===c).length;
+      const trend=prev>0?(n>prev?'▲':'▼'):'◆';
+      const trendCol=prev>0?(n>prev?'var(--success)':'var(--danger)'):'var(--text2)';
+      return '<div class="bar-row"><div class="bar-label" style="font-size:11px;">'+c.substring(0,22)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+Math.round(n/maxCoN*100)+'%;background:var(--accent2)"></div></div><div class="bar-count">'+n+' <span style="color:'+trendCol+';font-size:10px;">'+trend+'</span></div></div>';
+    }).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Nessuna azienda con ≥3 annunci negli ultimi 30gg</div>';
 
-    // Role growth
+    // ── Ruoli più ricercati 90gg (solo canonical_role validi) ──
     const roleCount={};
-    d90.forEach(l=>{const r=l.canonical_role||l.job_title;if(r&&r!=='N/A')roleCount[r]=(roleCount[r]||0)+1;});
+    d90.forEach(l=>{const r=l.canonical_role;if(r&&r!=='N/A')roleCount[r]=(roleCount[r]||0)+1;});
     const maxR=Math.max(...Object.values(roleCount),1);
     const roleEl=document.getElementById('signals-role-growth');
-    if(roleEl)roleEl.innerHTML=Object.entries(roleCount).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([r,n])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="font-size:11px;">${r.substring(0,25)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/maxR*100)}%;background:var(--accent2)"></div></div>
-        <div class="bar-count">${n}</div>
-      </div>`).join('');
+    if(roleEl)roleEl.innerHTML=Object.entries(roleCount).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([r,n])=>{
+      const pct=Math.round(n/maxR*100);
+      return '<div class="bar-row"><div class="bar-label" style="font-size:11px;">'+r.substring(0,26)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:var(--accent2)"></div></div><div class="bar-count">'+n+'</div></div>';
+    }).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">Dati ruoli insufficienti</div>';
 
-    // Salary intel
-    const withRal=data.filter(l=>l.ral_min||l.ral_max);
+    // ── Salary Intelligence — RAL mediana per area con conteggio ──
     const byArea={};
     withRal.forEach(l=>{
-      const a=l.functional_area_v2||'N/D';
+      const a=l.functional_area_v2;
+      if(!a||a==='N/D')return;
       if(!byArea[a])byArea[a]=[];
-      byArea[a].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+      const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+      if(v>=10000&&v<=500000)byArea[a].push(v);
     });
-    const salaryData=Object.entries(byArea).map(([a,vals])=>[a,Math.round(vals.reduce((s,v)=>s+v)/vals.length)]).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const salaryData=Object.entries(byArea)
+      .filter(([,v])=>v.length>=3) // minimo 3 annunci per area
+      .map(([a,vals])=>{
+        const sorted=vals.sort((x,y)=>x-y);
+        const med=sorted[Math.floor(sorted.length/2)];
+        return[a,med,vals.length];
+      }).sort((a,b)=>b[1]-a[1]).slice(0,8);
     const maxSal=Math.max(...salaryData.map(d=>d[1]),1);
     const salEl=document.getElementById('signals-salary-intel');
-    if(salEl)salEl.innerHTML=salaryData.map(([a,avg])=>`
-      <div class="bar-row">
-        <div class="bar-label" style="font-size:11px;">${a.replace(/_/g,' ')}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.round(avg/maxSal*100)}%;background:var(--accent)"></div></div>
-        <div class="bar-count" style="color:var(--accent);font-size:11px;">€${(avg/1000).toFixed(0)}k</div>
-      </div>`).join('')||'<div style="padding:24px;text-align:center;color:var(--text2);">RAL non disponibile</div>';
+    if(salEl)salEl.innerHTML=salaryData.length?salaryData.map(([a,med,cnt])=>{
+      const pct=Math.round(med/maxSal*100);
+      return '<div class="bar-row"><div class="bar-label" style="font-size:11px;">'+toLabel(a)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:var(--accent)"></div></div><div style="font-size:11px;font-weight:700;color:var(--accent);min-width:44px;text-align:right;">€'+(med/1000).toFixed(0)+'k</div><div style="font-size:10px;color:var(--text2);min-width:28px;text-align:right;">('+cnt+')</div></div>';
+    }).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Dati RAL insufficienti (min. 3 annunci per area)</div>';
 
-    // Segnali specifici
+    // ── Segnali specifici ──
     const signals=detectMarketSignals(data,data);
     const sigEl=document.getElementById('signals-list');
     if(sigEl)sigEl.innerHTML=signals.length?signals.map(s=>`
@@ -5243,13 +5279,30 @@ async function generateMarketSignals(){
           <div class="signal-title">${s.title}<span class="signal-badge ${s.badge}">${s.badge}</span></div>
           <div class="signal-desc">${s.desc}</div>
         </div>
-      </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Nessun segnale significativo rilevato — aggiungi più annunci per attivare il motore</div>';
+      </div>`).join(''):'<div style="padding:24px;text-align:center;color:var(--text2);">Nessun segnale significativo rilevato</div>';
 
-    // AI Summary globale
-    const aiResult=await generateDashboardAISummary(data,'');
-    document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
-    const aiInsEl=document.getElementById('signals-ai-insights');
-    if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+    // ── AI Summary con sigPrompt dedicato ──
+    try{
+      const sigPrompt='Sei un analista senior di market intelligence per il settore Life Sciences italiano. '+
+        'Dati di mercato: '+data.length+' annunci totali, '+d30.length+' negli ultimi 30gg ('+delta30+'% vs periodo precedente), '+
+        cos30.size+' aziende attive. '+
+        'Top ruolo: '+(topRole?topRole[0]+' ('+topRole[1]+' annunci)':'N/D')+'. '+
+        'RAL mediana: '+(mids.length>=3?'€'+(mids[Math.floor(mids.length/2)]/1000).toFixed(0)+'k':'n.d.')+'. '+
+        'Top TA: '+Object.entries(taCount).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([t,n])=>t+' ('+n+')').join(', ')+'. '+
+        'Segnali rilevati: '+signals.slice(0,3).map(s=>s.title).join(', ')+'. '+
+        'Genera JSON: {"summary":"<3-4 frasi sullo stato del mercato LS italiano, tendenze e implicazioni per un executive search boutique>","insights":['+
+        '{"text":"<trend più significativo con dati concreti>","type":"positive"},'+
+        '{"text":"<opportunità commerciale per MC Pharma>","type":"positive"},'+
+        '{"text":"<area terapeutica o segmento in crescita>","type":"positive"},'+
+        '{"text":"<segnale di attenzione o rischio>","type":"warning"}]}';
+      const raw=await callAIPowerful(sigPrompt,700);
+      const aiResult=JSON.parse(raw.replace(/```json|```/g,'').trim());
+      document.getElementById('signals-ai-text').textContent=aiResult.summary||'';
+      const aiInsEl=document.getElementById('signals-ai-insights');
+      if(aiInsEl&&aiResult.insights)aiInsEl.innerHTML=aiResult.insights.map(i=>`<div class="ai-insight-item ${i.type||''}">${i.text}</div>`).join('');
+    }catch(e){
+      document.getElementById('signals-ai-text').textContent='Mercato Life Sciences: '+data.length+' annunci analizzati, '+d30.length+' pubblicati negli ultimi 30gg.';
+    }
 
   }catch(e){
     toast('Errore Market Signals: '+e.message,'error');
