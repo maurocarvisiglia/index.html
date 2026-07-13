@@ -8238,6 +8238,8 @@ async function suggestCMRoles(term){
   _cmSuggestTimer=setTimeout(async()=>{
     await loadTaxonomy();
     const termLower=term.toLowerCase();
+    console.log('suggestCMRoles term:',termLower,'aliases:',Object.keys(_aliasCache||{}).length,'taxonomy:',(_taxonomyCache||[]).length);
+    console.log('alias keys sample:',Object.keys(_aliasCache||{}).slice(0,5));
     const extraRoles=new Map(); // role -> role_family
 
     // 1. Match diretto negli alias
