@@ -8074,8 +8074,44 @@ async function runCompetitorAnalysis(){
     const since=new Date(Date.now()-ms).toISOString().split('T')[0];
     const enc=encodeURIComponent(role);
 
+    // Espandi la ricerca con alias e canonical_role correlati
+    await loadTaxonomy();
+    const extraRoles=new Set();
+    // Cerca negli alias
+    for(const[alias,data] of Object.entries(_aliasCache||{})){
+      const aRe=new RegExp(role.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+      if(aRe.test(alias)||aRe.test(data.canonical_role||'')){
+        if(data.canonical_role)extraRoles.add(data.canonical_role);
+      }
+    }
+    // Cerca nella taxonomy per role_family simile
+    const matchedTax=(_taxonomyCache||[]).filter(t=>{
+      const re=new RegExp(role.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+      return re.test(t.canonical_role);
+    });
+    matchedTax.forEach(t=>{
+      // Aggiungi tutti i ruoli della stessa role_family
+      (_taxonomyCache||[]).filter(x=>x.role_family===t.role_family).forEach(x=>extraRoles.add(x.canonical_role));
+    });
+    extraRoles.delete(role);
+
+    // Mostra box suggerimenti se ci sono alias
+    const sugBox=document.getElementById('cm-suggestions-box');
+    const sugList=document.getElementById('cm-suggestions-list');
+    if(sugBox&&sugList&&extraRoles.size>0){
+      sugList.innerHTML=[...extraRoles].slice(0,8).map(r=>
+        '<label style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--surface);border-radius:4px;cursor:pointer;font-size:11px;">'
+        +'<input type="checkbox" class="cm-sug-cb" data-role="'+r.replace(/"/g,'&quot;')+'" style="cursor:pointer;"> '+r+'</label>'
+      ).join('');
+      sugBox.style.display='block';
+    }
+
+    // Costruisci OR query con tutti i termini
+    const allTerms=[role,...[...extraRoles].filter(r=>document.querySelector('.cm-sug-cb[data-role="'+r.replace(/"/g,'&quot;')+'"]')?.checked!==false)];
+    const orParts=allTerms.map(t=>'job_title.ilike.*'+encodeURIComponent(t)+'*,canonical_role.ilike.*'+encodeURIComponent(t)+'*').join(',');
+
     const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
-      +'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)'
+      +'&or=('+orParts+')'
       +'&published_date=gte.'+since
       +'&order=published_date.desc&limit=1000');
 
@@ -8190,6 +8226,11 @@ async function runCompetitorAnalysis(){
 }
 
 async function loadPositioningAnalysis(){runCompetitorAnalysis();}
+
+function updateCMWithAliases(){
+  // Riesegui analisi con le selezioni aggiornate
+  runCompetitorAnalysis();
+}
 /* ═══ GEOGRAPHIC HEATMAP ═══ */
 let _geoRoleData=[];
 
@@ -8520,6 +8561,12 @@ function renderDemandScatter(){
           </select>
         </div>
         <button onclick="runCompetitorAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#06b6d4;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
+      </div>
+      <!-- Box alias/ruoli correlati -->
+      <div id="cm-suggestions-box" style="display:none;margin-top:12px;background:var(--surface2);border-radius:8px;padding:12px 14px;">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px;">🔗 Includi anche figure correlate:</div>
+        <div id="cm-suggestions-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <div style="margin-top:8px;font-size:10px;color:var(--text2);">Spunta le figure da aggiungere alla ricerca</div>
       </div>
     </div>
 
