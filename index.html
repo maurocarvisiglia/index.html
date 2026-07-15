@@ -5371,10 +5371,33 @@ function countBy(arr,key){
 
 // ── trimmedRal: rimuove outlier 5% per calcoli RAL ──
 function trimmedRal(listings){
-  const vals=listings.filter(l=>l.ral_min||l.ral_max).map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).filter(v=>v>=10000&&v<=500000).sort((a,b)=>a-b);
-  if(vals.length<=2)return vals;
-  const cut=Math.max(1,Math.floor(vals.length*0.05));
-  return vals.slice(cut,vals.length-cut);
+  // Step 1: calcola punto medio di ogni range
+  const raw=listings
+    .filter(l=>l.ral_min||l.ral_max)
+    .map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+
+  // Step 2: escludi valori inverosimili con soglia contestuale
+  // Stage/internship esclusi se seniority presente
+  // Soglia assoluta: <€16k (sotto soglia minima contrattuale nazionale) e >€350k (fuori scala LS Italia)
+  const filtered=raw.filter(v=>v>=16000&&v<=350000);
+
+  if(filtered.length<=2)return filtered.sort((a,b)=>a-b);
+
+  const sorted=filtered.sort((a,b)=>a-b);
+
+  // Step 3: rimuovi outlier con metodo IQR (interquartile range)
+  const q1=sorted[Math.floor(sorted.length*0.25)];
+  const q3=sorted[Math.floor(sorted.length*0.75)];
+  const iqr=q3-q1;
+  const lowerFence=q1-1.5*iqr;
+  const upperFence=q3+1.5*iqr;
+  const iqrFiltered=sorted.filter(v=>v>=lowerFence&&v<=upperFence);
+
+  // Step 4: taglio percentile solo se rimangono abbastanza dati (min 6)
+  // Con pochi dati l'IQR è già sufficiente — non tagliare ulteriormente
+  if(iqrFiltered.length<6)return iqrFiltered;
+  const cut=Math.max(1,Math.floor(iqrFiltered.length*0.10));
+  return iqrFiltered.slice(cut,iqrFiltered.length-cut);
 }
 
 // ── Treemap per role family ──
