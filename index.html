@@ -3402,7 +3402,7 @@ async function runPostImportEnrichment(newCount){
   try{
     // ── STEP 1: Normalizza ruoli (regex-first, poi Groq sui residui) ──
     showEnrichmentProgress('Step 1/4 — Normalizzazione ruoli...', 10);
-    const unnormalized = await api('job_listings?select=id,job_title,canonical_role,role_family&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=1000');
+    const unnormalized = await api('job_listings?select=id,job_title,canonical_role,role_family&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=5000');
     if(unnormalized.length){
       await loadTaxonomy();
       let normalized = 0;
@@ -3768,7 +3768,7 @@ async function loadRuoloComparisons(searchTerm){
   wrapEl.style.display='block';
 
   const rows=await Promise.all(compareRoles.map(async role=>{
-    const data=await api(`job_listings?select=ral_min,ral_max,published_date&canonical_role=ilike.*${encodeURIComponent(role)}*&limit=200`);
+    const data=await api(`job_listings?select=ral_min,ral_max,published_date&canonical_role=ilike.*${encodeURIComponent(role)}*&limit=2000`);
     const withRal=data.filter(l=>l.ral_min||l.ral_max);
     const avg=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
     const d30=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(Date.now()-30*864e5)).length;
@@ -4615,7 +4615,7 @@ async function runMarketQuery(){
   const period=document.getElementById('qb-period').value;
 
   // Costruisce query
-  let q='job_listings?select=*&order=published_date.desc.nullslast&limit=1000';
+  let q='job_listings?select=*&order=published_date.desc.nullslast&limit=5000';
   if(area)q+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
   if(sector)q+=`&sector_v2=eq.${encodeURIComponent(sector)}`;
   if(ta)q+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
@@ -4828,7 +4828,7 @@ async function generateChartDescriptions(data){
 async function loadDashboard(){
   // Alla prima apertura carica tutto il mercato
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=1000');
+    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=5000');
     document.getElementById('qb-empty').style.display='none';
     document.getElementById('qb-results').style.display='block';
     document.getElementById('qb-context-label').textContent='📊 Tutto il mercato Life Sciences Italia';
@@ -7546,7 +7546,7 @@ async function linkListingsToCompany(){
   try{
     // Cerca annunci con nome simile non ancora collegati a questa azienda
     const nameParts=currentCompany.name.toLowerCase().trim().split(' ').filter(p=>p.length>3);
-    const allListings=await api(`job_listings?select=id,company_name,company_id&company_id=is.null&limit=1000`);
+    const allListings=await api(`job_listings?select=id,company_name,company_id&company_id=is.null&limit=5000`);
     
     const toLink=allListings.filter(l=>{
       const lname=(l.company_name||'').toLowerCase().trim();
@@ -8138,13 +8138,13 @@ async function runCompetitorAnalysis(){
     const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
       +'&or=('+orParts+')'
       +'&published_date=gte.'+since
-      +'&order=published_date.desc&limit=1000');
+      +'&order=published_date.desc&limit=5000');
 
     // Carica periodo precedente per trend reale
     const dataPrev=await api('job_listings?select=ragione_sociale,company_name,published_date'
       +'&or=('+orParts+')'
       +'&published_date=gte.'+prevSince+'&published_date=lt.'+since
-      +'&limit=500');
+      +'&limit=2000');
     const byCompanyPrev={};
     dataPrev.forEach(l=>{const c=l.ragione_sociale||l.company_name||'N/D';byCompanyPrev[c]=(byCompanyPrev[c]||0)+1;});
 
