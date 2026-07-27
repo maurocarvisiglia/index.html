@@ -889,6 +889,16 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- Figure correlate suggerite -->
+    <div id="ruolo-suggestions-box" style="display:none;margin-bottom:20px;padding:14px 16px;border-radius:10px;border:1px solid var(--accent);background:var(--surface2);">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">💡 Figure correlate</div>
+      <div id="ruolo-suggestions-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="applyRuoloSuggestions()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:white;font-size:12px;font-weight:600;cursor:pointer;">Aggiungi selezionate</button>
+        <button onclick="document.getElementById('ruolo-suggestions-box').style.display='none'" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;">Chiudi</button>
+      </div>
+    </div>
+
     <!-- KPI -->
     <div class="stats-grid" style="grid-template-columns:repeat(7,1fr);margin-bottom:20px;">
       <div class="stat-card"><div class="stat-label">Annunci</div><div class="stat-value" id="ruolo-kpi-total">—</div></div>
@@ -2550,6 +2560,31 @@ async function loadTaxonomy(){
   aliases.forEach(a=>{_aliasCache[a.alias.toLowerCase()]=a;});
 }
 
+// Risolve i termini di ricerca ruolo in condizioni PostgREST — usata da Analisi Ruolo,
+// Role Intelligence, Geographic e Competitor Monitor per avere risultati consistenti.
+// Un termine che combacia con un alias/canonical_role noto usa match esatto (evita di perdere
+// annunci il cui job_title non contiene letteralmente l'acronimo cercato, es. "ISF").
+// Un termine libero ricade sul confronto testuale su job_title/canonical_role/role_family.
+async function buildRoleSearchOr(rawSearch){
+  await loadTaxonomy();
+  const terms=(rawSearch||'').split(/[,;]+/).map(t=>t.trim()).filter(Boolean);
+  if(!terms.length)return '';
+  const parts=[];
+  terms.forEach(term=>{
+    const low=term.toLowerCase();
+    const aliasHit=_aliasCache&&_aliasCache[low];
+    const taxHit=(_taxonomyCache||[]).find(t=>t.canonical_role.toLowerCase()===low);
+    const resolved=aliasHit?aliasHit.canonical_role:(taxHit?taxHit.canonical_role:null);
+    if(resolved){
+      parts.push('canonical_role.eq.'+encodeURIComponent(resolved));
+    } else {
+      const enc=encodeURIComponent(term);
+      parts.push('job_title.ilike.*'+enc+'*','canonical_role.ilike.*'+enc+'*','role_family.ilike.*'+enc+'*');
+    }
+  });
+  return '&or=('+parts.join(',')+')';
+}
+
 async function normalizeJobTitle(jobTitle){
   await loadTaxonomy();
   
@@ -2699,29 +2734,9 @@ async function analyzeRuolo(){
     const baseFilters=sectorF+areaF+taF;
 
     let data=[];
-    const UNRELATED=['audioprotesista','ottico','corriere','farmacista collaboratore','back office','training & sell','equipment service','patient service','technical service','showroom','front & back','addetto showroom'];
-    const matchesTerm=(title,term)=>{
-      if(!title||!term)return false;
-      const t=' '+title.toLowerCase().replace(/[^a-z0-9àèéìòù]/g,' ')+' ';
-      const tk=' '+term.toLowerCase().replace(/[^a-z0-9àèéìòù]/g,' ')+' ';
-      return t.includes(tk);
-    };
     if(searchTerms.length){
-      const seenIds=new Set();
-      for(const term of searchTerms){
-        const enc=encodeURIComponent(term);
-        const q=baseQ+baseFilters+'&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*)';
-        const res=await api(q);
-        const filtered=res.filter(l=>{
-          if(matchesTerm(l.job_title,term))return true;
-          if(matchesTerm(l.canonical_role,term)){
-            const tl=(l.job_title||'').toLowerCase();
-            return !UNRELATED.some(u=>tl.includes(u));
-          }
-          return false;
-        });
-        filtered.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);data.push(l);}});
-      }
+      const roleOr=await buildRoleSearchOr(searchRaw);
+      data=await api(baseQ+baseFilters+roleOr);
     } else {
       data=await api(baseQ+baseFilters);
     }
@@ -2740,16 +2755,14 @@ async function analyzeRuolo(){
     const ralPct=data.length?Math.round(withRal.length/data.length*100):0;
     document.getElementById('ruolo-kpi-ral-pct').textContent=`${ralPct}%`;
 
-    if(withRal.length){
-      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).sort((a,b)=>a-b);
+    const mids=trimmedRal(withRal);
+    if(mids.length){
       const avg=Math.round(mids.reduce((a,b)=>a+b,0)/mids.length);
       const median=mids[Math.floor(mids.length/2)];
-      const mins=withRal.filter(l=>l.ral_min).map(l=>l.ral_min);
-      const maxs=withRal.filter(l=>l.ral_max).map(l=>l.ral_max);
-      document.getElementById('ruolo-kpi-min').textContent=`€${(Math.min(...mins)/1000).toFixed(0)}k`;
+      document.getElementById('ruolo-kpi-min').textContent=`€${(Math.min(...mids)/1000).toFixed(0)}k`;
       document.getElementById('ruolo-kpi-avg').textContent=`€${(avg/1000).toFixed(0)}k`;
       document.getElementById('ruolo-kpi-median').textContent=`€${(median/1000).toFixed(0)}k`;
-      document.getElementById('ruolo-kpi-max').textContent=`€${(Math.max(...maxs)/1000).toFixed(0)}k`;
+      document.getElementById('ruolo-kpi-max').textContent=`€${(Math.max(...mids)/1000).toFixed(0)}k`;
     }
 
     // Chart seniority — usa seniority_v2 se disponibile
@@ -3651,7 +3664,6 @@ async function suggestRelatedRoles(searchTerm){
     await loadTaxonomy();
     const termLower=searchTerm.toLowerCase();
     const foundRoles=new Map();
-    console.log('[suggestRelatedRoles] term:',termLower,'alias keys:',Object.keys(_aliasCache||{}).length,'taxonomy:',(_taxonomyCache||[]).length);
 
     // Match in job_aliases — esatto, parziale, acronimo
     for(const[alias,data] of Object.entries(_aliasCache||{})){
@@ -3686,7 +3698,6 @@ async function suggestRelatedRoles(searchTerm){
       .filter(r=>r.toLowerCase()!==termLower)
       .filter(r=>!termLower.includes(r.toLowerCase()))
       .slice(0,6);
-    console.log('[suggestRelatedRoles] foundRoles:',foundRoles.size,'fromTaxonomy:',fromTaxonomy);
 
     if(fromTaxonomy.length){
       suggestions=fromTaxonomy;
@@ -3765,6 +3776,7 @@ async function generateRuoloAISummary(data, searchTerm){
     'TA: '+(topTA.length?topTA.map(([t,n])=>t+' ('+n+')').join(', '):'n.d.')+'. '+
     'Seniority: '+bySen.slice(0,4).map(([s,n])=>s+' ('+n+')').join(', ')+'. '+
     'Regioni: '+byGeo.map(([r,n])=>r+' ('+n+')').join(', ')+'. '+
+    'REGOLA: usa solo i dati sopra, non menzionare funzioni o ruoli diversi da "'+searchTerm+'" e non inventare dettagli non presenti in questi dati. '+
     'Rispondi SOLO con JSON: {"summary":"<4-5 frasi su mercato, benchmark salariale, aziende, aree terapeutiche>","insights":['+
     '{"text":"<salary benchmark P25-P75 e differenziali seniority>","type":"positive"},'+
     '{"text":"<domanda hiring: trend, aziende attive, geo>","type":"positive"},'+
@@ -3794,13 +3806,15 @@ async function loadRuoloComparisons(searchTerm){
     'medical advisor':['Medical Science Liaison','Medical Manager','Medical Director'],
     'msl':['Medical Advisor','Medical Manager'],
     'medical science liaison':['Medical Advisor','Medical Manager'],
-    'regulatory affairs':['Regulatory Manager','Regulatory Director'],
-    'qa manager':['QA Specialist','Quality Director'],
+    'regulatory affairs':['Regulatory Affairs Manager','Regulatory Affairs Specialist'],
+    'qa manager':['Quality Assurance Specialist','Quality Assurance Manager'],
+    'quality assurance':['Quality Assurance Manager','Quality Control Analyst'],
     'product manager':['Brand Manager','Marketing Manager'],
-    'kam':['Area Manager','National Sales Manager'],
-    'key account manager':['Area Manager','National Sales Manager'],
-    'informatore scientifico':['Product Specialist','Area Manager','KAM'],
-    'market access':['Medical Advisor','Medical Affairs Manager'],
+    'kam':['Area Manager Commercial','National Account Manager'],
+    'key account manager':['Area Manager Commercial','National Account Manager'],
+    'informatore scientifico':['Product Specialist','Area Manager Commercial','Key Account Manager'],
+    'isf':['Product Specialist','Area Manager Commercial','Key Account Manager'],
+    'market access':['Market Access Specialist','HEOR Manager','Pricing Manager'],
   };
 
   const term=searchTerm.toLowerCase();
@@ -3842,16 +3856,27 @@ async function generateRoleIntelAISummary(listings, benchmarks, roleName){
   const topCo=Object.entries(listings.reduce((acc,l)=>{const c=l.ragione_sociale||l.company_name||'';acc[c]=(acc[c]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
 
+  // Il benchmark precalcolato (salary_benchmarks) e' spesso vuoto/non aggiornato:
+  // se manca, calcoliamo i percentili live dagli annunci con trimmedRal() invece di scrivere "n.d." ovunque
+  const mids=trimmedRal(withRal);
+  const pct=p=>mids.length?mids[Math.min(mids.length-1,Math.floor(mids.length*p))]:null;
+  const p25=mainBench?.p25||pct(0.25);
+  const median=mainBench?.median||pct(0.5);
+  const p75=mainBench?.p75||pct(0.75);
+  const p90=mainBench?.p90||pct(0.9);
+
   const prompt=`Sei un esperto headhunter Life Sciences. Genera un intelligence report professionale per la figura "${roleName}".
 
 DATI:
 - Annunci totali: ${listings.length}
 - Con RAL: ${withRal.length} (${Math.round(withRal.length/listings.length*100)}%)
-- P25: ${mainBench?.p25?`€${(mainBench.p25/1000).toFixed(0)}k`:'n.d.'}
-- Mediana: ${mainBench?.median?`€${(mainBench.median/1000).toFixed(0)}k`:'n.d.'}
-- P75: ${mainBench?.p75?`€${(mainBench.p75/1000).toFixed(0)}k`:'n.d.'}
-- P90: ${mainBench?.p90?`€${(mainBench.p90/1000).toFixed(0)}k`:'n.d.'}
+- P25: ${p25?`€${(p25/1000).toFixed(0)}k`:'n.d.'}
+- Mediana: ${median?`€${(median/1000).toFixed(0)}k`:'n.d.'}
+- P75: ${p75?`€${(p75/1000).toFixed(0)}k`:'n.d.'}
+- P90: ${p90?`€${(p90/1000).toFixed(0)}k`:'n.d.'}
 - Top aziende: ${topCo.map(([c,n])=>`${c} (${n})`).join(', ')}
+
+REGOLA: usa solo i dati sopra, non menzionare funzioni o ruoli diversi da "${roleName}" e non inventare dettagli non presenti in questi dati.
 
 JSON ESATTO:
 {
@@ -3973,8 +3998,8 @@ async function generateCommercialBriefing(){
     const roleMap={};data.forEach(l=>{const r=l.canonical_role||l.role_family;if(r)roleMap[r]=(roleMap[r]||0)+1;});
     const topRoles=Object.entries(roleMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
     // specializzazioni
-    const mslCos=[...new Set(data.filter(l=>(l.job_title||'').toLowerCase().includes('msl')||(l.job_title||'').toLowerCase().includes('medical science liaison')).map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
-    const maCos=[...new Set(data.filter(l=>(l.job_title||'').toLowerCase().includes('medical advisor')).map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
+    const mslCos=[...new Set(data.filter(l=>l.canonical_role==='Medical Science Liaison').map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
+    const maCos=[...new Set(data.filter(l=>l.canonical_role==='Medical Advisor').map(l=>l.ragione_sociale||l.company_name).filter(Boolean))].slice(0,5);
     const oncoMap={};data.filter(l=>l.therapeutic_area==='oncology').forEach(l=>{const c=l.ragione_sociale||l.company_name;if(c)oncoMap[c]=(oncoMap[c]||0)+1;});
     const oncoCos=Object.entries(oncoMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([c])=>c);
     // opp score
@@ -4728,8 +4753,9 @@ async function renderQueryResults(data, contextLabel){
   document.getElementById('stat-active-90').textContent=new Set(data.filter(l=>l.published_date&&new Date(l.published_date)>d90).map(l=>l.company_name).filter(Boolean)).size;
   document.getElementById('stat-ral').textContent=withRal.length;
   document.getElementById('stat-ral-pct').textContent=data.length?Math.round(withRal.length/data.length*100)+'%':'';
-  if(withRal.length){
-    const avg=Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length);
+  const statMids=trimmedRal(withRal);
+  if(statMids.length){
+    const avg=Math.round(statMids.reduce((a,b)=>a+b,0)/statMids.length);
     document.getElementById('stat-ral-avg').textContent=`€${(avg/1000).toFixed(0)}k`;
   }else{
     document.getElementById('stat-ral-avg').textContent='—';
@@ -4745,7 +4771,7 @@ async function renderQueryResults(data, contextLabel){
   const areaData=countBy(data.map(l=>({...l,_area:l.functional_area_v2||l.functional_area})),'_area');
   renderClickableBar('chart-area',areaData,'','functional_area',data);
   renderHeatmap('chart-subarea',countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,12));
-  renderTreemap('chart-role-family',countBy(data.filter(l=>l.role_family),'role_family').slice(0,8));
+  renderTreemap('chart-role-family',countBy(data.filter(l=>l.functional_area_v2),'functional_area_v2').slice(0,8));
   renderDonut('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8));
   renderBubbleChart('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8));
   renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
@@ -4826,7 +4852,7 @@ async function generateChartDescriptions(data){
     }else if(chartId==='chart-subarea'){
       chartData=countBy(data.filter(l=>l.sub_area),'sub_area').slice(0,8);
     }else if(chartId==='chart-role-family'){
-      chartData=countBy(data.filter(l=>l.role_family),'role_family').slice(0,8);
+      chartData=countBy(data.filter(l=>l.functional_area_v2),'functional_area_v2').slice(0,8);
     }else if(chartId==='chart-canonical-role'){
       chartData=countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8);
     }else if(chartId==='chart-therapeutic'){
@@ -5071,7 +5097,8 @@ function detectMarketSignals(data, allData){
 
 async function generateDashboardAISummary(data, sector){
   const withRal=data.filter(l=>l.ral_min||l.ral_max);
-  const avgRal=withRal.length?Math.round(withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)).reduce((a,b)=>a+b)/withRal.length):null;
+  const mids=trimmedRal(withRal);
+  const avgRal=mids.length?Math.round(mids.reduce((a,b)=>a+b,0)/mids.length):null;
   const now=Date.now();
   const d30=data.filter(l=>l.published_date&&new Date(l.published_date)>new Date(now-30*864e5)).length;
   const areas=Object.entries(data.reduce((acc,l)=>{const a=l.functional_area_v2||'N/D';acc[a]=(acc[a]||0)+1;return acc;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
@@ -5084,7 +5111,7 @@ DATI MERCATO ${sector?'— '+sector:'LIFE SCIENCES ITALIA'}:
 - Aziende attive: ${new Set(data.map(l=>l.company_name).filter(Boolean)).size}
 - Annunci ultimi 30gg: ${d30}
 - RAL media: ${avgRal?`€${(avgRal/1000).toFixed(0)}k`:'n.d.'}
-- Compliance RAL (D.Lgs. 96/2026): ${Math.round(withRal.length/data.length*100)}%
+- % annunci con RAL indicata: ${Math.round(withRal.length/data.length*100)}%
 - Top aree funzionali: ${areas.map(([a,n])=>`${a} (${n})`).join(', ')}
 - Top aziende: ${topCompanies.map(([c,n])=>`${c} (${n})`).join(', ')}
 
@@ -5109,7 +5136,7 @@ Genera un JSON con questa struttura ESATTA (nessun testo extra):
       insights:[
         {text:`Area più richiesta: ${areas[0]?areas[0][0]:'N/D'} con ${areas[0]?areas[0][1]:0} annunci`,type:'positive'},
         {text:`Top recruiter: ${topCompanies[0]?topCompanies[0][0]:'N/D'} con ${topCompanies[0]?topCompanies[0][1]:0} posizioni`,type:'positive'},
-        {text:`Compliance RAL: ${Math.round(withRal.length/data.length*100)}% degli annunci indica la retribuzione`,type:withRal.length/data.length>0.5?'positive':'warning'}
+        {text:`${Math.round(withRal.length/data.length*100)}% degli annunci indica la retribuzione`,type:withRal.length/data.length>0.5?'positive':'warning'}
       ]
     };
   }
@@ -7097,8 +7124,15 @@ async function loadRoleIntelligence(){
 
   try{
     // 1. Carica benchmark pre-calcolati
+    await loadTaxonomy();
+    const searchLow=search.toLowerCase();
+    const searchAliasHit=_aliasCache&&_aliasCache[searchLow];
+    const searchTaxHit=(_taxonomyCache||[]).find(t=>t.canonical_role.toLowerCase()===searchLow);
+    const resolvedRole=searchAliasHit?searchAliasHit.canonical_role:(searchTaxHit?searchTaxHit.canonical_role:null);
+
     let bq='salary_benchmarks?select=*&order=total_listings.desc&limit=200';
-    if(search)bq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
+    if(resolvedRole)bq+=`&canonical_role=eq.${encodeURIComponent(resolvedRole)}`;
+    else if(search)bq+=`&canonical_role=ilike.*${encodeURIComponent(search)}*`;
     if(area)bq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)bq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
     const benchmarks=await api(bq);
@@ -7106,7 +7140,7 @@ async function loadRoleIntelligence(){
     // 2. Carica annunci grezzi per grafici dettagliati
     const riRal=document.getElementById('ri-ral')?.value||'';
     let lq='job_listings?select=*&order=published_date.desc.nullslast&limit=2000';
-    if(search)lq+=`&or=(canonical_role.ilike.*${encodeURIComponent(search)}*,job_title.ilike.*${encodeURIComponent(search)}*,role_family.ilike.*${encodeURIComponent(search)}*)`;
+    if(search)lq+=await buildRoleSearchOr(search);
     if(area)lq+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
     if(ta)lq+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
     if(riRal==='only')lq+=`&or=(ral_min.not.is.null,ral_max.not.is.null)`;
@@ -7141,28 +7175,40 @@ async function loadRoleIntelligence(){
     const pdfBtn=document.getElementById('btn-ri-pdf');
     if(pdfBtn)pdfBtn.style.display='inline-flex';
 
-    // ── SALARY BENCHMARK — aggrega i benchmark pre-calcolati ──
+    // ── SALARY BENCHMARK — aggrega i benchmark pre-calcolati, con fallback live se salary_benchmarks e' vuota/non aggiornata ──
     const totalListings=benchmarks.reduce((s,b)=>s+b.total_listings,0)||listings.length;
-    const totalRal=benchmarks.reduce((s,b)=>s+b.sample_size,0);
+    const liveWithRal=listings.filter(l=>l.ral_min||l.ral_max);
+    const totalRal=benchmarks.reduce((s,b)=>s+b.sample_size,0)||liveWithRal.length;
     document.getElementById('ri-kpi-total').textContent=totalListings;
     document.getElementById('ri-kpi-ral').textContent=totalRal;
     document.getElementById('ri-kpi-ral-pct').textContent=totalListings?`${Math.round(totalRal/totalListings*100)}% degli annunci`:'';
 
-    // Usa il benchmark principale (più annunci) per i percentili
+    // Usa il benchmark principale (più annunci) per i percentili, altrimenti calcola live con trimmedRal()
     const mainBench=benchmarks.find(b=>b.median)||benchmarks[0];
     const fmt=v=>v?`€${(v/1000).toFixed(0)}k`:'—';
+    const liveMids=trimmedRal(liveWithRal);
+    const livePct=p=>liveMids.length?liveMids[Math.min(liveMids.length-1,Math.floor(liveMids.length*p))]:null;
+    const bench={
+      p25:mainBench?.p25||livePct(0.25),
+      median:mainBench?.median||livePct(0.5),
+      p75:mainBench?.p75||livePct(0.75),
+      p90:mainBench?.p90||livePct(0.9),
+      avg_ral:mainBench?.avg_ral||(liveMids.length?Math.round(liveMids.reduce((a,b)=>a+b,0)/liveMids.length):null),
+      min_ral:mainBench?.min_ral,
+      max_ral:mainBench?.max_ral
+    };
 
-    document.getElementById('ri-kpi-p25').textContent=fmt(mainBench?.p25);
-    document.getElementById('ri-kpi-median').textContent=fmt(mainBench?.median);
-    document.getElementById('ri-kpi-avg').textContent=fmt(mainBench?.avg_ral);
-    document.getElementById('ri-kpi-p75').textContent=fmt(mainBench?.p75);
-    document.getElementById('ri-kpi-p90').textContent=fmt(mainBench?.p90);
+    document.getElementById('ri-kpi-p25').textContent=fmt(bench.p25);
+    document.getElementById('ri-kpi-median').textContent=fmt(bench.median);
+    document.getElementById('ri-kpi-avg').textContent=fmt(bench.avg_ral);
+    document.getElementById('ri-kpi-p75').textContent=fmt(bench.p75);
+    document.getElementById('ri-kpi-p90').textContent=fmt(bench.p90);
 
     // ── RAL RANGE BAR ──
     const ralBar=document.getElementById('ri-ral-bar');
-    if(ralBar&&mainBench?.p25&&mainBench?.p90){
-      const min=mainBench.min_ral||mainBench.p25;
-      const max=mainBench.max_ral||mainBench.p90;
+    if(ralBar&&bench.p25&&bench.p90){
+      const min=bench.min_ral||bench.p25;
+      const max=bench.max_ral||bench.p90;
       const range=max-min||1;
       const pct=v=>Math.round((v-min)/range*100);
       ralBar.innerHTML=`
@@ -7170,17 +7216,17 @@ async function loadRoleIntelligence(){
           <!-- track -->
           <div style="position:absolute;top:20px;left:0;right:0;height:8px;background:var(--surface2);border-radius:4px;"></div>
           <!-- p25-p75 range -->
-          <div style="position:absolute;top:20px;left:${pct(mainBench.p25)}%;width:${pct(mainBench.p75)-pct(mainBench.p25)}%;height:8px;background:var(--success);opacity:.4;border-radius:4px;"></div>
+          <div style="position:absolute;top:20px;left:${pct(bench.p25)}%;width:${pct(bench.p75)-pct(bench.p25)}%;height:8px;background:var(--success);opacity:.4;border-radius:4px;"></div>
           <!-- median line -->
-          <div style="position:absolute;top:14px;left:${pct(mainBench.median)}%;width:3px;height:20px;background:var(--success);border-radius:2px;transform:translateX(-50%);"></div>
+          <div style="position:absolute;top:14px;left:${pct(bench.median)}%;width:3px;height:20px;background:var(--success);border-radius:2px;transform:translateX(-50%);"></div>
           <!-- P25 label -->
-          <div style="position:absolute;top:34px;left:${pct(mainBench.p25)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P25<br><strong>${fmt(mainBench.p25)}</strong></div>
+          <div style="position:absolute;top:34px;left:${pct(bench.p25)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P25<br><strong>${fmt(bench.p25)}</strong></div>
           <!-- Median label -->
-          <div style="position:absolute;top:-2px;left:${pct(mainBench.median)}%;transform:translateX(-50%);font-size:10px;color:var(--success);font-weight:700;">MEDIANA<br>${fmt(mainBench.median)}</div>
+          <div style="position:absolute;top:-2px;left:${pct(bench.median)}%;transform:translateX(-50%);font-size:10px;color:var(--success);font-weight:700;">MEDIANA<br>${fmt(bench.median)}</div>
           <!-- P75 label -->
-          <div style="position:absolute;top:34px;left:${pct(mainBench.p75)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P75<br><strong>${fmt(mainBench.p75)}</strong></div>
+          <div style="position:absolute;top:34px;left:${pct(bench.p75)}%;transform:translateX(-50%);font-size:10px;color:var(--text2);">P75<br><strong>${fmt(bench.p75)}</strong></div>
           <!-- P90 label -->
-          <div style="position:absolute;top:34px;left:${pct(mainBench.p90)}%;transform:translateX(-50%);font-size:10px;color:var(--accent2);">P90<br><strong style="color:var(--accent2)">${fmt(mainBench.p90)}</strong></div>
+          <div style="position:absolute;top:34px;left:${pct(bench.p90)}%;transform:translateX(-50%);font-size:10px;color:var(--accent2);">P90<br><strong style="color:var(--accent2)">${fmt(bench.p90)}</strong></div>
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:36px;font-size:11px;color:var(--text2);">
           <span>Min: ${fmt(min)}</span>
@@ -7493,9 +7539,9 @@ async function loadCompanyDetail(company){
     const withRal=listings.filter(l=>l.ral_min||l.ral_max);
     document.getElementById('cd-kpi-ral').textContent=withRal.length;
 
-    if(withRal.length){
-      const mids=withRal.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
-      const avg=Math.round(mids.reduce((a,b)=>a+b,0)/mids.length);
+    const cdMids=trimmedRal(withRal);
+    if(cdMids.length){
+      const avg=Math.round(cdMids.reduce((a,b)=>a+b,0)/cdMids.length);
       document.getElementById('cd-kpi-ral-avg').textContent='€'+(avg/1000).toFixed(0)+'k';
     }else{
       document.getElementById('cd-kpi-ral-avg').textContent='—';
@@ -8144,9 +8190,8 @@ async function runCompetitorAnalysis(){
     const ms=days*864e5;
     const since=new Date(Date.now()-ms).toISOString().split('T')[0];
     const prevSince=new Date(Date.now()-ms*2).toISOString().split('T')[0];
-    const enc=encodeURIComponent(role);
 
-    // Espandi la ricerca con alias e canonical_role correlati
+    // Espandi la ricerca con alias e canonical_role correlati (solo per i suggerimenti — non incluso di default in query)
     await loadTaxonomy();
     const extraRoles=new Set();
     // Cerca negli alias
@@ -8178,19 +8223,18 @@ async function runCompetitorAnalysis(){
       sugBox.style.display='block';
     }
 
-    // Costruisci OR query con tutti i termini — usa checkbox se presenti
+    // Costruisci OR query — solo il ruolo cercato + le figure correlate esplicitamente selezionate
     const checkedRoles=[...document.querySelectorAll('.cm-sug-cb:checked')].map(cb=>cb.dataset.role).filter(Boolean);
-    const allTerms=[role,...(checkedRoles.length>0?checkedRoles:[...extraRoles].slice(0,5))];
-    const orParts=allTerms.map(t=>'job_title.ilike.*'+encodeURIComponent(t)+'*,canonical_role.ilike.*'+encodeURIComponent(t)+'*').join(',');
+    const roleOr=await buildRoleSearchOr([role,...checkedRoles].join(';'));
 
     const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
-      +'&or=('+orParts+')'
+      +roleOr
       +'&published_date=gte.'+since
       +'&order=published_date.desc&limit=5000');
 
     // Carica periodo precedente per trend reale
     const dataPrev=await api('job_listings?select=ragione_sociale,company_name,published_date'
-      +'&or=('+orParts+')'
+      +roleOr
       +'&published_date=gte.'+prevSince+'&published_date=lt.'+since
       +'&limit=2000');
     const byCompanyPrev={};
@@ -8277,11 +8321,12 @@ async function runCompetitorAnalysis(){
     try{
       const topCos=companies.slice(0,5).map(c=>c.name+' ('+c.total+')').join(', ');
       const aiPrompt='Sei un analista senior di executive search Life Sciences italiano. '
-        +'Analizza questo mercato per "'+role+'" negli ultimi '+days+' giorni. '
+        +'Analizza questo mercato SOLO per la figura "'+role+'" negli ultimi '+days+' giorni. '
         +'Dati: '+companies.length+' aziende, '+totalAds+' annunci, RAL mediana '+(medAll?fmt(medAll):'n.d.')+'. '
         +'Top aziende: '+topCos+'. '+(refCompany?'Cliente di riferimento: '+refCompany+'. ':'')
+        +'REGOLA: usa SOLO i dati sopra (nomi azienda, conteggi, RAL). Non menzionare funzioni, ruoli, aree aziendali (es. R&D, QA, supply chain) o strategie diverse da quanto riportato: non hai informazioni su cosa ricercano esattamente le aziende oltre alla figura "'+role+'". '
         +'JSON: {"summary":"<3 frasi: chi domina, intensita competitiva, implicazioni>","insights":['
-        +'{"text":"<top aziende e strategia hiring>","type":"positive"},'
+        +'{"text":"<top aziende per numero di annunci per '+role+'>","type":"positive"},'
         +'{"text":"<opportunita commerciale MC Pharma>","type":"positive"},'
         +'{"text":"<benchmark RAL>","type":"positive"},'
         +'{"text":"<rischio o alert>","type":"warning"}]}';
@@ -8467,19 +8512,8 @@ async function runGeoAnalysis(){
     const baseQ='job_listings?select=id,job_title,ragione_sociale,location,city,province,region,ral_min,ral_max,seniority_v2,functional_area_v2,published_date&order=published_date.desc&limit=2000';
     const areaFilter=area?'&functional_area_v2=eq.'+encodeURIComponent(area):'';
     const senFilter=seniority?'&seniority_v2=eq.'+encodeURIComponent(seniority):'';
-    // Una query per ogni termine — poi unisco i risultati rimuovendo duplicati
-    const queries=roleTerms.length>0?roleTerms:[''];
-    const allResults=[];
-    const seenIds=new Set();
-    for(const term of queries){
-      let q=baseQ+areaFilter+senFilter;
-      if(term){
-        const enc=encodeURIComponent(term);
-        q+='&or=(job_title.ilike.*'+enc+'*,canonical_role.ilike.*'+enc+'*,role_family.ilike.*'+enc+'*)';
-      }
-      const results=await api(q);
-      results.forEach(l=>{if(!seenIds.has(l.id)){seenIds.add(l.id);allResults.push(l);}});
-    }
+    const roleOr=roleTerms.length>0?await buildRoleSearchOr(roleRaw):'';
+    const allResults=await api(baseQ+areaFilter+senFilter+roleOr);
     _geoRoleData=allResults;
     if(!_geoRoleData.length){
       toast('Nessun annuncio trovato','warning');
