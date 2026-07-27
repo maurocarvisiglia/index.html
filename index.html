@@ -3654,7 +3654,7 @@ async function suggestRelatedRoles(searchTerm){
     for(const[alias,data] of Object.entries(_aliasCache||{})){
       const aLow=alias.toLowerCase();
       if(aLow===termLower||aLow.includes(termLower)||termLower.includes(aLow)){
-        if(data.canonical_role)foundRoles.set(data.canonical_role,data.role_family||'');
+        if(data.canonical_role)foundRoles.set(data.canonical_role,(data.role_family||'').toLowerCase());
       }
     }
 
@@ -3665,15 +3665,24 @@ async function suggestRelatedRoles(searchTerm){
         t.canonical_role.split(' ').some(w=>w.toLowerCase()===termLower);
     });
     matchedTax.forEach(t=>{
-      foundRoles.set(t.canonical_role,t.role_family||'');
+      foundRoles.set(t.canonical_role,(t.role_family||'').toLowerCase());
       // Aggiungi tutti i ruoli della stessa role_family
-      (_taxonomyCache||[]).filter(x=>x.role_family===t.role_family&&x.role_family)
-        .forEach(x=>foundRoles.set(x.canonical_role,x.role_family||''));
+      (_taxonomyCache||[]).filter(x=>(x.role_family||'').toLowerCase()===(t.role_family||'').toLowerCase()&&x.role_family)
+        .forEach(x=>foundRoles.set(x.canonical_role,(x.role_family||'').toLowerCase()));
     });
 
-    // Rimuovi il termine stesso dalla lista
-    foundRoles.forEach((rf,r)=>{if(r.toLowerCase()===termLower||(searchTerm.length>3&&r.toLowerCase().includes(termLower))){}else{}});
-    const fromTaxonomy=[...foundRoles.keys()].filter(r=>r.toLowerCase()!==termLower).slice(0,6);
+    // Espandi con role_family trovate dagli alias
+    const foundFamilies=new Set([...foundRoles.values()].filter(Boolean));
+    foundFamilies.forEach(rf=>{
+      (_taxonomyCache||[]).filter(x=>(x.role_family||'').toLowerCase()===rf)
+        .forEach(x=>foundRoles.set(x.canonical_role,rf));
+    });
+
+    // Rimuovi il termine stesso e canonical_role che contengono il termine come sottostringa
+    const fromTaxonomy=[...foundRoles.keys()]
+      .filter(r=>r.toLowerCase()!==termLower)
+      .filter(r=>!termLower.includes(r.toLowerCase())) // rimuovi se term contiene il ruolo (troppo generico)
+      .slice(0,6);
 
     if(fromTaxonomy.length){
       suggestions=fromTaxonomy;
