@@ -3640,24 +3640,59 @@ async function generateRuoloChartDescriptions(data,searchTerm){
 let _lastSuggestionsSearch='';
 async function suggestRelatedRoles(searchTerm){
   if(!searchTerm||searchTerm.length<2)return;
-  const cacheKey='ruolo_suggestions_'+searchTerm.toLowerCase().trim();
+  const cacheKey='ruolo_suggestions_v2_'+searchTerm.toLowerCase().trim();
   const cached=localStorage.getItem(cacheKey);
   let suggestions=[];
   if(cached){try{suggestions=JSON.parse(cached);}catch(e){}}
   if(!suggestions.length){
-    try{
-      // Carica canonical_role distinti con query aggregata
-      const rolesData=await api('job_listings?select=canonical_role&canonical_role=not.is.null&limit=500&order=canonical_role');
-      const uniqueRoles=[...new Set(rolesData.map(r=>r.canonical_role).filter(Boolean))].sort();
-      const rolesLower=uniqueRoles.map(r=>r.toLowerCase());
-      const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Queste sono le figure nel database: '+uniqueRoles.slice(0,60).join('; ')+'. Per "'+searchTerm+'" scegli da questa lista le figure piu simili PER STESSO AMBITO FUNZIONALE (es. per product specialist scegli solo ruoli commerciali/field simili). Max 5 elementi. Rispondi SOLO con array JSON di stringhe prese esattamente dalla lista.';
-      const raw=await callAI(prompt,200);
-      const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
-      if(Array.isArray(parsed)&&parsed.length){
-        suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2).map(s=>{const idx=rolesLower.indexOf(s.toLowerCase());return idx>=0?uniqueRoles[idx]:null;}).filter(Boolean);
-        if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+    // Step 1: cerca negli alias e taxonomy (veloce, no AI)
+    await loadTaxonomy();
+    const termLower=searchTerm.toLowerCase();
+    const foundRoles=new Map();
+
+    // Match in job_aliases — esatto, parziale, acronimo
+    for(const[alias,data] of Object.entries(_aliasCache||{})){
+      const aLow=alias.toLowerCase();
+      if(aLow===termLower||aLow.includes(termLower)||termLower.includes(aLow)){
+        if(data.canonical_role)foundRoles.set(data.canonical_role,data.role_family||'');
       }
-    }catch(e){console.warn('suggestRelatedRoles:',e.message);}
+    }
+
+    // Match in job_taxonomy — canonical_role e role_family
+    const matchedTax=(_taxonomyCache||[]).filter(t=>{
+      const cLow=t.canonical_role.toLowerCase();
+      return cLow===termLower||cLow.includes(termLower)||termLower.includes(cLow)||
+        t.canonical_role.split(' ').some(w=>w.toLowerCase()===termLower);
+    });
+    matchedTax.forEach(t=>{
+      foundRoles.set(t.canonical_role,t.role_family||'');
+      // Aggiungi tutti i ruoli della stessa role_family
+      (_taxonomyCache||[]).filter(x=>x.role_family===t.role_family&&x.role_family)
+        .forEach(x=>foundRoles.set(x.canonical_role,x.role_family||''));
+    });
+
+    // Rimuovi il termine stesso dalla lista
+    foundRoles.forEach((rf,r)=>{if(r.toLowerCase()===termLower||(searchTerm.length>3&&r.toLowerCase().includes(termLower))){}else{}});
+    const fromTaxonomy=[...foundRoles.keys()].filter(r=>r.toLowerCase()!==termLower).slice(0,6);
+
+    if(fromTaxonomy.length){
+      suggestions=fromTaxonomy;
+      localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+    } else {
+      // Step 2: fallback AI se taxonomy non ha trovato nulla
+      try{
+        const rolesData=await api('job_listings?select=canonical_role&canonical_role=not.is.null&limit=500&order=canonical_role');
+        const uniqueRoles=[...new Set(rolesData.map(r=>r.canonical_role).filter(Boolean))].sort();
+        const rolesLower=uniqueRoles.map(r=>r.toLowerCase());
+        const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Figure nel database: '+uniqueRoles.slice(0,60).join('; ')+'. Per "'+searchTerm+'" scegli le figure piu simili PER STESSO AMBITO FUNZIONALE. Max 5 elementi. Rispondi SOLO con array JSON di stringhe prese esattamente dalla lista.';
+        const raw=await callAI(prompt,200);
+        const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+        if(Array.isArray(parsed)&&parsed.length){
+          suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2).map(s=>{const idx=rolesLower.indexOf(s.toLowerCase());return idx>=0?uniqueRoles[idx]:null;}).filter(Boolean);
+          if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
+        }
+      }catch(e){console.warn('suggestRelatedRoles AI fallback:',e.message);}
+    }
   }
   if(!suggestions.length){
     const box=document.getElementById('ruolo-suggestions-box');
