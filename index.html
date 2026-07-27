@@ -2667,7 +2667,8 @@ async function analyzeRuolo(){
     const boxEarly=document.getElementById('ruolo-suggestions-box');
     const listEarly=document.getElementById('ruolo-suggestions-list');
     if(boxEarly&&listEarly){listEarly.innerHTML='<div style="color:var(--text2);font-size:12px;">⏳ Cerco figure correlate nel database...</div>';boxEarly.style.display='block';}
-    setTimeout(()=>suggestRelatedRoles(firstTerm),3000);
+    _lastSuggestionsSearch=''; // reset per garantire che riparta sempre
+    setTimeout(()=>suggestRelatedRoles(firstTerm),500); // ridotto da 3000 a 500ms
   } else if(!searchRaw){
     const box=document.getElementById('ruolo-suggestions-box');
     if(box)box.style.display='none';
@@ -3640,6 +3641,7 @@ async function generateRuoloChartDescriptions(data,searchTerm){
 let _lastSuggestionsSearch='';
 async function suggestRelatedRoles(searchTerm){
   if(!searchTerm||searchTerm.length<2)return;
+  _lastSuggestionsSearch=searchTerm; // aggiorna subito per evitare chiamate duplicate
   const cacheKey='ruolo_suggestions_v2_'+searchTerm.toLowerCase().trim();
   const cached=localStorage.getItem(cacheKey);
   let suggestions=[];
@@ -3649,6 +3651,7 @@ async function suggestRelatedRoles(searchTerm){
     await loadTaxonomy();
     const termLower=searchTerm.toLowerCase();
     const foundRoles=new Map();
+    console.log('[suggestRelatedRoles] term:',termLower,'alias keys:',Object.keys(_aliasCache||{}).length,'taxonomy:',(_taxonomyCache||[]).length);
 
     // Match in job_aliases — esatto, parziale, acronimo
     for(const[alias,data] of Object.entries(_aliasCache||{})){
@@ -3681,8 +3684,9 @@ async function suggestRelatedRoles(searchTerm){
     // Rimuovi il termine stesso e canonical_role che contengono il termine come sottostringa
     const fromTaxonomy=[...foundRoles.keys()]
       .filter(r=>r.toLowerCase()!==termLower)
-      .filter(r=>!termLower.includes(r.toLowerCase())) // rimuovi se term contiene il ruolo (troppo generico)
+      .filter(r=>!termLower.includes(r.toLowerCase()))
       .slice(0,6);
+    console.log('[suggestRelatedRoles] foundRoles:',foundRoles.size,'fromTaxonomy:',fromTaxonomy);
 
     if(fromTaxonomy.length){
       suggestions=fromTaxonomy;
