@@ -2599,7 +2599,10 @@ async function normalizeJobTitle(jobTitle){
   
   // Step 2: match con word boundary — evita falsi positivi
   // "Manager" non matcha "Area Manager" per errore
-  for(const[alias,data] of Object.entries(_aliasCache)){
+  // Ordina per lunghezza alias decrescente: un alias piu' specifico ("National Key Account Manager")
+  // deve vincere su uno generico ("Key Account Manager") anche se quest'ultimo viene prima nella cache.
+  const aliasEntriesByLength=Object.entries(_aliasCache).sort((a,b)=>b[0].length-a[0].length);
+  for(const[alias,data] of aliasEntriesByLength){
     if(alias.length<4)continue; // skip alias troppo corti
     // Crea regex con word boundary
     const escaped=alias.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -2642,9 +2645,13 @@ Se nessuno è adatto: {"canonical_role":null,"role_family":null,"functional_area
     const raw=await callAI(prompt,250);
     const clean=raw.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
-    
-    // Salva alias per uso futuro
-    if(result.canonical_role){
+
+    // Salva alias per uso futuro — SOLO se il ruolo suggerito dall'IA e' uno di quelli
+    // ufficiali in tassonomia. Senza questo controllo, un'allucinazione dell'IA (es.
+    // "IT Specialist" invece di un ruolo valido) verrebbe salvata come sinonimo permanente
+    // e continuerebbe a corrompere le classificazioni future.
+    const isValidRole=result.canonical_role&&_taxonomyCache.some(t=>t.canonical_role===result.canonical_role);
+    if(isValidRole){
       try{
         await api('job_aliases','POST',{
           alias:title,
@@ -2654,9 +2661,31 @@ Se nessuno è adatto: {"canonical_role":null,"role_family":null,"functional_area
         });
         _aliasCache[titleLower]={canonical_role:result.canonical_role,role_family:result.role_family,functional_area:result.functional_area};
       }catch(e){}
+    } else {
+      if(result.canonical_role&&!isValidRole)console.warn('normalizeJobTitle: ruolo suggerito dall\'IA non valido, scartato:',result.canonical_role);
+      await logUnmappedTitle(title);
+      return{canonical_role:null,role_family:null,functional_area:null};
     }
     return result;
-  }catch(e){return{canonical_role:null,role_family:null,functional_area:null};}
+  }catch(e){
+    await logUnmappedTitle(title);
+    return{canonical_role:null,role_family:null,functional_area:null};
+  }
+}
+
+// Registra un titolo non riconosciuto da nessuna regola (alias, regex, AI) per revisione manuale
+// e futuro ampliamento del dizionario, senza dover toccare il codice di classificazione.
+async function logUnmappedTitle(title,company){
+  const normalized=title.trim().toLowerCase();
+  if(!normalized)return;
+  try{
+    const existing=await api('unmapped_job_titles?select=id,occurrences&job_title_normalized=eq.'+encodeURIComponent(normalized));
+    if(existing&&existing.length){
+      await api('unmapped_job_titles?id=eq.'+existing[0].id,'PATCH',{occurrences:existing[0].occurrences+1,last_seen:new Date().toISOString()});
+    }else{
+      await api('unmapped_job_titles','POST',{job_title:title,job_title_normalized:normalized,sample_company:company||null});
+    }
+  }catch(e){console.warn('logUnmappedTitle error:',e.message);}
 }
 
 const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
