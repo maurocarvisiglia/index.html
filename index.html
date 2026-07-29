@@ -3684,7 +3684,7 @@ let _lastSuggestionsSearch='';
 async function suggestRelatedRoles(searchTerm){
   if(!searchTerm||searchTerm.length<2)return;
   _lastSuggestionsSearch=searchTerm; // aggiorna subito per evitare chiamate duplicate
-  const cacheKey='ruolo_suggestions_v2_'+searchTerm.toLowerCase().trim();
+  const cacheKey='ruolo_suggestions_v3_'+searchTerm.toLowerCase().trim();
   const cached=localStorage.getItem(cacheKey);
   let suggestions=[];
   if(cached){try{suggestions=JSON.parse(cached);}catch(e){}}
@@ -3692,34 +3692,28 @@ async function suggestRelatedRoles(searchTerm){
     // Step 1: cerca negli alias e taxonomy (veloce, no AI)
     await loadTaxonomy();
     const termLower=searchTerm.toLowerCase();
+    // Match a parola intera (word boundary) invece di substring libero: evita che termini corti
+    // (es. "KAM") matchino aliases/ruoli non correlati solo perche' la stringa e' contenuta ovunque.
+    const escapedTerm=termLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const termRegex=new RegExp(`\\b${escapedTerm}\\b`,'i');
     const foundRoles=new Map();
 
-    // Match in job_aliases — esatto, parziale, acronimo
+    // Match in job_aliases — esatto o parola intera
     for(const[alias,data] of Object.entries(_aliasCache||{})){
       const aLow=alias.toLowerCase();
-      if(aLow===termLower||aLow.includes(termLower)||termLower.includes(aLow)){
+      if(aLow===termLower||termRegex.test(aLow)){
         if(data.canonical_role)foundRoles.set(data.canonical_role,(data.role_family||'').toLowerCase());
       }
     }
 
-    // Match in job_taxonomy — canonical_role e role_family
-    const matchedTax=(_taxonomyCache||[]).filter(t=>{
+    // Match in job_taxonomy — canonical_role esatto o parola intera
+    // NOTA: niente espansione per role_family — troppo generica, portava a suggerimenti
+    // completamente scorrelati (es. "KAM" -> intera famiglia "commercial" con Ottico/Optometrista ecc.)
+    (_taxonomyCache||[]).forEach(t=>{
       const cLow=t.canonical_role.toLowerCase();
-      return cLow===termLower||cLow.includes(termLower)||termLower.includes(cLow)||
-        t.canonical_role.split(' ').some(w=>w.toLowerCase()===termLower);
-    });
-    matchedTax.forEach(t=>{
-      foundRoles.set(t.canonical_role,(t.role_family||'').toLowerCase());
-      // Aggiungi tutti i ruoli della stessa role_family
-      (_taxonomyCache||[]).filter(x=>(x.role_family||'').toLowerCase()===(t.role_family||'').toLowerCase()&&x.role_family)
-        .forEach(x=>foundRoles.set(x.canonical_role,(x.role_family||'').toLowerCase()));
-    });
-
-    // Espandi con role_family trovate dagli alias
-    const foundFamilies=new Set([...foundRoles.values()].filter(Boolean));
-    foundFamilies.forEach(rf=>{
-      (_taxonomyCache||[]).filter(x=>(x.role_family||'').toLowerCase()===rf)
-        .forEach(x=>foundRoles.set(x.canonical_role,rf));
+      if(cLow===termLower||termRegex.test(cLow)){
+        foundRoles.set(t.canonical_role,(t.role_family||'').toLowerCase());
+      }
     });
 
     // Rimuovi il termine stesso e canonical_role che contengono il termine come sottostringa
