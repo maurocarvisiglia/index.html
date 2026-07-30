@@ -525,9 +525,9 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
         <div id="admin-only-actions" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
           <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
-          <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza, classifica e completa tutti i campi">🔮 2. Completa dati</button>
-          <button class="btn btn-secondary" onclick="runMassReclassify()" style="border-color:#f59e0b;color:#f59e0b;" title="Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario">🔄 Riclassifica tutto</button>
-          <button class="btn btn-secondary" onclick="openAreaClassifier()" style="border-color:#06b6d4;color:#06b6d4;" title="Step 3 — Rivedi e correggi area funzionale e location">📋 3. Revisione dati <span id="badge-unclassified-area" style="background:#06b6d4;color:white;border-radius:10px;padding:1px 7px;font-size:11px;display:none;"></span></button>
+          <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza ruoli da alias/tassonomia (no IA), poi completa gli altri campi">🔮 2. Completa dati</button>
+          <button class="btn btn-secondary" onclick="runMassReclassify()" style="border-color:#f59e0b;color:#f59e0b;" title="Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario, solo alias/tassonomia">🔄 Riclassifica tutto</button>
+          <button class="btn btn-secondary" onclick="exportUnmappedTitlesCSV()" style="border-color:#22d3ee;color:#22d3ee;" title="Esporta i titoli senza alias/tassonomia corrispondente, per creare gli alias manualmente su Supabase">📄 Esporta non mappati</button>
           <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
           <button class="btn btn-secondary" onclick="runMonthlyElaboration()" style="border-color:#10b981;color:#10b981;" title="Step 5 — Ricalcola Scarcity, Geographic, Employer Demand">📊 5. Elaborazione mensile</button>
           <button class="btn btn-secondary" onclick="linkAllListingsToCompanies()" style="border-color:#3b82f6;color:#3b82f6;" title="Collega tutti gli annunci alle aziende">🔗 Collega aziende</button>
@@ -2621,56 +2621,14 @@ async function normalizeJobTitle(jobTitle){
     }
   }
   
-  // Step 4: usa Groq con lista completa (nessun slice)
-  // Raggruppa per area per ridurre token mantenendo tutti i ruoli
-  const rolesByArea={};
-  _taxonomyCache.forEach(t=>{
-    if(!rolesByArea[t.functional_area])rolesByArea[t.functional_area]=[];
-    rolesByArea[t.functional_area].push(t.canonical_role);
-  });
-  const rolesText=Object.entries(rolesByArea)
-    .map(([area,roles])=>`${area}: ${roles.join(', ')}`)
-    .join('\n');
-
-  const prompt=`Sei un esperto di Job Taxonomy nel settore Life Sciences italiano.
-Dato questo titolo di annuncio: "${title}"
-Trova il ruolo canonico più adatto tra questi (organizzati per area):
-${rolesText}
-
-Rispondi SOLO con JSON:
-{"canonical_role":"<ruolo esatto dalla lista>","role_family":"<famiglia>","functional_area":"<area>"}
-Se nessuno è adatto: {"canonical_role":null,"role_family":null,"functional_area":null}`;
-
-  try{
-    const raw=await callAI(prompt,250);
-    const clean=raw.replace(/```json|```/g,'').trim();
-    const result=JSON.parse(clean);
-
-    // Salva alias per uso futuro — SOLO se il ruolo suggerito dall'IA e' uno di quelli
-    // ufficiali in tassonomia. Senza questo controllo, un'allucinazione dell'IA (es.
-    // "IT Specialist" invece di un ruolo valido) verrebbe salvata come sinonimo permanente
-    // e continuerebbe a corrompere le classificazioni future.
-    const isValidRole=result.canonical_role&&_taxonomyCache.some(t=>t.canonical_role===result.canonical_role);
-    if(isValidRole){
-      try{
-        await api('job_aliases','POST',{
-          alias:title,
-          canonical_role:result.canonical_role,
-          role_family:result.role_family,
-          functional_area:result.functional_area
-        });
-        _aliasCache[titleLower]={canonical_role:result.canonical_role,role_family:result.role_family,functional_area:result.functional_area};
-      }catch(e){}
-    } else {
-      if(result.canonical_role&&!isValidRole)console.warn('normalizeJobTitle: ruolo suggerito dall\'IA non valido, scartato:',result.canonical_role);
-      await logUnmappedTitle(title);
-      return{canonical_role:null,role_family:null,functional_area:null};
-    }
-    return result;
-  }catch(e){
-    await logUnmappedTitle(title);
-    return{canonical_role:null,role_family:null,functional_area:null};
-  }
+  // Nessun match deterministico (alias esatto, alias per parola intera, nome
+  // canonico per parola intera): NON si usa più l'IA per indovinare il ruolo,
+  // troppo incline a scegliere un ruolo esistente ma semanticamente sbagliato
+  // (es. "Farmacista" -> "Medical Science Liaison"). Si registra il titolo per
+  // revisione manuale: l'utente crea l'alias corretto su Supabase e da quel
+  // momento Step 1 lo intercetterà automaticamente.
+  await logUnmappedTitle(title);
+  return{canonical_role:null,role_family:null,functional_area:null};
 }
 
 // Registra un titolo non riconosciuto da nessuna regola (alias, regex, AI) per revisione manuale
@@ -2686,6 +2644,42 @@ async function logUnmappedTitle(title,company){
       await api('unmapped_job_titles','POST',{job_title:title,job_title_normalized:normalized,sample_company:company||null});
     }
   }catch(e){console.warn('logUnmappedTitle error:',e.message);}
+}
+
+// Esporta in CSV i titoli non ancora mappati (canonical_role=null dopo alias/tassonomia),
+// cosi' l'utente puo' crearne gli alias corrispondenti su Supabase senza bisogno dell'IA.
+async function exportUnmappedTitlesCSV(){
+  let rows;
+  try{
+    rows=await api('unmapped_job_titles?select=job_title,occurrences,sample_company,first_seen,last_seen&or=(reviewed.is.null,reviewed.eq.false)&order=occurrences.desc');
+  }catch(e){
+    toast('Errore nel caricare unmapped_job_titles: '+e.message,'error');
+    return;
+  }
+  if(!rows.length){
+    toast('✅ Nessun titolo non mappato da esportare','success');
+    return;
+  }
+  const esc=v=>{
+    const s=(v===null||v===undefined)?'':String(v);
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const header=['Titolo Originale','Occorrenze','Azienda di Esempio','Prima Vista','Ultima Vista'];
+  const csvLines=[header.join(',')];
+  rows.forEach(r=>{
+    csvLines.push([esc(r.job_title),esc(r.occurrences),esc(r.sample_company),esc(r.first_seen),esc(r.last_seen)].join(','));
+  });
+  const csv='﻿'+csvLines.join('\r\n'); // BOM per far riconoscere UTF-8 a Excel
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='titoli_non_mappati_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('📄 Esportati '+rows.length+' titoli non mappati in CSV','success');
 }
 
 const H={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'};
@@ -3286,92 +3280,7 @@ Scrivi solo 1-2 frasi professionali e concrete sul forecast. Nessun JSON, solo t
 
 // ── RICLASSIFICAZIONE MASSIVA — usa vocabolario chiuso aggiornato ──
 async function runMassReclassify(){
-  if(!confirm('Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario?\nOperazione lunga, non chiudere la pagina.'))return;
-
-  // Vocabolario chiuso — tutti i canonical_role validi
-  const VALID_ROLES=new Set([
-    'Informatore Scientifico del Farmaco','Informatore Scientifico del Dispositivo Medico',
-    'Medical Representative','Product Specialist','Clinical Sales Specialist','Sales Specialist',
-    'Key Account Manager','National Account Manager','Area Manager Commercial',
-    'Business Development Manager','Field Sales Manager',
-    'Medical Science Liaison','Medical Advisor','Medical Manager','Medical Director','Medical Information Specialist',
-    'Product Manager','Brand Manager','Marketing Manager','Marketing Specialist','Omnichannel Manager','Digital Marketing Manager',
-    'Market Access Manager','Market Access Specialist','HEOR Manager','Pricing Manager','Government Affairs Manager','Market Research Analyst',
-    'Regulatory Affairs Manager','Regulatory Affairs Specialist',
-    'Pharmacovigilance Manager','Pharmacovigilance Specialist',
-    'Quality Assurance Manager','Quality Assurance Specialist','Quality Control Analyst','Validation Specialist','Qualified Person',
-    'Clinical Research Associate (CRA)','Clinical Project Manager','Clinical Trial Manager','Clinical Operations Manager','Clinical Data Manager','Biostatistician',
-    'Production Manager','Operatore di Produzione','Plant Manager','Process Engineer','Production Planner','Manutentore',
-    'Supply Chain Manager','Operations Manager','Industry Technical Consultant',
-    'Research Scientist','Laboratory Researcher','R&D Manager','Biologo/A',
-    'Direttore','Country Manager','Farmacista Direttore','Project Manager',
-    'Controller','Finance Business Partner','HR Business Partner','Data Analyst'
-  ]);
-
-  // Regex-map aggiornato con vocabolario chiuso
-  const REGEX_MAP=[
-    {re:/informatore scientifico del farmaco|\bisf\b/i,cr:'Informatore Scientifico del Farmaco',rf:'commercial'},
-    {re:/\binformatore scientifico del dispositivo|isf.*dispositivo/i,cr:'Informatore Scientifico del Dispositivo Medico',rf:'commercial'},
-    {re:/\bmedical science liaison\b|\bmsl\b/i,cr:'Medical Science Liaison',rf:'medical_affairs'},
-    {re:/\bmedical advisor\b/i,cr:'Medical Advisor',rf:'medical_affairs'},
-    {re:/\bmedical manager\b|\bmedical director\b|\bmedical affairs manager\b/i,cr:'Medical Manager',rf:'medical_affairs'},
-    {re:/\bmedical information\b/i,cr:'Medical Information Specialist',rf:'medical_affairs'},
-    {re:/\bmedical representative\b|\bmedical rep\b/i,cr:'Medical Representative',rf:'commercial'},
-    {re:/\bproduct specialist\b/i,cr:'Product Specialist',rf:'commercial'},
-    {re:/\bclinical sales specialist\b/i,cr:'Clinical Sales Specialist',rf:'commercial'},
-    {re:/\bsales specialist\b/i,cr:'Sales Specialist',rf:'commercial'},
-    {re:/\bnational account manager\b|\bnam\b/i,cr:'National Account Manager',rf:'commercial'},
-    {re:/\bkey account manager\b|\bkam\b|\bkey account\b/i,cr:'Key Account Manager',rf:'commercial'},
-    {re:/\barea manager\b|\bregional manager\b|\bdistrict manager\b|\bterritory manager\b/i,cr:'Area Manager Commercial',rf:'commercial'},
-    {re:/\bbusiness development manager\b|\bbd manager\b/i,cr:'Business Development Manager',rf:'business_development'},
-    {re:/\bproduct manager\b/i,cr:'Product Manager',rf:'marketing'},
-    {re:/\bbrand manager\b/i,cr:'Brand Manager',rf:'marketing'},
-    {re:/\bmarketing manager\b/i,cr:'Marketing Manager',rf:'marketing'},
-    {re:/\bmarketing specialist\b/i,cr:'Marketing Specialist',rf:'marketing'},
-    {re:/\bomnichannel\b/i,cr:'Omnichannel Manager',rf:'marketing'},
-    {re:/\bdigital marketing\b/i,cr:'Digital Marketing Manager',rf:'marketing'},
-    {re:/\bmarket access manager\b/i,cr:'Market Access Manager',rf:'market_access'},
-    {re:/\bmarket access specialist\b|\bmarket access\b/i,cr:'Market Access Specialist',rf:'market_access'},
-    {re:/\bheor\b/i,cr:'HEOR Manager',rf:'market_access'},
-    {re:/\bpricing manager\b/i,cr:'Pricing Manager',rf:'market_access'},
-    {re:/\bgovernment affairs\b/i,cr:'Government Affairs Manager',rf:'market_access'},
-    {re:/\bmarket research\b/i,cr:'Market Research Analyst',rf:'market_access'},
-    {re:/\bregulatory affairs manager\b/i,cr:'Regulatory Affairs Manager',rf:'regulatory_quality'},
-    {re:/\bregulatory affairs\b|\bra specialist\b/i,cr:'Regulatory Affairs Specialist',rf:'regulatory_quality'},
-    {re:/\bpharmacovigilance manager\b/i,cr:'Pharmacovigilance Manager',rf:'regulatory_quality'},
-    {re:/\bpharmacovigilance\b|\bdrug safety\b|\bfarmacovigilanza\b/i,cr:'Pharmacovigilance Specialist',rf:'regulatory_quality'},
-    {re:/\bquality assurance manager\b|\bqa manager\b/i,cr:'Quality Assurance Manager',rf:'regulatory_quality'},
-    {re:/\bquality assurance\b|\bqa specialist\b|\bquality specialist\b/i,cr:'Quality Assurance Specialist',rf:'regulatory_quality'},
-    {re:/\bquality control\b|\bqc analyst\b/i,cr:'Quality Control Analyst',rf:'regulatory_quality'},
-    {re:/\bvalidation specialist\b/i,cr:'Validation Specialist',rf:'regulatory_quality'},
-    {re:/\bqualified person\b|\bqp\b/i,cr:'Qualified Person',rf:'regulatory_quality'},
-    {re:/\bclinical research associate\b|\bcra\b/i,cr:'Clinical Research Associate (CRA)',rf:'clinical_operations'},
-    {re:/\bclinical project manager\b/i,cr:'Clinical Project Manager',rf:'clinical_operations'},
-    {re:/\bclinical trial manager\b/i,cr:'Clinical Trial Manager',rf:'clinical_operations'},
-    {re:/\bclinical operations manager\b/i,cr:'Clinical Operations Manager',rf:'clinical_operations'},
-    {re:/\bclinical data manager\b/i,cr:'Clinical Data Manager',rf:'clinical_operations'},
-    {re:/\bbiostatistician\b/i,cr:'Biostatistician',rf:'clinical_operations'},
-    {re:/\bproduction manager\b/i,cr:'Production Manager',rf:'manufacturing'},
-    {re:/\boperatore di produzione\b|\baddetto produzione\b/i,cr:'Operatore di Produzione',rf:'manufacturing'},
-    {re:/\bplant manager\b/i,cr:'Plant Manager',rf:'manufacturing'},
-    {re:/\bprocess engineer\b/i,cr:'Process Engineer',rf:'manufacturing'},
-    {re:/\bproduction planner\b/i,cr:'Production Planner',rf:'manufacturing'},
-    {re:/\bmanutentore\b|\bmanutenzione\b/i,cr:'Manutentore',rf:'manufacturing'},
-    {re:/\bsupply chain manager\b|\bsupply chain\b/i,cr:'Supply Chain Manager',rf:'manufacturing'},
-    {re:/\boperations manager\b/i,cr:'Operations Manager',rf:'manufacturing'},
-    {re:/\bindustry technical consultant\b/i,cr:'Industry Technical Consultant',rf:'manufacturing'},
-    {re:/\bresearch scientist\b/i,cr:'Research Scientist',rf:'scientific_rd'},
-    {re:/\blaboratory researcher\b|\blaboratory scientist\b/i,cr:'Laboratory Researcher',rf:'scientific_rd'},
-    {re:/\br&d manager\b/i,cr:'R&D Manager',rf:'scientific_rd'},
-    {re:/\bbiologo\b/i,cr:'Biologo/A',rf:'scientific_rd'},
-    {re:/\bcountry manager\b/i,cr:'Country Manager',rf:'general_management'},
-    {re:/\bfarmacista direttore\b/i,cr:'Farmacista Direttore',rf:'general_management'},
-    {re:/\bproject manager\b/i,cr:'Project Manager',rf:'general_management'},
-    {re:/\bcontroller\b/i,cr:'Controller',rf:'support'},
-    {re:/\bfinance business partner\b/i,cr:'Finance Business Partner',rf:'support'},
-    {re:/\bhr business partner\b|\bhrbp\b/i,cr:'HR Business Partner',rf:'support'},
-    {re:/\bdata analyst\b/i,cr:'Data Analyst',rf:'support'},
-  ];
+  if(!confirm('Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario (solo alias/tassonomia, nessuna IA)?\nOperazione lunga, non chiudere la pagina.'))return;
 
   const showP=(msg,pct)=>{
     const el=document.getElementById('enrichment-progress')||document.createElement('div');
@@ -3381,61 +3290,32 @@ async function runMassReclassify(){
 
   showP('Carico annunci da riclassificare...', 2);
   await loadTaxonomy();
+  const validRoles=new Set(_taxonomyCache.map(t=>t.canonical_role));
 
   // Carica tutti gli annunci: sia quelli con canonical_role NULL sia quelli con valori fuori vocabolario
   const all = await api('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc&limit=2000');
-  const toProcess = all.filter(l => !l.canonical_role || !VALID_ROLES.has(l.canonical_role));
-  console.log('Esempi fuori vocabolario:', toProcess.slice(0,3).map(l=>l.canonical_role||'NULL'));
-
-  console.log('Totale annunci:', all.length);
-  console.log('Da processare:', toProcess.length);
-  console.log('Taxonomy cache:', _taxonomyCache?.length, 'Alias cache:', Object.keys(_aliasCache||{}).length);
-  if(toProcess.length>0)console.log('Esempio da processare:', toProcess[0].job_title, '→', toProcess[0].canonical_role);
+  const toProcess = all.filter(l => !l.canonical_role || !validRoles.has(l.canonical_role));
   showP('Trovati '+toProcess.length+' annunci da riclassificare. Avvio...', 5);
 
-  let done=0, regexHit=0, aiHit=0, skipped=0;
-  const needsAI=[];
-
-  // Fase 1: regex veloce
-  for(const l of toProcess){
-    const tl=(l.job_title||'').toLowerCase();
-    let matched=false;
-    for(const {re,cr,rf} of REGEX_MAP){
-      if(re.test(tl)){
-        try{
-          await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:cr,role_family:rf});
-          regexHit++;matched=true;
-        }catch(e){}
-        break;
-      }
-    }
-    if(!matched)needsAI.push(l);
-    done++;
-    if(done%20===0)showP('Fase 1 — Regex: '+regexHit+' classificati. '+needsAI.length+' per AI...',Math.round(5+done/toProcess.length*40));
-  }
-
-  showP('Fase 1 completata: '+regexHit+' con regex. Avvio AI su '+needsAI.length+' annunci...',45);
-
-  // Fase 2: AI sui residui
-  for(let i=0;i<needsAI.length;i++){
-    const l=needsAI[i];
+  let matched=0, unmapped=0;
+  for(let i=0;i<toProcess.length;i++){
+    const l=toProcess[i];
     try{
       const result=await normalizeJobTitle(l.job_title);
       if(result.canonical_role){
         await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:result.canonical_role,role_family:result.role_family||null});
-        aiHit++;
+        matched++;
       } else {
-        skipped++;
+        unmapped++;
       }
-    }catch(e){skipped++;}
-    const pct=Math.round(45+((i+1)/needsAI.length)*50);
-    if(i%5===0)showP('Fase 2 — AI: '+aiHit+' classificati, '+skipped+' saltati. ('+i+'/'+needsAI.length+')',pct);
-    await new Promise(r=>setTimeout(r,2500));
+    }catch(e){unmapped++;}
+    if(i%20===0)showP('Alias/tassonomia: '+matched+' classificati, '+unmapped+' non mappati. ('+i+'/'+toProcess.length+')',Math.round(5+(i/Math.max(toProcess.length,1))*90));
   }
 
-  showP('✅ Completato! Regex: '+regexHit+' | AI: '+aiHit+' | Saltati: '+skipped,100);
-  toast('Riclassificazione completata: '+(regexHit+aiHit)+' annunci aggiornati','success');
+  showP('✅ Completato! Classificati: '+matched+' | Non mappati (vedi CSV): '+unmapped,100);
+  toast('Riclassificazione completata: '+matched+' annunci aggiornati'+(unmapped?', '+unmapped+' non mappati':''),'success');
   setTimeout(()=>{const el=document.getElementById('enrichment-progress');if(el)el.remove();},8000);
+  if(unmapped>0)await exportUnmappedTitlesCSV();
 }
 
 async function runPostImportEnrichment(newCount){
@@ -3443,63 +3323,13 @@ async function runPostImportEnrichment(newCount){
   showEnrichmentProgress('Avvio pipeline di completamento dati...', 0);
 
   try{
-    // ── STEP 1: Normalizza ruoli (regex-first, poi Groq sui residui) ──
-    showEnrichmentProgress('Step 1/4 — Normalizzazione ruoli...', 10);
-    const unnormalized = await api('job_listings?select=id,job_title,canonical_role,role_family&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=5000');
+    // ── STEP 1: Normalizza ruoli — solo alias/tassonomia, nessuna IA ──
+    showEnrichmentProgress('Step 1/4 — Normalizzazione ruoli (alias/tassonomia)...', 10);
+    const unnormalized = await api('job_listings?select=id,job_title,company_name,canonical_role,role_family&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=5000');
+    let normalized = 0;
     if(unnormalized.length){
       await loadTaxonomy();
-      let normalized = 0;
-      const needsGroq = [];
-      const regexMap = [
-        {re:/informatore scientifico|isf/,rf:'ISF',cr:'Product Specialist'},
-        {re:/medical science liaison|msl/,rf:'MSL',cr:'Scientific Researcher'},
-        {re:/medical advisor/,rf:'Medical Advisor',cr:'Scientific Researcher'},
-        {re:/medical manager|medical director|medical affairs manager/,rf:'Medical Manager',cr:'Scientific Researcher'},
-        {re:/key account|kam/,rf:'Key Account Manager',cr:'Sales Representative'},
-        {re:/area manager|regional manager|district manager|territory manager/,rf:'Area Manager',cr:'Sales Representative'},
-        {re:/product manager/,rf:'Product Manager',cr:'Marketing and Promotion'},
-        {re:/brand manager/,rf:'Brand Manager',cr:'Marketing and Promotion'},
-        {re:/product specialist/,rf:'Product Specialist',cr:'Product Specialist'},
-        {re:/market access/,rf:'Market Access',cr:null},
-        {re:/regulatory affairs/,rf:'Regulatory Affairs',cr:null},
-        {re:/quality assurance|qa manager/,rf:'QA Manager',cr:'Quality Assurance Analyst'},
-        {re:/quality control|qc/,rf:'QA Manager',cr:'Quality Assurance Analyst'},
-        {re:/pharmacovigilance|drug safety/,rf:'Pharmacovigilance',cr:'Data Analyst'},
-        {re:/clinical research|cra|clinical operations|clinical project|clinical innovation/,rf:'Operations',cr:'Operations Manager'},
-        {re:/supply chain/,rf:'Supply Chain',cr:'Operations and Maintenance Planning Specialist'},
-        {re:/research scientist|r&d scientist|medicinal chemistry|scientist/,rf:'Scientific and Technical',cr:'Scientific Researcher'},
-        {re:/hr business partner|hrbp|head of people|labour relations/,rf:'Human Resources',cr:'Human Resources Generalist'},
-        {re:/financial controller|finance manager|financial report|finance specialist|finance clerk/,rf:'Office and Administrative Support',cr:'Office Clerk'},
-        {re:/tender specialist/,rf:'Market Access',cr:null},
-        {re:/safety database/,rf:'Analytical',cr:'Data Analyst'},
-        {re:/congresses|events.*senior|senior.*events/,rf:'Marketing',cr:'Marketing and Promotion'},
-        {re:/crm.*developer|campaign developer/,rf:'Marketing',cr:'Marketing and Promotion'},
-        {re:/trade marketing/,rf:'Marketing and Sales',cr:'Marketing and Sales Representative'},
-        {re:/customer manager/,rf:'Sales',cr:'Sales Representative'},
-        {re:/account specialist/,rf:'Sales',cr:'Product Specialist'},
-        {re:/clinical specialist/,rf:'Sales',cr:'Product Specialist'},
-        {re:/mes.*engineer|advanced.*engineer|project engineer/,rf:'IT, Engineering',cr:'Software System Engineer'},
-        {re:/system specialist/,rf:'Information Technology',cr:'Network Architect'},
-        {re:/production planning|junior.*planning/,rf:'Production and Operations',cr:'Production and Processing Worker'},
-        {re:/operaio|pesate|produzione|integratori/,rf:'Production and Operations',cr:'Production and Processing Worker'},
-        {re:/manutenzione|tornitore|cnc|tecnico.*campo/,rf:'Installation, Maintenance, and Repair',cr:'Equipment Maintenance Technician'},
-        {re:/magazzino|logistica|responsabile.*magazz/,rf:'Operations',cr:'Operations Manager'},
-        {re:/addetto.*magazz/,rf:'Operations',cr:'Stock Clerk'},
-        {re:/segreteria|amministrativ/,rf:'Office and Administrative Support',cr:'Office Clerk'},
-      ];
       for(const l of unnormalized){
-        const tl=(l.job_title||'').toLowerCase();
-        let matched=false;
-        for(const {re,rf,cr} of regexMap){
-          if(re.test(tl)){
-            try{await api(`job_listings?id=eq.${l.id}`,'PATCH',{canonical_role:cr,role_family:rf});normalized++;}catch(e){}
-            matched=true;break;
-          }
-        }
-        if(!matched)needsGroq.push(l);
-      }
-      showEnrichmentProgress(`Step 1/4 — Regex: ${normalized}. Groq su ${needsGroq.length} residui...`,18);
-      for(const l of needsGroq){
         try{
           const result=await normalizeJobTitle(l.job_title);
           if(result.canonical_role){
@@ -3507,18 +3337,17 @@ async function runPostImportEnrichment(newCount){
             normalized++;
           }
         }catch(e){}
-        await new Promise(r=>setTimeout(r,3000));
       }
-      console.log(`Step 1: ${normalized}/${unnormalized.length} ruoli normalizzati`);
+      console.log(`Step 1: ${normalized}/${unnormalized.length} ruoli normalizzati da alias/tassonomia`);
     }
 
-    // ── STEP 2: Classifica con AI — loop paginato ──
+    // ── STEP 2: Classifica con AI (solo sector/area/seniority/TA/company_type/location, NON il ruolo) — loop paginato ──
     showEnrichmentProgress('Step 2/4 — Classificazione AI...', 32);
     const PAGE_SIZE = 100;
     let classPage = 0, classified = 0, totalToClassify = 0;
     while(true){
       const toClassify = await api(
-        'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max' +
+        'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role' +
         '&source=eq.Vocations' +
         '&or=(sector_v2.is.null,functional_area_v2.is.null,therapeutic_area.is.null)' +
         `&order=published_date.desc&limit=${PAGE_SIZE}&offset=${classPage*PAGE_SIZE}`
@@ -3555,6 +3384,9 @@ async function runPostImportEnrichment(newCount){
     loadListings();
     refreshPendingBadges();
     loadDashboard();
+
+    // Titoli senza alias/tassonomia: report CSV per creazione manuale su Supabase
+    await exportUnmappedTitlesCSV();
 
   }catch(e){
     console.error('Enrichment pipeline error:', e);
@@ -3725,21 +3557,8 @@ async function suggestRelatedRoles(searchTerm){
     if(fromTaxonomy.length){
       suggestions=fromTaxonomy;
       localStorage.setItem(cacheKey,JSON.stringify(suggestions));
-    } else {
-      // Step 2: fallback AI se taxonomy non ha trovato nulla
-      try{
-        const rolesData=await api('job_listings?select=canonical_role&canonical_role=not.is.null&limit=500&order=canonical_role');
-        const uniqueRoles=[...new Set(rolesData.map(r=>r.canonical_role).filter(Boolean))].sort();
-        const rolesLower=uniqueRoles.map(r=>r.toLowerCase());
-        const prompt='Sei un esperto del mercato del lavoro Life Sciences italiano. Figure nel database: '+uniqueRoles.slice(0,60).join('; ')+'. Per "'+searchTerm+'" scegli le figure piu simili PER STESSO AMBITO FUNZIONALE. Max 5 elementi. Rispondi SOLO con array JSON di stringhe prese esattamente dalla lista.';
-        const raw=await callAI(prompt,200);
-        const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
-        if(Array.isArray(parsed)&&parsed.length){
-          suggestions=parsed.filter(s=>typeof s==='string'&&s.length>2).map(s=>{const idx=rolesLower.indexOf(s.toLowerCase());return idx>=0?uniqueRoles[idx]:null;}).filter(Boolean);
-          if(suggestions.length)localStorage.setItem(cacheKey,JSON.stringify(suggestions));
-        }
-      }catch(e){console.warn('suggestRelatedRoles AI fallback:',e.message);}
     }
+    // Nessun match: nessun fallback IA — si mostra "nessuna figura correlata trovata".
   }
   if(!suggestions.length){
     const box=document.getElementById('ruolo-suggestions-box');
@@ -5706,7 +5525,7 @@ async function analyzeListings(){
 
   // CASO 1: L'utente ha selezionato annunci con i checkbox — analizza solo quelli
   if(_selectedIds.size>0){
-    if(!confirm(`Analizzo i ${_selectedIds.size} annunci selezionati con AI?\n\nVerranno aggiornati: settore, area funzionale, seniority, sede, ruolo canonico.\nLa RAL non verrà mai sovrascritta.`)){
+    if(!confirm(`Analizzo i ${_selectedIds.size} annunci selezionati con AI?\n\nVerranno aggiornati: settore, area funzionale, seniority, sede. Il ruolo canonico viene assegnato solo da alias/tassonomia, mai dall'IA.\nLa RAL non verrà mai sovrascritta.`)){
       return;
     }
     btn.textContent='⏳ Analisi...';
@@ -5714,7 +5533,7 @@ async function analyzeListings(){
 
     // Carica i dati degli annunci selezionati
     const ids=[..._selectedIds];
-    const listings=await api(`job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&id=in.(${ids.join(',')})`);
+    const listings=await api(`job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&id=in.(${ids.join(',')})`);
 
     let analyzed=0, failed=0;
     for(const listing of listings){
@@ -5743,8 +5562,8 @@ async function analyzeListings(){
   btn.disabled=true;
 
   const [unclassified, misclassified] = await Promise.all([
-    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
-    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
   ]);
 
   const seen=new Set();
@@ -5914,8 +5733,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
   "therapeutic_area": "<valore>",
   "therapeutic_area_sub": "<valore_sub o null>",
   "company_type": "<valore>",
-  "location": "<città italiana estratta dal titolo o descrizione, null se non trovata>",
-  "canonical_role": "<ruolo canonico es: Informatore Scientifico del Farmaco, Medical Science Liaison, Key Account Manager, Medical Advisor, ecc>"
+  "location": "<città italiana estratta dal titolo o descrizione, null se non trovata>"
 }`;
 
       const text=await callAI(prompt,700);
@@ -5942,8 +5760,15 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       // Location — sovrascrive se trovata nel titolo/descrizione
       if(result.location)patch.location=result.location;
 
-      // Canonical role — sovrascrive sempre
-      if(result.canonical_role)patch.canonical_role=result.canonical_role;
+      // Canonical role — MAI dall'IA. Solo alias/tassonomia deterministica,
+      // e solo se non già assegnato (Step 1 di runPostImportEnrichment lo fa già).
+      if(!listing.canonical_role){
+        const roleResult=await normalizeJobTitle(listing.job_title);
+        if(roleResult.canonical_role){
+          patch.canonical_role=roleResult.canonical_role;
+          patch.role_family=roleResult.role_family||null;
+        }
+      }
 
       // Campi legacy — sovrascrive sempre con mapping corretto
       const sectorMap={
@@ -7773,269 +7598,6 @@ async function saveTaxonomyMapping(){
   closeModal('modal-taxonomy-mapper');loadListings();refreshPendingBadges();
 }
 
-/* ═══ AREA CLASSIFIER ═══ */
-let _areaClassifierData=[];
-let _areaClassifierFilter=undefined;
-const AREA_OPTIONS=[{v:'',l:'— non classificato —'},{v:'commercial',l:'Commercial / Sales'},{v:'medical_affairs',l:'Medical Affairs'},{v:'marketing',l:'Marketing'},{v:'market_access',l:'Market Access'},{v:'regulatory_affairs',l:'Regulatory Affairs'},{v:'quality',l:'Quality Assurance'},{v:'clinical_operations',l:'Clinical Operations'},{v:'drug_safety',l:'Drug Safety / PV'},{v:'rd',l:'R&D / Ricerca'},{v:'manufacturing',l:'Manufacturing / Produzione'},{v:'supply_chain',l:'Supply Chain / Logistica'},{v:'finance',l:'Finance'},{v:'hr',l:'Human Resources'},{v:'it',l:'IT / Digital'},{v:'business_development',l:'Business Development'},{v:'healthcare_services',l:'Healthcare Services'},{v:'general_management',l:'General Management'}];
-const AREA_REGEX_RULES=[
-  // ── HEALTHCARE SERVICES (prima, per evitare conflitti con altri pattern) ──
-  {re:/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|biologo.*clinico|health.*professional|operatore.*sanitario|direttore.*farmacia|direttric.*farmacia/i,v:'healthcare_services'},
-
-  // ── COMMERCIAL / SALES ──
-  {re:/\bisf\b|informatore scientifico|informatore medico|sales rep|territory.*manager|district.*manager|regional.*business.*director|commercial.*director|commercial.*manager|key account|\bkam\b|customer manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|business account|field.*reimbursement|addetti.*vendite|addetto.*vendite|commerciale.*front|front.*office.*commerciale/i,v:'commercial'},
-
-  // ── MEDICAL AFFAIRS ──
-  {re:/medical science liaison|\bmsl\b|medical advisor|medical.*affairs|medical.*manager|medical.*director|medical.*education|medical.*writing|medical.*associate.*director|global.*medical|field.*medical/i,v:'medical_affairs'},
-
-  // ── MARKETING ──
-  {re:/product manager|brand manager|marketing manager|marketing.*director|digital marketing|marketing.*specialist|trade marketing|campaign.*developer|crm.*developer|congresses|events.*manager|new product commercialization/i,v:'marketing'},
-
-  // ── MARKET ACCESS ──
-  {re:/market access|heor|pricing|reimbursement|tender specialist/i,v:'market_access'},
-
-  // ── REGULATORY AFFAIRS ──
-  {re:/regulatory affairs|regulatory.*manager|regulatory.*specialist|regulatory.*director|regulatory.*associate|registrazione|global.*labeling|trade compliance/i,v:'regulatory_affairs'},
-
-  // ── QUALITY ──
-  {re:/quality assurance|\bqa\b|\bqc\b|quality.*manager|quality.*director|quality.*specialist|quality.*associate|quality.*operations|qualified person|\bqp\b|validation|gmp|gdp|serialization|instrumentation.*calibration|lab.*application/i,v:'quality'},
-
-  // ── CLINICAL OPERATIONS ──
-  {re:/clinical research|\bcra\b|clinical.*trial|clinical.*operations|clinical.*manager|clinical.*project|clinical.*coordinator|data management|biostatistics|clinical.*science|clinical.*quality/i,v:'clinical_operations'},
-
-  // ── DRUG SAFETY ──
-  {re:/pharmacovigilance|drug safety|\bpv\b|\bqppv\b|safety.*associate|safety.*database|farmacovigilanza|patient safety/i,v:'drug_safety'},
-
-  // ── R&D ──
-  {re:/research scientist|\br&d\b|formulation|analytical.*scientist|preclinical|process development|medicinal chemistry|head.*scientific|analytical.*development|post.?doc/i,v:'rd'},
-
-  // ── MANUFACTURING (solo ruoli chiaramente produttivi, non operatori sanitari) ──
-  {re:/production planning|plant manager|manufacturing.*manager|msat|sterile.*fill|assembly.*line|operatore.*confezionamento|addetto.*confezionamento|confezionamento|pesate|operatore.*produzione|produzione.*farmaceutica|opex|lean|\brspp\b/i,v:'manufacturing'},
-
-  // ── SUPPLY CHAIN ──
-  {re:/supply chain|logistic|procurement|warehouse|magazzino|distribution|inventory|responsabile.*magazz|material buyer|project expeditor|approvvigionament/i,v:'supply_chain'},
-
-  // ── FINANCE ──
-  {re:/finance|controller|financial|accounting|budget|treasury|fp&a|financial.*reporting|spending.*compliance|\bsso\b.*finance/i,v:'finance'},
-
-  // ── HR ──
-  {re:/\bhr\b|human resources|talent acquisition|people.*relations|labour relations|head.*people|hrbp|hr.*business.*partner|recruiter|selezione.*recruiting|talent.*development|leadership.*development/i,v:'hr'},
-
-  // ── IT ──
-  {re:/software|digital.*services|data engineer|system.*specialist|cybersecurity|ai engineer|mes.*engineer|full.*stack|bi.*support|functional.*analyst/i,v:'it'},
-
-  // ── BUSINESS DEVELOPMENT ──
-  {re:/business development|licensing|partnership|m&a|alliance|franchise.*head/i,v:'business_development'},
-
-  // ── GENERAL MANAGEMENT ──
-  {re:/general manager|country manager|\bceo\b|\bcoo\b|\bcfo\b|managing director|direttore.*generale|direttore.*direttrice(?!.*farmacia)/i,v:'general_management'},
-
-  // ── ADMIN / BACK OFFICE ──
-  {re:/segreteria|assistente.*direzione|administrative(?!.*director)|back.*office(?!.*commerciale)|front.*office(?!.*commerciale|.*retail)/i,v:'hr'},
-
-  // ── CUSTOMER SERVICE ──
-  {re:/customer service|customer support|assistenza clienti|supporto clienti|help desk/i,v:'commercial'},
-];
-function detectAreaFromTitle(title){if(!title)return '';for(const rule of AREA_REGEX_RULES){if(rule.re.test(title))return rule.v;}return '';}
-
-let _reviewTab = "area";
-let _locationData = [];
-
-async function openAreaClassifier(){
-  openModal('modal-area-classifier');
-  _reviewTab = "area";
-  document.getElementById('area-classifier-count').textContent='Caricamento...';
-  document.getElementById('area-classifier-body').innerHTML='<div style="padding:32px;text-align:center;color:var(--text2);">⏳ Caricamento...</div>';
-  try{
-    // Carica annunci per area funzionale
-    _areaClassifierData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,functional_area_v2,seniority_v2,sector_v2,location,published_date&order=published_date.desc&limit=2000');
-    // Carica annunci senza location
-    _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
-    _areaClassifierFilter=null; // default: mostra solo non classificati
-    // Aggiorna badge tab
-    const noArea=_areaClassifierData.filter(l=>!l.functional_area_v2).length;
-    const noLoc=_locationData.length;
-    const ba=document.getElementById('badge-rtab-area');
-    const bl=document.getElementById('badge-rtab-location');
-    if(ba){ba.textContent=noArea;ba.style.display=noArea?'':' none';}
-    if(bl){bl.textContent=noLoc;bl.style.display=noLoc?'':' none';}
-    setReviewTab('area');
-  }catch(e){document.getElementById('area-classifier-body').innerHTML='<div style="padding:32px;text-align:center;color:var(--danger);">Errore</div>';}
-}
-
-function setReviewTab(tab){
-  _reviewTab = tab;
-  ['rtab-area','rtab-location'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el)el.classList.toggle('active', id==='rtab-'+tab);
-  });
-  // Mostra/nascondi bottoni area-specific
-  const btnRegex=document.getElementById('btn-apply-regex');
-  const btnAuto=document.getElementById('btn-auto-classify');
-  const filterBar=document.getElementById('filter-bar-area');
-  if(btnRegex)btnRegex.style.display=tab==='area'?'':'none';
-  if(btnAuto)btnAuto.style.display=tab==='area'?'':'none';
-  if(filterBar)filterBar.style.display=tab==='area'?'':'none';
-  if(tab==='area')renderAreaClassifier();
-  else renderLocationReview();
-}
-
-function renderLocationReview(){
-  const body=document.getElementById('area-classifier-body');
-  const countEl=document.getElementById('area-classifier-count');
-  if(!_locationData.length){
-    body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text2);">✅ Tutte le location sono compilate</div>';
-    if(countEl)countEl.textContent='0 annunci senza location';
-    return;
-  }
-  if(countEl)countEl.textContent=_locationData.length+' annunci senza location';
-  const rows=_locationData.map((l,i)=>{
-    const hasUrl=l.url&&l.url.startsWith('http');
-    const linkBtn=hasUrl?'<a href="'+l.url+'" target="_blank" title="Apri annuncio" style="text-decoration:none;font-size:14px;margin-right:4px;">🔗</a>':'<span style="font-size:14px;margin-right:4px;opacity:0.3;">🔗</span>';
-    const aiBtn=hasUrl?'<button onclick="extractLocationWithAI('+i+')" title="Estrai location con Gemini" style="background:none;border:1px solid #6366f1;border-radius:4px;color:#6366f1;cursor:pointer;font-size:11px;padding:2px 6px;">🤖</button>':'';
-    return '<tr style="border-bottom:1px solid var(--border);" id="loc-row-'+i+'">'
-      +'<td style="padding:6px 8px;">'+linkBtn+'<span style="font-weight:500;font-size:11px;">'+(l.job_title||'—')+'</span></td>'
-      +'<td style="padding:6px 8px;color:var(--text2);font-size:10px;">'+(l.ragione_sociale||l.company_name||'—')+'</td>'
-      +'<td style="padding:4px 8px;"><div style="display:flex;gap:4px;align-items:center;">'
-        +'<input type="text" id="loc-inp-'+i+'" data-id="'+l.id+'" data-url="'+(l.url||'')+'" placeholder="es. Milano, Lombardia" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:11px;">'
-        +aiBtn+'</div></td></tr>';
-  }).join('');
-  body.innerHTML='<table style="font-size:11px;width:100%;"><thead><tr><th style="padding:8px;text-align:left;">Titolo</th><th style="padding:8px;text-align:left;">Azienda</th><th style="padding:8px;width:220px;">Inserisci città</th></tr></thead><tbody>'+rows+'</tbody></table>';
-}
-
-async function extractLocationWithAI(idx){
-  const inp=document.getElementById('loc-inp-'+idx);
-  if(!inp)return;
-  const url=inp.dataset.url;
-  if(!url){toast('URL non disponibile','error');return;}
-  inp.placeholder='⏳ Gemini in analisi...';inp.disabled=true;
-  try{
-    const geoPrompt='Analizza questo annuncio di lavoro: '+url+'. Trova la localita geografica dove si svolge il lavoro. Rispondi SOLO con Citta, Regione (es. Milano, Lombardia). Piu citta separate da | . Se non trovi: NON_TROVATA';
-    const result=await callGemini(geoPrompt,100);
-    const clean=(result||'').trim();
-    if(clean==='NON_TROVATA'||!clean){inp.placeholder='es. Milano, Lombardia';inp.disabled=false;toast('Gemini non ha trovato una location','warning');}
-    else{inp.value=clean;inp.disabled=false;inp.style.borderColor='#10b981';toast('✅ Location: '+clean,'success');}
-  }catch(e){inp.placeholder='es. Milano, Lombardia';inp.disabled=false;toast('Errore: '+e.message,'error');}
-}
-
-async function saveReviewData(){
-  if(_reviewTab==='area'){
-    await saveAreaClassifications();
-  } else {
-    await saveLocationData();
-  }
-}
-
-async function saveLocationData(){
-  const status=document.getElementById('area-classifier-status');
-  if(status)status.textContent='⏳ Salvataggio location...';
-  const inputs=document.querySelectorAll('[id^="loc-inp-"]');
-  let saved=0, errors=0;
-  for(const inp of inputs){
-    const val=(inp.value||"").trim();
-    if(!val)continue;
-    try{
-      const r=await fetch(SB_URL+'/rest/v1/job_listings?id=eq.'+inp.dataset.id,{
-        method:'PATCH',
-        headers:{...H,'Prefer':'return=minimal'},
-        body:JSON.stringify({location:val})
-      });
-      if(r.ok)saved++; else errors++;
-    }catch(e){errors++;}
-  }
-  // Ricarica location data
-  _locationData=await api('job_listings?select=id,job_title,company_name,ragione_sociale,location,url,published_date&location=is.null&order=published_date.desc&limit=500');
-  const bl=document.getElementById('badge-rtab-location');
-  if(bl){bl.textContent=_locationData.length;bl.style.display=_locationData.length?'':' none';}
-  renderLocationReview();
-  const msg='✅ '+saved+' location salvate'+(errors?' | '+errors+' errori':'');
-  if(status)status.textContent=msg;
-  toast(msg,errors?'warning':'success');
-}
-
-function filterAreaClassifier(filter){
-  _areaClassifierFilter=filter;
-  document.querySelectorAll('[id^="acf-"]').forEach(el=>el.classList.remove('active'));
-  const m={'':'acf-all','commercial':'acf-commercial','medical_affairs':'acf-medical','manufacturing':'acf-manufacturing','quality':'acf-quality','it':'acf-it'};
-  if(filter===null)document.getElementById('acf-unset')?.classList.add('active');
-  else if(filter in m)document.getElementById(m[filter])?.classList.add('active');
-  renderAreaClassifier();
-}
-
-function renderAreaClassifier(){
-  const body=document.getElementById('area-classifier-body');
-  const countEl=document.getElementById('area-classifier-count');
-  if(!_areaClassifierData.length){body.innerHTML='<div style="padding:32px;text-align:center;color:var(--text2);">Nessun annuncio</div>';return;}
-  const byTitle={};
-  _areaClassifierData.forEach(l=>{
-    const t=l.job_title||'—';
-    if(!byTitle[t])byTitle[t]={listings:[],current_area:l.functional_area_v2||'',suggested:detectAreaFromTitle(t)};
-    byTitle[t].listings.push(l);
-    if(!byTitle[t].current_area&&l.functional_area_v2)byTitle[t].current_area=l.functional_area_v2;
-  });
-  let entries=Object.entries(byTitle).sort((a,b)=>b[1].listings.length-a[1].listings.length);
-  if(_areaClassifierFilter===null)entries=entries.filter(([,d])=>!d.current_area);
-  else if(typeof _areaClassifierFilter==='string'&&_areaClassifierFilter)entries=entries.filter(([,d])=>d.current_area===_areaClassifierFilter);
-  const unclassified=Object.values(byTitle).filter(d=>!d.current_area).length;
-  const badge=document.getElementById('badge-unclassified-area');
-  if(badge){badge.textContent=unclassified;badge.style.display=unclassified?'':'none';}
-  if(countEl)countEl.textContent=entries.length+' titoli | '+unclassified+' non classificati';
-  body.innerHTML=`<table style="font-size:11px;width:100%;"><thead><tr><th style="padding:8px;">Titolo</th><th style="text-align:center;width:30px;">N</th><th style="width:180px;">Area attuale</th><th style="width:220px;">Assegna area</th><th style="width:70px;">Auto</th></tr></thead><tbody>${entries.slice(0,100).map(([title,data],i)=>{const hasSug=data.suggested&&data.suggested!==data.current_area;return`<tr style="border-bottom:1px solid var(--border);${!data.current_area?'background:rgba(239,68,68,0.04);':''}"><td style="padding:7px 8px;"><div style="font-weight:${!data.current_area?600:400};">${title}</div><div style="font-size:10px;color:var(--text2);">${data.listings.length} annunci</div></td><td style="text-align:center;">${data.listings.length}</td><td style="padding:6px 8px;"><span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${data.current_area?'rgba(99,102,241,0.1)':'rgba(239,68,68,0.1)'};color:${data.current_area?'#6366f1':'#ef4444'};">${data.current_area?toLabel(data.current_area):'⚠️ Non classificato'}</span></td><td style="padding:4px;"><select id="ac-sel-${i}" data-title="${title.replace(/"/g,'&quot;')}" style="width:100%;font-size:11px;padding:4px;background:var(--surface2);border:1px solid ${hasSug?'#f59e0b':'var(--border)'};border-radius:4px;color:var(--text);">${AREA_OPTIONS.map(o=>`<option value="${o.v}" ${data.current_area===o.v?'selected':''}>${o.l}</option>`).join('')}</select></td><td style="text-align:center;padding:4px;">${hasSug?`<button onclick="applySuggestion(${i},'${data.suggested}')" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:10px;color:#f59e0b;">⚡ ${toLabel(data.suggested).split('/')[0].trim()}</button>`:'—'}</td></tr>`;}).join('')}${entries.length>100?`<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text2);">... altri ${entries.length-100} titoli</td></tr>`:''}</tbody></table>`;
-}
-
-function applySuggestion(idx,area){const sel=document.getElementById('ac-sel-'+idx);if(sel){sel.value=area;sel.style.borderColor='#10b981';}}
-
-async function applyAreaRegex(){
-  const status=document.getElementById('area-classifier-status');
-  let applied=0;
-  document.querySelectorAll('[id^="ac-sel-"]').forEach(sel=>{if(!sel.value){const sug=detectAreaFromTitle(sel.dataset.title);if(sug){sel.value=sug;sel.style.borderColor='#10b981';applied++;}}});
-  if(status)status.textContent='✅ Regex applicato a '+applied+' titoli — clicca Salva per confermare';
-}
-
-async function saveAreaClassifications(){
-  const status=document.getElementById('area-classifier-status');
-  if(status)status.textContent='⏳ Salvataggio...';
-  const selects=document.querySelectorAll('[id^="ac-sel-"]');
-  let savedGroups=0,errors=0;
-  for(const sel of selects){
-    const title=sel.dataset.title;const area=sel.value;if(!title)continue;
-    try{
-      const r=await fetch(SB_URL+'/rest/v1/job_listings?job_title=eq.'+encodeURIComponent(title),{method:'PATCH',headers:{...H,'Prefer':'return=minimal'},body:JSON.stringify({functional_area_v2:area||null})});
-      if(r.ok)savedGroups++;else errors++;
-    }catch(e){errors++;}
-    if(savedGroups%10===0&&status)status.textContent='⏳ Salvati '+savedGroups+'/'+selects.length+'...';
-  }
-  _areaClassifierData=await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
-  renderAreaClassifier();
-  const msg='✅ '+savedGroups+' titoli aggiornati'+(errors?' | '+errors+' errori':'');
-  if(status)status.textContent=msg;
-  toast(msg,errors?'warning':'success');
-  loadDashboard();
-}
-
-async function autoClassifyAreas(){
-  const status=document.getElementById('area-classifier-status');
-  if(status)status.textContent='⏳ Applico regex...';
-  const selects=document.querySelectorAll('[id^="ac-sel-"]');
-  let regexApplied=0;
-  selects.forEach(sel=>{if(!sel.value){const sug=detectAreaFromTitle(sel.dataset.title||'');if(sug){sel.value=sug;regexApplied++;}}});
-  if(status)status.textContent='⏳ Regex: '+regexApplied+'. Salvo...';
-  await saveAreaClassifications();
-  const stillUnclassified=_areaClassifierData.filter(l=>!l.functional_area_v2);
-  if(!stillUnclassified.length){if(status)status.textContent='✅ Tutti classificati';return;}
-  if(status)status.textContent='⏳ AI su '+stillUnclassified.length+' residui (2s/chiamata)...';
-  const byTitle={};stillUnclassified.forEach(l=>{byTitle[l.job_title]=byTitle[l.job_title]||l;});
-  let done=0;
-  for(const l of Object.values(byTitle)){
-    try{await classifyOneListing(l);done++;}catch(e){console.warn('AI error:',l.job_title);}
-    if(status)status.textContent='⏳ AI: '+done+'/'+Object.keys(byTitle).length+'...';
-    await new Promise(r=>setTimeout(r,2000));
-  }
-  _areaClassifierData=await api('job_listings?select=id,job_title,company_name,functional_area_v2,seniority_v2,sector_v2,published_date&order=published_date.desc&limit=2000');
-  renderAreaClassifier();
-  if(status)status.textContent='✅ Completato: '+done+' titoli AI';
-  toast('✅ Classificazione completata','success');
-}
-
 /* ═══ COMPANY FILTER ═══ */
 let _companyFilterData=[];
 let _companyFilterFiltered=[];
@@ -8393,30 +7955,25 @@ async function suggestCMRoles(term){
     const termLower=term.toLowerCase();
 
     const extraRoles=new Map(); // role -> role_family
+    // Match a parola intera invece di substring libero, niente espansione per
+    // role_family: stesso fix applicato a suggestRelatedRoles (bug "KAM" -> "Buyer").
+    const escapedCM=termLower.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const termRegexCM=new RegExp(`\\b${escapedCM}\\b`,'i');
 
-    // 1. Match negli alias — esatto, parziale, o acronimo
+    // 1. Match negli alias — esatto o parola intera
     for(const[alias,data] of Object.entries(_aliasCache||{})){
       const aLow=alias.toLowerCase();
-      // match se: alias contiene term, term contiene alias, oppure sono uguali
-      if(aLow===termLower||aLow.includes(termLower)||termLower.includes(aLow)){
+      if(aLow===termLower||termRegexCM.test(aLow)){
         if(data.canonical_role)extraRoles.set(data.canonical_role,data.role_family||'');
       }
     }
 
-    // 2. Match nella taxonomy — sul canonical_role
-    const matchedTax=(_taxonomyCache||[]).filter(t=>{
+    // 2. Match nella taxonomy — canonical_role esatto o parola intera
+    (_taxonomyCache||[]).forEach(t=>{
       const cLow=t.canonical_role.toLowerCase();
-      return cLow.includes(termLower)||termLower.includes(cLow)||
-        // Match su parole singole del canonical_role
-        t.canonical_role.split(' ').some(w=>w.toLowerCase().startsWith(termLower));
-    });
-
-    // 3. Aggiungi tutti i ruoli della stessa role_family
-    matchedTax.forEach(t=>{
-      extraRoles.set(t.canonical_role,t.role_family||'');
-      (_taxonomyCache||[]).filter(x=>x.role_family===t.role_family&&x.role_family).forEach(x=>{
-        extraRoles.set(x.canonical_role,x.role_family||'');
-      });
+      if(cLow===termLower||termRegexCM.test(cLow)){
+        extraRoles.set(t.canonical_role,t.role_family||'');
+      }
     });
 
     // Rimuovi il termine stesso
@@ -9071,41 +8628,6 @@ function renderDemandScatter(){
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
       <button class="btn btn-secondary" onclick="closeModal('modal-taxonomy-mapper')">Annulla</button>
       <button class="btn btn-primary" onclick="saveTaxonomyMapping()">💾 Salva tutto</button>
-    </div>
-  </div>
-</div>
-
-
-<!-- ── MODAL AREA CLASSIFIER ── -->
-<div class="modal-overlay" id="modal-area-classifier">
-  <div class="modal" style="width:900px;max-height:88vh;display:flex;flex-direction:column;">
-    <div class="modal-title">📋 Revisione dati — Fase 2</div>
-    <div style="display:flex;gap:4px;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:12px;">
-      <button onclick="setReviewTab('area')" id="rtab-area" class="qb-btn active">🗂️ Area Funzionale <span id="badge-rtab-area" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-      <button onclick="setReviewTab('location')" id="rtab-location" class="qb-btn">📍 Location <span id="badge-rtab-location" style="background:#ef4444;color:white;border-radius:8px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-    </div>
-    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
-      <div style="font-size:12px;color:var(--text2);" id="area-classifier-count">Caricamento...</div>
-      <div style="margin-left:auto;display:flex;gap:8px;">
-        <button class="btn btn-secondary" onclick="autoClassifyAreas()" id="btn-auto-classify" style="font-size:12px;border-color:#a78bfa;color:#a78bfa;">🤖 Auto-classifica con AI</button>
-        <button class="btn btn-secondary" onclick="applyAreaRegex()" id="btn-apply-regex" style="font-size:12px;border-color:#10b981;color:#10b981;">⚡ Applica regex</button>
-      </div>
-    </div>
-    <div id="filter-bar-area" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
-      <span style="font-size:11px;color:var(--text2);align-self:center;">Filtra:</span>
-      <button onclick="filterAreaClassifier('')" class="qb-btn" id="acf-all">Tutti</button>
-      <button onclick="filterAreaClassifier('commercial')" class="qb-btn" id="acf-commercial">Commercial</button>
-      <button onclick="filterAreaClassifier('medical_affairs')" class="qb-btn" id="acf-medical">Medical Affairs</button>
-      <button onclick="filterAreaClassifier('manufacturing')" class="qb-btn" id="acf-manufacturing">Manufacturing</button>
-      <button onclick="filterAreaClassifier('quality')" class="qb-btn" id="acf-quality">Quality</button>
-      <button onclick="filterAreaClassifier('it')" class="qb-btn" id="acf-it">IT</button>
-      <button onclick="filterAreaClassifier(null)" class="qb-btn active" id="acf-unset">⚠️ Non classificati</button>
-    </div>
-    <div id="area-classifier-body" style="overflow-y:auto;flex:1;"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-      <div style="font-size:11px;color:var(--text2);align-self:center;" id="area-classifier-status"></div>
-      <button class="btn btn-secondary" onclick="closeModal('modal-area-classifier')">Chiudi</button>
-      <button class="btn btn-primary" onclick="saveReviewData()">💾 Salva</button>
     </div>
   </div>
 </div>
