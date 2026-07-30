@@ -2587,6 +2587,44 @@ async function buildRoleSearchOr(rawSearch){
   return '&or=('+parts.join(',')+')';
 }
 
+/* ═══ MOTORE DETERMINISTICO SENIORITY — nessuna IA ═══
+   L'IA classificava seniority in modo incoerente: stesso pattern testuale (es. "Manager"
+   nel titolo), esiti diversi in casi identici. Priorita' fissa: qualificatori espliciti
+   (Junior/Senior/Director/VP/C-level) vincono sempre sul nome del ruolo. Ritorna null se
+   non trova nessun segnale — MAI un default forzato, altrimenti si sbilancia tutto su
+   un valore "neutro" (visto con classifySeniorityFromText solo sul titolo: 68% specialist). ═══ */
+function classifySeniorityFromText(t){
+  if(!t)return null;
+  if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'internship';
+  if(/\b(ceo|cfo|cto|coo|cmo|cso)\b|chief\s+\w+\s+officer/i.test(t))return 'c_level';
+  if(/\bvp\b|vice president/i.test(t))return 'vp';
+  if(/general manager|direttore generale/i.test(t))return 'general_manager';
+  if(/country manager|country head|direttore paese/i.test(t))return 'country_manager';
+  if(/senior director|direttore senior/i.test(t))return 'senior_director';
+  if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'director';
+  if(/head of|responsabile nazionale/i.test(t))return 'head_of';
+  if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
+  if(/senior manager/i.test(t))return 'senior_manager';
+  if(/\bmanager\b|\bresponsabile\b|\bcapo\b/i.test(t))return 'manager';
+  if(/\blead\b|coordinat/i.test(t))return 'lead';
+  if(/\bprincipal\b|distinguished/i.test(t))return 'principal';
+  if(/\bexpert\b/i.test(t))return 'expert';
+  if(/\bsenior\b/i.test(t))return 'senior_specialist';
+  if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'associate';
+  if(/\bspecialist\b|\bspecialista\b/i.test(t))return 'specialist';
+  if(/\b0-1\s*ann|entry[\s-]?level/i.test(t))return 'entry_level';
+  if(/\b1-3\s*anni/i.test(t))return 'associate';
+  if(/\b3-6\s*anni/i.test(t))return 'specialist';
+  if(/\b6-10\s*anni/i.test(t))return 'senior_specialist';
+  if(/\b10\+?\s*anni/i.test(t))return 'expert';
+  return null;
+}
+// Titolo prima (segnale piu' affidabile), poi descrizione come fallback. null se nessun
+// segnale in nessuno dei due: chi chiama NON deve sovrascrivere il valore esistente.
+function classifySeniorityDeterministic(title,description){
+  return classifySeniorityFromText(title)||classifySeniorityFromText(description)||null;
+}
+
 async function normalizeJobTitle(jobTitle){
   await loadTaxonomy();
   
@@ -6263,7 +6301,6 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
   "sector_v2": "<valore>",
   "functional_area_v2": "<valore>",
   "sub_area": "<valore>",
-  "seniority_v2": "<valore>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<valore>",
   "therapeutic_area_sub": "<valore_sub o null>",
@@ -6286,7 +6323,10 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.sector_v2)patch.sector_v2=result.sector_v2;
       if(result.functional_area_v2)patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
-      if(result.seniority_v2)patch.seniority_v2=result.seniority_v2;
+      // Seniority — motore deterministico, non IA. Se non trova nessun segnale
+      // (titolo/descrizione), NON sovrascrive il valore esistente.
+      const deterministicSeniority=classifySeniorityDeterministic(listing.job_title,listing.job_description);
+      if(deterministicSeniority)patch.seniority_v2=deterministicSeniority;
       if(result.field_hq)patch.field_hq=result.field_hq;
       if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
       if(result.therapeutic_area_sub)patch.therapeutic_area_sub=result.therapeutic_area_sub;
@@ -6333,7 +6373,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
         senior_director:'Director',vp:'Director',general_manager:'Director',
         country_manager:'Director',c_level:'C-level'
       };
-      if(result.seniority_v2&&senMap[result.seniority_v2])patch.seniority=senMap[result.seniority_v2];
+      if(patch.seniority_v2&&senMap[patch.seniority_v2])patch.seniority=senMap[patch.seniority_v2];
 
       // RAL — aggiunge SOLO se mancante, mai sovrascrive
       if(!listing.ral_min&&result.ral_min)patch.ral_min=parseInt(result.ral_min);
@@ -6481,7 +6521,6 @@ JSON:
 "sector_v2":"<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
 "functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
 "sub_area":"<codice sottoarea>",
-"seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|expert|lead|manager|senior_manager|head_of|director|senior_director|vp|general_manager|country_manager|c_level>",
 "field_hq":"<Field Based|Hybrid|Headquarters>",
 "therapeutic_area":"<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
 "company_type":"<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>",
@@ -6494,7 +6533,6 @@ JSON:
 
       const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
       const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
-      const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','principal','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
       const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
 
       const patch={ai_analyzed:true,classified_at:new Date().toISOString(),classification_source:'groq_v2_auto'};
@@ -6514,7 +6552,8 @@ JSON:
       if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
       if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
-      if(result.seniority_v2&&_vsen2.includes(result.seniority_v2))patch.seniority_v2=result.seniority_v2;
+      const detSen1=classifySeniorityDeterministic(listing.job_title,listing.job_description);
+      if(detSen1)patch.seniority_v2=detSen1;
       if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
       if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
       if(result.company_type)patch.company_type=result.company_type;
@@ -6876,7 +6915,6 @@ JSON:
   "sector_v2": "<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
   "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
   "sub_area": "<msl|medical_advisor|kam|area_manager|isf|product_manager|regulatory_specialist|qa_specialist|cra|pv_specialist|scientist|ecc>",
-  "seniority_v2": "<internship|entry_level|associate|specialist|senior_specialist|expert|lead|manager|senior_manager|head_of|director|senior_director|vp|general_manager|country_manager|c_level>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
   "company_type": "<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>",
@@ -6891,7 +6929,6 @@ JSON:
 
     const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
     const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
-    const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','principal','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
     const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
 
     // RAL: null di default, assegna SOLO se salary_text presente e valori plausibili
@@ -6913,7 +6950,8 @@ JSON:
     if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
     if(result.sub_area)patch.sub_area=result.sub_area;
-    if(result.seniority_v2&&_vsen2.includes(result.seniority_v2))patch.seniority_v2=result.seniority_v2;
+    const detSen2=classifySeniorityDeterministic(title,text);
+    if(detSen2)patch.seniority_v2=detSen2;
     if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
     if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
     if(result.company_type)patch.company_type=result.company_type;
@@ -6997,12 +7035,12 @@ CONVERSIONI (solo se il numero è nel testo):
 "57-95K" → min:57000 max:95000 | "fino a 60K" → min:null max:60000 | "da 57K" → min:57000 max:null
 
 Rispondi SOLO con questo JSON:
-{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","seniority_v2":"<internship|entry_level|associate|specialist|senior_specialist|manager|senior_manager|head_of|director|vp|c_level>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
+{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
 :
 `Classifica questo annuncio Life Sciences solo dal titolo.
 Titolo: ${title}
 Rispondi SOLO con JSON:
-{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector_v2":"altro","functional_area_v2":"altro","seniority_v2":"specialist","location":null,"contract_type":null,"page_read":false}`;
+{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector_v2":"altro","functional_area_v2":"altro","location":null,"contract_type":null,"page_read":false}`;
 
     const rawText=await callAIPowerful(prompt,700);
     const clean=rawText.replace(/```json|```/g,'').trim();
@@ -7010,7 +7048,6 @@ Rispondi SOLO con JSON:
 
     const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
     const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
-    const _vsen2=['internship','entry_level','associate','specialist','senior_specialist','expert','lead','manager','senior_manager','head_of','director','senior_director','vp','general_manager','country_manager','c_level'];
 
     const patch={ai_analyzed:true};
     // RAL: azzera sempre, poi assegna solo se trovata nel testo
@@ -7028,7 +7065,8 @@ Rispondi SOLO con JSON:
     if(result.job_description)patch.job_description=result.job_description;
     if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
-    if(result.seniority_v2&&_vsen2.includes(result.seniority_v2))patch.seniority_v2=result.seniority_v2;
+    const detSen3=classifySeniorityDeterministic(title,pageText);
+    if(detSen3)patch.seniority_v2=detSen3;
     if(result.location)patch.location=result.location;
     if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
