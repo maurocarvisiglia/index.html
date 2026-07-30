@@ -2959,6 +2959,10 @@ function renderReportHTML(plan,entityResults,narration){
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Georgia,serif;background:#fff;color:${DARK};}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}.page-break{page-break-before:always;}}
+/* Evita che box/tabelle/righe vengano tagliati a meta' tra una pagina e l'altra */
+.kpi-grid,.salary-bar,.summary-box,.chart-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
 .page{max-width:900px;margin:0 auto;padding:40px 48px;}
 .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${TAN};margin-bottom:36px;}
 .kpi-grid{display:grid;gap:1px;background:${BORDER};border:1px solid ${BORDER};border-radius:10px;overflow:hidden;margin:28px 0;}
