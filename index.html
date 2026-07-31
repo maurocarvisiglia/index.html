@@ -707,6 +707,72 @@ a.job-link:hover{text-decoration:underline;}
       <div class="kpi-card"><div class="kpi-label">Opportunity Score</div><div class="kpi-value" id="cd-kpi-opp">—</div></div>
     </div>
 
+    <!-- PROFILO AZIENDA — editabile + ricerca web -->
+    <div class="chart-card" style="margin-bottom:24px;">
+      <div class="chart-card-title">📋 Profilo azienda</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">N. dipendenti</label>
+          <input type="number" id="cd-edit-dipendenti" min="0" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Codice Ateco</label>
+          <input type="text" id="cd-edit-ateco" placeholder="es. 46.46.10" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Settore</label>
+          <select id="cd-edit-sector" style="width:100%;">
+            <option value="">— non specificato —</option>
+            <option value="pharma_rx">Pharma RX</option>
+            <option value="biotech">Biotech</option>
+            <option value="medical_devices">Medical Devices</option>
+            <option value="diagnostics">Diagnostics</option>
+            <option value="cro">CRO</option>
+            <option value="cdmo">CDMO</option>
+            <option value="consumer_health">Consumer Health</option>
+            <option value="otc">OTC</option>
+            <option value="nutraceutical">Nutraceutical</option>
+            <option value="cosmetics">Cosmetics</option>
+            <option value="veterinary">Veterinary</option>
+            <option value="digital_health">Digital Health</option>
+            <option value="healthcare_services">Healthcare Services</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Tipologia azienda</label>
+          <select id="cd-edit-company-type" style="width:100%;">
+            <option value="">— non specificato —</option>
+            <option>Big Pharma</option>
+            <option>Mid Pharma</option>
+            <option>Specialty Pharma</option>
+            <option>Biotech</option>
+            <option>Medical Device</option>
+            <option>Diagnostics</option>
+            <option>CRO</option>
+            <option>CDMO</option>
+            <option>Consumer Health</option>
+            <option>Nutraceutical</option>
+            <option>Cosmetics</option>
+          </select>
+        </div>
+      </div>
+      <label style="font-size:11px;color:var(--text2);display:block;margin:14px 0 4px;">Descrizione attività</label>
+      <textarea id="cd-edit-description" style="width:100%;height:70px;resize:vertical;" placeholder="Breve descrizione di cosa fa l'azienda..."></textarea>
+      <div style="margin-top:12px;">
+        <button class="btn btn-primary" onclick="saveCompanyProfile()">💾 Salva profilo</button>
+      </div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;">🔎 Ricerca web — incolla testo trovato online (LinkedIn, sito aziendale...)</div>
+        <textarea id="cd-research-text" placeholder="Incolla qui il testo trovato sul web..." style="width:100%;height:90px;resize:vertical;"></textarea>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-secondary" onclick="analyzeCompanyResearch()" id="btn-cd-research" style="border-color:#a78bfa;color:#a78bfa;">🤖 Estrai dati dal testo</button>
+          <span id="cd-research-status" style="font-size:12px;color:var(--text2);"></span>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:6px;">L'estrazione usa esclusivamente il testo incollato qui sopra — nessun dato viene generato a memoria. Controlla e correggi i campi prima di salvare.</div>
+      </div>
+    </div>
+
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
         <div class="chart-card-title">Aree funzionali</div>
@@ -2861,8 +2927,9 @@ async function narrateReport(plan,entityResults){
     excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
     benchmark:r.benchmark,sections:r.sections
   }));
-  const prompt=`Sei un analista senior di executive search specializzato nel settore Life Sciences italiano, per MC Pharma Consulting.
-Scrivi un report in italiano basandoti ESCLUSIVAMENTE sui dati numerici forniti sotto. Non inventare numeri, aziende o dettagli non presenti nei dati.
+  const prompt=`Sei un consulente senior di MC Pharma Consulting che scrive un report di market intelligence PER UN CLIENTE (un'azienda che deve prendere decisioni su assunzioni, retribuzioni o organico). Non stai vendendo servizi di ricerca — stai spiegando cosa significano questi numeri e perché, come farebbe un consulente strategico, non un commerciale.
+
+Scrivi in italiano, basandoti ESCLUSIVAMENTE sui dati numerici forniti sotto. Non inventare numeri, aziende o dettagli non presenti nei dati.
 
 TITOLO RICHIESTO: ${plan.title}
 MODALITA': ${plan.mode}
@@ -2871,18 +2938,25 @@ FOCUS PRINCIPALE: ${plan.primary_focus||'nessuno specifico, copertura generale'}
 DATI CALCOLATI (unica fonte ammessa):
 ${JSON.stringify(factsForAI,null,1)}
 
-REGOLE ASSOLUTE:
+REGOLE ASSOLUTE SUI DATI:
 - Usa solo i numeri sopra. Se un valore e' null, non menzionarlo o di' che non e' disponibile. Non citare aziende non presenti in "top_employers".
 - Se ci sono 2+ entita', confrontale esplicitamente (differenze %, chi e' piu' alto/basso).
 - Menziona SEMPRE l'arco temporale dei dati usando "benchmark.date_range" (es. "nel periodo giugno–luglio 2026").
-- Se "excluded_foreign_count">0, menzionalo esplicitamente (quanti annunci esteri sono stati esclusi dall'analisi e, se utile, cosa sono con "excluded_foreign_examples").
-- Per le sezioni con "coverage_pct" (area terapeutica, area geografica), se coverage_pct<90 menziona che solo quella percentuale di annunci specifica il dato, non dare per scontato che la distribuzione rappresenti il 100% del campione.
+- Se "excluded_foreign_count">0, menzionalo esplicitamente (quanti annunci esteri sono stati esclusi e cosa sono, con "excluded_foreign_examples").
+- Per le sezioni con "coverage_pct"<90, menziona che solo quella percentuale di annunci specifica il dato — non dare per scontato che la distribuzione rappresenti il 100% del campione.
+- Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
+
+REGOLE ASSOLUTE SUL TONO — questo e' il punto piu' importante:
+- VIETATO il linguaggio da pitch commerciale: frasi come "si consiglia di monitorare annunci futuri", "strategia di reclutamento mirata", "contattateci per approfondire", "rappresenta un'opportunita' per il recruiting" sono BANDITE — non dicono nulla di specifico e vanno sostituite con un ragionamento vero.
+- Ogni affermazione in "operational_implication" deve spiegare un MECCANISMO concreto legato ai numeri di QUESTO report (es. concentrazione su pochi datori, differenziale retributivo tra le entita', tipo di contratto prevalente, copertura geografica) — non un consiglio generico che potrebbe applicarsi a qualsiasi ruolo.
+- Esempio del tono corretto (da un report precedente, stesso stile da riprodurre): "Due mercati, due strategie di ricerca: il generalista si copre a volume con i canali standard; lo specialty/oncologia richiede ricerca mirata, perche' e' li' che si concentrano scarsita', RAL piu' alte e maggiore difficolta' di reperimento." — nota come la frase spiega IL PERCHE', ancorato a dati specifici (scarsita', RAL, difficolta'), non generico.
+- Esempio del tono SBAGLIATO da evitare: "La domanda e' attiva, si consiglia una strategia di reclutamento mirata e di monitorare i prossimi annunci." — vago, potrebbe dirlo per qualsiasi ruolo, non spiega nulla.
 
 Rispondi SOLO con questo JSON:
 {
-  "executive_summary": "<3-5 frasi, il messaggio piu' importante emerso dai dati>",
-  "entity_notes": [{"label":"<label esatta>","note":"<2-3 frasi specifiche su questa entita'>"}],
-  "operational_implication": "<2-3 frasi di implicazione operativa/strategica per un executive search>"
+  "executive_summary": "<3-5 frasi, il messaggio piu' importante emerso dai dati, con il ragionamento dietro il numero, non solo il numero>",
+  "entity_notes": [{"label":"<label esatta>","note":"<2-3 frasi specifiche su questa entita', con lettura del dato non solo elenco>"}],
+  "operational_implication": "<2-3 frasi che spiegano cosa cambia per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>"
 }`;
 
   try{
@@ -7911,6 +7985,15 @@ async function loadCompanyDetail(company){
   if(company.linkedin_url)links.push(`<a class="hero-link-btn" href="${company.linkedin_url}" target="_blank">in LinkedIn</a>`);
   document.getElementById('cd-links').innerHTML=links.join('');
 
+  // Profilo azienda — dai campi propri di companies (fonte primaria, non da job_listings)
+  document.getElementById('cd-edit-dipendenti').value=company.dipendenti||'';
+  document.getElementById('cd-edit-ateco').value=company.codice_ateco||'';
+  document.getElementById('cd-edit-sector').value=company.sector_v2||'';
+  document.getElementById('cd-edit-company-type').value=company.company_type||'';
+  document.getElementById('cd-edit-description').value=company.activity_description||'';
+  document.getElementById('cd-research-text').value='';
+  document.getElementById('cd-research-status').textContent='';
+
   try{
     // Query per company_id se disponibile, altrimenti fallback su company_name
     const q=company.id
@@ -7923,15 +8006,19 @@ async function loadCompanyDetail(company){
     const withRev=listings.find(l=>l.company_revenue_usd);
     const withLoc=listings.find(l=>l.company_url||l.location);
 
-    document.getElementById('cd-kpi-employees').textContent=withEmp?
-      (withEmp.company_employees>=1000?`${(withEmp.company_employees/1000).toFixed(0)}k`:withEmp.company_employees):'—';
+    // Dipendenti: fonte primaria companies.dipendenti (profilo azienda), fallback su
+    // job_listings.company_employees (in pratica sempre vuoto, ma lasciato per compatibilita').
+    const empValue=company.dipendenti||(withEmp?withEmp.company_employees:null);
+    document.getElementById('cd-kpi-employees').textContent=empValue?
+      (empValue>=1000?`${(empValue/1000).toFixed(0)}k`:empValue):'—';
     document.getElementById('cd-kpi-revenue').textContent=withRev?
       (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—';
 
-    // Settore principale
+    // Settore principale: fonte primaria companies.sector_v2 (profilo azienda), fallback
+    // sul settore piu' frequente tra i suoi annunci.
     const sectors=listings.filter(l=>l.sector_v2||l.sector).map(l=>l.sector_v2||l.sector);
     const topSector=sectors.length?Object.entries(sectors.reduce((a,s)=>{a[s]=(a[s]||0)+1;return a;},{} )).sort((a,b)=>b[1]-a[1])[0][0]:'—';
-    document.getElementById('cd-kpi-sector').textContent=topSector;
+    document.getElementById('cd-kpi-sector').textContent=company.sector_v2||topSector;
 
     // Hiring manager
     const withHM=listings.find(l=>l.hiring_manager_name);
@@ -8096,6 +8183,78 @@ async function linkListingsToCompany(){
   }
   btn.textContent='🔗 Collega annunci';
   btn.disabled=false;
+}
+
+/* ── PROFILO AZIENDA — dati arricchiti (dipendenti, settore, tipologia, ateco, descrizione) ── */
+async function saveCompanyProfile(){
+  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
+  const dipendentiRaw=document.getElementById('cd-edit-dipendenti').value;
+  const patch={
+    dipendenti:dipendentiRaw?parseInt(dipendentiRaw):null,
+    codice_ateco:document.getElementById('cd-edit-ateco').value.trim()||null,
+    sector_v2:document.getElementById('cd-edit-sector').value||null,
+    company_type:document.getElementById('cd-edit-company-type').value||null,
+    activity_description:document.getElementById('cd-edit-description').value.trim()||null
+  };
+  try{
+    await api('companies?id=eq.'+currentCompany.id,'PATCH',patch);
+    Object.assign(currentCompany,patch);
+    toast('✅ Profilo azienda salvato','success');
+    // Aggiorna le KPI derivate senza ricaricare tutto
+    document.getElementById('cd-kpi-employees').textContent=patch.dipendenti?
+      (patch.dipendenti>=1000?`${(patch.dipendenti/1000).toFixed(0)}k`:patch.dipendenti):'—';
+    if(patch.sector_v2)document.getElementById('cd-kpi-sector').textContent=patch.sector_v2;
+  }catch(e){
+    toast('Errore salvataggio profilo: '+e.message,'error');
+  }
+}
+
+// Estrae i campi profilo SOLO dal testo incollato dall'utente — mai a memoria.
+// Stesso principio di analyzeWithText per gli annunci: l'IA legge e riassume un testo
+// reale fornito, non inventa fatti su aziende che potrebbe "conoscere" in modo impreciso.
+async function analyzeCompanyResearch(){
+  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
+  const text=document.getElementById('cd-research-text').value.trim();
+  const statusEl=document.getElementById('cd-research-status');
+  if(!text||text.length<30){toast('Incolla almeno qualche riga di testo trovato sul web','warning');return;}
+
+  const btn=document.getElementById('btn-cd-research');
+  btn.disabled=true;
+  if(statusEl)statusEl.textContent='⏳ Estrazione in corso...';
+  try{
+    const prompt=`Estrai informazioni SOLO dal testo fornito sotto, riguardante l'azienda "${currentCompany.name}". Non aggiungere nulla che non sia scritto nel testo. Se un'informazione non è presente, usa null.
+
+TESTO (unica fonte ammessa):
+${text.substring(0,4000)}
+
+Rispondi SOLO con questo JSON:
+{
+  "dipendenti": <numero intero o null>,
+  "codice_ateco": "<codice se menzionato, altrimenti null>",
+  "sector_v2": "<uno tra pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services, solo se chiaramente deducibile dal testo, altrimenti null>",
+  "company_type": "<uno tra Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics, solo se chiaramente deducibile, altrimenti null>",
+  "activity_description": "<riassunto in 2-3 frasi in italiano di cosa fa l'azienda secondo il testo, o null se il testo non lo spiega>"
+}`;
+    const raw=await callAIPowerful(prompt,500);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const result=JSON.parse(clean);
+
+    if(result.dipendenti)document.getElementById('cd-edit-dipendenti').value=result.dipendenti;
+    if(result.codice_ateco)document.getElementById('cd-edit-ateco').value=result.codice_ateco;
+    if(result.sector_v2)document.getElementById('cd-edit-sector').value=result.sector_v2;
+    if(result.company_type)document.getElementById('cd-edit-company-type').value=result.company_type;
+    if(result.activity_description)document.getElementById('cd-edit-description').value=result.activity_description;
+
+    await api('companies?id=eq.'+currentCompany.id,'PATCH',{research_raw_text:text,last_researched_at:new Date().toISOString()});
+
+    if(statusEl)statusEl.textContent='✅ Campi aggiornati — controlla e clicca "Salva profilo"';
+    toast('Dati estratti dal testo — verifica prima di salvare','success');
+  }catch(e){
+    if(statusEl)statusEl.textContent='';
+    toast('Errore estrazione: '+e.message,'error');
+  }finally{
+    btn.disabled=false;
+  }
 }
 
 /* ── COMPANIES CRUD ── */
