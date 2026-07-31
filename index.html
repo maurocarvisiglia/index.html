@@ -723,36 +723,27 @@ a.job-link:hover{text-decoration:underline;}
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Settore</label>
           <select id="cd-edit-sector" style="width:100%;">
             <option value="">— non specificato —</option>
-            <option value="pharma_rx">Pharma RX</option>
-            <option value="biotech">Biotech</option>
-            <option value="medical_devices">Medical Devices</option>
-            <option value="diagnostics">Diagnostics</option>
-            <option value="cro">CRO</option>
-            <option value="cdmo">CDMO</option>
-            <option value="consumer_health">Consumer Health</option>
-            <option value="otc">OTC</option>
-            <option value="nutraceutical">Nutraceutical</option>
-            <option value="cosmetics">Cosmetics</option>
-            <option value="veterinary">Veterinary</option>
-            <option value="digital_health">Digital Health</option>
-            <option value="healthcare_services">Healthcare Services</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Tipologia azienda</label>
-          <select id="cd-edit-company-type" style="width:100%;">
-            <option value="">— non specificato —</option>
-            <option>Big Pharma</option>
-            <option>Mid Pharma</option>
-            <option>Specialty Pharma</option>
+            <optgroup label="Pharma">
+              <option>Big Pharma</option>
+              <option>Mid Pharma</option>
+              <option>Specialty Pharma</option>
+              <option>Pharma</option>
+            </optgroup>
             <option>Biotech</option>
-            <option>Medical Device</option>
+            <option>Medical Devices</option>
             <option>Diagnostics</option>
             <option>CRO</option>
             <option>CDMO</option>
+            <option>Chimico</option>
             <option>Consumer Health</option>
             <option>Nutraceutical</option>
             <option>Cosmetics</option>
+            <option>Veterinary</option>
+            <option>Digital Health</option>
+            <option>Healthcare Services</option>
+            <option>Farmacia/Retail</option>
+            <option>EHS/HSE Consulting</option>
+            <option>Altro</option>
           </select>
         </div>
       </div>
@@ -770,6 +761,15 @@ a.job-link:hover{text-decoration:underline;}
           <span id="cd-research-status" style="font-size:12px;color:var(--text2);"></span>
         </div>
         <div style="font-size:10px;color:var(--text2);margin-top:6px;">L'estrazione usa esclusivamente il testo incollato qui sopra — nessun dato viene generato a memoria. Controlla e correggi i campi prima di salvare.</div>
+      </div>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;">🤖 Arricchimento automatico (Wikidata + annunci raccolti)</div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-secondary" onclick="autoEnrichCompanySkeleton()" id="btn-cd-autoenrich" style="border-color:#b8965a;color:#b8965a;">🔄 Cerca automaticamente</button>
+          <span id="cd-autoenrich-status" style="font-size:12px;color:var(--text2);"></span>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:6px;">Interroga Wikidata (disambiguato tramite il sito web salvato, per non confondere il gruppo globale con la sede italiana) e usa gli annunci di lavoro già raccolti per questa azienda. Nessuno scraping di siti esterni: quel canale non è oggi disponibile in modo affidabile.</div>
       </div>
     </div>
 
@@ -7989,7 +7989,6 @@ async function loadCompanyDetail(company){
   document.getElementById('cd-edit-dipendenti').value=company.dipendenti||'';
   document.getElementById('cd-edit-ateco').value=company.codice_ateco||'';
   document.getElementById('cd-edit-sector').value=company.sector_v2||'';
-  document.getElementById('cd-edit-company-type').value=company.company_type||'';
   document.getElementById('cd-edit-description').value=company.activity_description||'';
   document.getElementById('cd-research-text').value='';
   document.getElementById('cd-research-status').textContent='';
@@ -8193,7 +8192,6 @@ async function saveCompanyProfile(){
     dipendenti:dipendentiRaw?parseInt(dipendentiRaw):null,
     codice_ateco:document.getElementById('cd-edit-ateco').value.trim()||null,
     sector_v2:document.getElementById('cd-edit-sector').value||null,
-    company_type:document.getElementById('cd-edit-company-type').value||null,
     activity_description:document.getElementById('cd-edit-description').value.trim()||null
   };
   try{
@@ -8206,6 +8204,101 @@ async function saveCompanyProfile(){
     if(patch.sector_v2)document.getElementById('cd-kpi-sector').textContent=patch.sector_v2;
   }catch(e){
     toast('Errore salvataggio profilo: '+e.message,'error');
+  }
+}
+
+// Cerca su Wikidata l'entita' corretta (disambiguata tramite corrispondenza esatta del sito web,
+// per non confondere il gruppo globale con la sede italiana) e recupera i fatti disponibili.
+// Ritorna null se non c'e' corrispondenza certa: non indoviniamo l'entita'.
+async function fetchWikidataFactsForCompany(name,website){
+  if(!name)return null;
+  const host=website?website.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/$/,''):null;
+  // Wikidata indicizza il nome breve/di marca (es. "Biogen"), non la ragione sociale completa
+  // (es. "BIOGEN ITALIA SRL"): rimuove suffissi legali/geografici comuni prima di cercare.
+  const searchTerm=name.replace(/\b(S\.?R\.?L\.?S?\.?|S\.?P\.?A\.?|S\.?A\.?S\.?|S\.?N\.?C\.?|ITALIA|ITALY|SOCIET[AÀ].*)\b/gi,'').trim()||name;
+  const searchUrl=`https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(searchTerm)}&language=it&format=json&origin=*&limit=10`;
+  const searchRes=await fetch(searchUrl).then(r=>r.json());
+  const ids=(searchRes.search||[]).map(s=>s.id);
+  if(!ids.length)return null;
+  const entitiesUrl=`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.join('|')}&props=claims|labels|descriptions&languages=it|en&format=json&origin=*`;
+  const entitiesRes=await fetch(entitiesUrl).then(r=>r.json());
+  let match=null;
+  for(const id of ids){
+    const ent=entitiesRes.entities[id];
+    if(!ent||!ent.claims)continue;
+    const wc=ent.claims.P856;
+    const w=wc?wc[0].mainsnak.datavalue.value:null;
+    if(host&&w&&w.toLowerCase().includes(host.toLowerCase())){match={id,ent,website:w};break;}
+  }
+  if(!match)return null;
+  const ent=match.ent;
+  const label=ent.labels.it?ent.labels.it.value:(ent.labels.en?ent.labels.en.value:name);
+  const desc=ent.descriptions.it?ent.descriptions.it.value:(ent.descriptions.en?ent.descriptions.en.value:null);
+  const inception=ent.claims.P571?ent.claims.P571[0].mainsnak.datavalue.value.time:null;
+  const foundedYear=inception?inception.replace(/^\+?(-?\d+).*/,'$1'):null;
+  return {wikidata_id:match.id,label,description:desc,founded_year:foundedYear,website:match.website};
+}
+
+// Arricchimento automatico "scheletro": combina Wikidata (fatti pubblici, disambiguati per sito web)
+// e le job_description gia' raccolte per questa azienda (dato nostro, nessuna dipendenza esterna).
+// Nessuno scraping di siti esterni: i proxy CORS gratuiti oggi non sono affidabili per questo uso.
+async function autoEnrichCompanySkeleton(){
+  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
+  const statusEl=document.getElementById('cd-autoenrich-status');
+  const btn=document.getElementById('btn-cd-autoenrich');
+  if(btn)btn.disabled=true;
+  if(statusEl)statusEl.textContent='⏳ Ricerca automatica in corso (Wikidata + annunci)...';
+  try{
+    const wiki=await fetchWikidataFactsForCompany(currentCompany.name,currentCompany.website);
+    const firstWord=(currentCompany.name||'').split(' ')[0];
+    const listings=firstWord?await api('job_listings?select=job_title,job_description&ragione_sociale=ilike.*'+encodeURIComponent(firstWord)+'*&limit=10'):[];
+
+    const blocks=[];
+    if(wiki){
+      blocks.push(`[FONTE: Wikidata, entità ${wiki.wikidata_id}, disambiguata tramite corrispondenza esatta del sito web — NON il gruppo globale]\n${wiki.label}: ${wiki.description||''}${wiki.founded_year?` Fondata nel ${wiki.founded_year}.`:''} Sito: ${wiki.website}`);
+    }
+    if(listings.length){
+      const jobText=listings.map(l=>`- ${l.job_title}: ${(l.job_description||'').substring(0,500)}`).join('\n');
+      blocks.push(`[FONTE: ${listings.length} annunci di lavoro pubblicati da questa azienda, raccolti da LS Intelligence]\n${jobText}`);
+    }
+    if(!blocks.length){
+      if(statusEl)statusEl.textContent='';
+      toast('Nessuna fonte automatica trovata per questa azienda (né Wikidata né annunci propri)','warning');
+      return;
+    }
+    const combinedText=blocks.join('\n\n');
+    document.getElementById('cd-research-text').value=combinedText;
+
+    const prompt=`Estrai informazioni SOLO dal testo fornito sotto, riguardante l'azienda "${currentCompany.name}". Il testo contiene blocchi con fonte indicata tra parentesi quadre. Se un blocco Wikidata descrive fatti che potrebbero riferirsi al gruppo globale invece che alla sede italiana (es. fatturato, dipendenti mondiali), NON riportarli. Non aggiungere nulla che non sia scritto nel testo. Se un'informazione non è presente o è ambigua tra locale/globale, usa null.
+
+TESTO (unica fonte ammessa):
+${combinedText.substring(0,4000)}
+
+Rispondi SOLO con questo JSON:
+{
+  "dipendenti": <numero intero o null>,
+  "codice_ateco": "<codice se menzionato, altrimenti null>",
+  "sector_v2": "<uno tra Big Pharma|Mid Pharma|Specialty Pharma|Pharma|Biotech|Medical Devices|Diagnostics|CRO|CDMO|Chimico|Consumer Health|Nutraceutical|Cosmetics|Veterinary|Digital Health|Healthcare Services|Farmacia/Retail|EHS/HSE Consulting|Altro, solo se chiaramente deducibile dal testo, altrimenti null>",
+  "activity_description": "<riassunto in 2-3 frasi in italiano di cosa fa l'azienda secondo il testo, o null se il testo non lo spiega>"
+}`;
+    const raw=await callAIPowerful(prompt,500);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const result=JSON.parse(clean);
+
+    if(result.dipendenti&&!currentCompany.dipendenti)document.getElementById('cd-edit-dipendenti').value=result.dipendenti;
+    if(result.codice_ateco&&!currentCompany.codice_ateco)document.getElementById('cd-edit-ateco').value=result.codice_ateco;
+    if(result.sector_v2&&!currentCompany.sector_v2)document.getElementById('cd-edit-sector').value=result.sector_v2;
+    if(result.activity_description&&!currentCompany.activity_description)document.getElementById('cd-edit-description').value=result.activity_description;
+
+    await api('companies?id=eq.'+currentCompany.id,'PATCH',{research_raw_text:'[GENERATO AUTOMATICAMENTE — '+new Date().toISOString().substring(0,10)+']\n\n'+combinedText,last_researched_at:new Date().toISOString()});
+
+    if(statusEl)statusEl.textContent='✅ Campi proposti — controlla e clicca "Salva profilo"';
+    toast('Arricchimento automatico completato — verifica prima di salvare','success');
+  }catch(e){
+    if(statusEl)statusEl.textContent='';
+    toast('Errore arricchimento automatico: '+e.message,'error');
+  }finally{
+    if(btn)btn.disabled=false;
   }
 }
 
@@ -8231,8 +8324,7 @@ Rispondi SOLO con questo JSON:
 {
   "dipendenti": <numero intero o null>,
   "codice_ateco": "<codice se menzionato, altrimenti null>",
-  "sector_v2": "<uno tra pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services, solo se chiaramente deducibile dal testo, altrimenti null>",
-  "company_type": "<uno tra Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics, solo se chiaramente deducibile, altrimenti null>",
+  "sector_v2": "<uno tra Big Pharma|Mid Pharma|Specialty Pharma|Pharma|Biotech|Medical Devices|Diagnostics|CRO|CDMO|Chimico|Consumer Health|Nutraceutical|Cosmetics|Veterinary|Digital Health|Healthcare Services|Farmacia/Retail|EHS/HSE Consulting|Altro, solo se chiaramente deducibile dal testo, altrimenti null. Usa 'Pharma' solo se e' chiaramente un produttore farmaceutico ma il testo non permette di distinguere la fascia Big/Mid/Specialty>",
   "activity_description": "<riassunto in 2-3 frasi in italiano di cosa fa l'azienda secondo il testo, o null se il testo non lo spiega>"
 }`;
     const raw=await callAIPowerful(prompt,500);
@@ -8242,7 +8334,6 @@ Rispondi SOLO con questo JSON:
     if(result.dipendenti)document.getElementById('cd-edit-dipendenti').value=result.dipendenti;
     if(result.codice_ateco)document.getElementById('cd-edit-ateco').value=result.codice_ateco;
     if(result.sector_v2)document.getElementById('cd-edit-sector').value=result.sector_v2;
-    if(result.company_type)document.getElementById('cd-edit-company-type').value=result.company_type;
     if(result.activity_description)document.getElementById('cd-edit-description').value=result.activity_description;
 
     await api('companies?id=eq.'+currentCompany.id,'PATCH',{research_raw_text:text,last_researched_at:new Date().toISOString()});
