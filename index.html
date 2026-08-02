@@ -267,15 +267,13 @@ a.job-link:hover{text-decoration:underline;}
             <div class="filter-label">Settore</div>
             <select id="qb-sector">
               <option value="">Tutti</option>
-              <option value="pharma_rx">Pharma RX</option>
-              <option value="biotech">Biotech</option>
-              <option value="medical_devices">Medical Devices</option>
-              <option value="diagnostics">Diagnostics</option>
-              <option value="cro">CRO</option>
-              <option value="cdmo">CDMO</option>
-              <option value="consumer_health">Consumer Health</option>
-              <option value="cosmetics">Cosmetics</option>
-              <option value="nutraceutical">Nutraceutical</option>
+              <optgroup label="Pharma">
+                <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+              </optgroup>
+              <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+              <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+              <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+              <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
             </select>
           </div>
           <div class="filter-group">
@@ -602,19 +600,13 @@ a.job-link:hover{text-decoration:underline;}
         <div class="filter-label">Settore</div>
         <select id="f-sector" onchange="loadListings()">
           <option value="">Tutti</option>
-          <option value="pharma_rx">Pharma RX</option>
-          <option value="consumer_health">Consumer Health</option>
-          <option value="otc">OTC</option>
-          <option value="biotech">Biotech</option>
-          <option value="medical_devices">Medical Devices</option>
-          <option value="diagnostics">Diagnostics</option>
-          <option value="cro">CRO</option>
-          <option value="cdmo">CDMO / CMO</option>
-          <option value="nutraceutical">Nutraceutical</option>
-          <option value="cosmetics">Cosmetics</option>
-          <option value="veterinary">Veterinary</option>
-          <option value="digital_health">Digital Health</option>
-          <option value="healthcare_services">Healthcare Services</option>
+          <optgroup label="Pharma">
+            <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+          </optgroup>
+          <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
         </select>
       </div>
       <div class="filter-group">
@@ -910,13 +902,13 @@ a.job-link:hover{text-decoration:underline;}
         <div class="filter-label">Settore</div>
         <select id="ruolo-sector" onchange="analyzeRuolo()">
           <option value="">Tutti</option>
-          <option value="pharma_rx">Pharma RX</option>
-          <option value="biotech">Biotech</option>
-          <option value="medical_devices">Medical Devices</option>
-          <option value="diagnostics">Diagnostics</option>
-          <option value="cro">CRO</option>
-          <option value="cdmo">CDMO</option>
-          <option value="consumer_health">Consumer Health</option>
+          <optgroup label="Pharma">
+            <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+          </optgroup>
+          <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1065,11 +1057,13 @@ a.job-link:hover{text-decoration:underline;}
         </select>
         <select id="ci-filter-sector" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;">
           <option value="">Tutti i settori</option>
-          <option value="pharma_rx">Pharma RX</option>
-          <option value="biotech">Biotech</option>
-          <option value="medical_devices">Medical Devices</option>
-          <option value="cdmo">CDMO</option>
-          <option value="cro">CRO</option>
+          <optgroup label="Pharma">
+            <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+          </optgroup>
+          <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
         </select>
         <input type="text" id="ci-filter-company" placeholder="🔍 Azienda..."
           style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;width:160px;"
@@ -1904,7 +1898,7 @@ async function importVocationsCSV(event){
     const n=parseInt(s.replace(/\./g,''));return n&&n>=10000&&n<=500000?n:null;
   };
   const contractMap={permanent:'TI',contract:'TD',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Agenzia','n/a':'altro'};
-  const sectorMap={'Farmaceutico':'pharma_rx','Chimico e Farmaceutico':'pharma_rx','Chimico':'cdmo','Medicale':'medical_devices','Biomedico':'biotech','Biomedicale':'biotech','Biotecnologico':'biotech','Cosmetico':'cosmetics','Nutraceutico':'nutraceutical','Veterinario':'veterinary','Manifatturiero e Industriale':'manufacturing','Ingegneria Industriale e Servizi Ingegneristici':'engineering','Cybersecurity e Informatica':'digital_health','Sanità e Igiene':'medical_devices','Tecnologia':'digital_health','Scienza e Dati':'digital_health'};
+  const sectorMap={'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health'};
   let ok=0,skip=0,errors=0;
   for(let idx=0;idx<rows.length;idx++){
     const row=rows[idx];
@@ -1922,7 +1916,7 @@ async function importVocationsCSV(event){
     if(rd&&rd!=='N/A'){const p=rd.split('/');if(p.length===3)published_date=p[2]+'-'+p[1]+'-'+p[0];}
     const ral=parseRAL(row['Stipendio annuo']||'');
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
-    const sector_v2=sectorMap[settoreRaw]||'pharma_rx';
+    const sector_v2=sectorMap[settoreRaw]||null;
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
     const contract_type=contractMap[contractRaw]||'altro';
     const isAgenzia=contract_type==='Agenzia';
@@ -2691,6 +2685,24 @@ function classifySeniorityDeterministic(title,description){
   return classifySeniorityFromText(title)||classifySeniorityFromText(description)||null;
 }
 
+// Il settore di un annuncio e' quello verificato a livello di azienda (companies.sector_v2),
+// non una nuova stima IA per singolo annuncio — evita di riprodurre il bias gia' scoperto
+// (l'IA per-annuncio taggava "Big/Mid Pharma" anche aziende non-Life-Sciences).
+const _companySectorCache={};
+async function getCompanySectorForListingId(listingId){
+  if(!listingId)return null;
+  const listing=(await api('job_listings?select=company_id&id=eq.'+listingId))[0];
+  return getCompanySectorForCompanyId(listing?.company_id);
+}
+async function getCompanySectorForCompanyId(companyId){
+  if(!companyId)return null;
+  if(companyId in _companySectorCache)return _companySectorCache[companyId];
+  const c=(await api('companies?select=sector_v2&id=eq.'+companyId))[0];
+  const sector=c?.sector_v2||null;
+  _companySectorCache[companyId]=sector;
+  return sector;
+}
+
 async function normalizeJobTitle(jobTitle){
   await loadTaxonomy();
   
@@ -2804,7 +2816,8 @@ async function fetchListingsForReportFilters(filters){
   const parts=[];
   if(filters.canonical_role)parts.push('canonical_role=eq.'+encodeURIComponent(filters.canonical_role));
   if(filters.functional_area)parts.push('functional_area_v2=eq.'+encodeURIComponent(filters.functional_area));
-  if(filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(filters.sector_v2));
+  if(filters.sector_v2==='Pharma')parts.push('sector_v2=in.(Big Pharma,Mid Pharma,Specialty Pharma,Pharma)');
+  else if(filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(filters.sector_v2));
   if(filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(filters.therapeutic_area));
   if(filters.seniority_v2)parts.push('seniority_v2=eq.'+encodeURIComponent(filters.seniority_v2));
   if(filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(filters.contract_type));
@@ -2844,7 +2857,7 @@ ${roleNames.join(', ')}
 FILTRI DISPONIBILI per ogni entita' (tutti opzionali, null se non specificati dalla richiesta):
 - canonical_role: uno dei ruoli validi sopra elencati
 - functional_area: uno tra medical_affairs, commercial, marketing, market_access, regulatory_affairs, quality, clinical_operations, drug_safety, rd, manufacturing, supply_chain, finance, hr, it, business_development, general_management
-- sector_v2: uno tra pharma_rx, biotech, medical_devices, diagnostics, cro, cdmo, consumer_health, otc, nutraceutical, cosmetics, veterinary, digital_health, healthcare_services
+- sector_v2: uno tra Big Pharma, Mid Pharma, Specialty Pharma, Pharma (produttore farmaceutico generico, tier non determinato — una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma), Biotech, Medical Devices, Diagnostics, CRO, CDMO, Chimico, Consumer Health, Nutraceutical, Cosmetics, Veterinary, Digital Health, Healthcare Services, Farmacia/Retail, EHS/HSE Consulting, Altro
 - therapeutic_area: uno tra oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, multiple
 - seniority_v2: uno tra internship, entry_level, associate, specialist, senior_specialist, expert, lead, manager, senior_manager, head_of, director, vp, c_level
 - contract_type: uno tra TI, TD, Freelance, Stage
@@ -3855,7 +3868,7 @@ async function runPostImportEnrichment(newCount){
     let classPage = 0, classified = 0, totalToClassify = 0;
     while(true){
       const toClassify = await api(
-        'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role' +
+        'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id' +
         '&source=eq.Vocations' +
         '&or=(sector_v2.is.null,functional_area_v2.is.null,therapeutic_area.is.null)' +
         `&order=published_date.desc&limit=${PAGE_SIZE}&offset=${classPage*PAGE_SIZE}`
@@ -6180,7 +6193,7 @@ async function analyzeListings(){
 
     // Carica i dati degli annunci selezionati
     const ids=[..._selectedIds];
-    const listings=await api(`job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&id=in.(${ids.join(',')})`);
+    const listings=await api(`job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id&id=in.(${ids.join(',')})`);
 
     let analyzed=0, failed=0;
     for(const listing of listings){
@@ -6209,8 +6222,8 @@ async function analyzeListings(){
   btn.disabled=true;
 
   const [unclassified, misclassified] = await Promise.all([
-    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
-    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id&sector_v2=is.null&order=published_date.desc.nullslast&limit=500'),
+    api('job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id&functional_area_v2=is.null&sector_v2=not.is.null&order=published_date.desc.nullslast&limit=200')
   ]);
 
   const seen=new Set();
@@ -6268,21 +6281,6 @@ Azienda: ${azienda}
 Sede: ${listing.location||'N/D'}${desc}
 
 REGOLE DI CLASSIFICAZIONE:
-
-SECTOR_V2 — Basati sull'azienda e sul prodotto/servizio:
-- pharma_rx: aziende farmaceutiche con farmaci su prescrizione (Roche, Novartis, Pfizer, AstraZeneca, MSD, Lilly, Sanofi, Boehringer, Chiesi, Menarini, Recordati, Angelini, Zambon)
-- biotech: aziende biotech/biologici (Amgen, Biogen, Genentech, Alexion, BioMarin, Vertex, Regeneron)
-- medical_devices: dispositivi medici e strumentazione (Medtronic, Abbott, Boston Scientific, Stryker, Becton Dickinson, Zimmer, Smith&Nephew, Olympus, Intuitive)
-- diagnostics: diagnostica in vitro (Roche Diagnostics, Abbott Diagnostics, Siemens Healthineers, bioMérieux, Beckman Coulter)
-- cro: Contract Research Organization (IQVIA, Syneos, Parexel, PPD, Covance, PRA, Fortrea, Clintec)
-- cdmo: Contract Development & Manufacturing (Thermo Fisher, Lonza, Catalent, Samsung Biologics, Corden Pharma, BSP)
-- consumer_health: salute OTC consumer (Haleon, Bayer Consumer, Johnson & Johnson Consumer, Procter & Gamble Health)
-- otc: farmaci senza ricetta branded (Angelini, Sanofi CHC, Teva OTC)
-- nutraceutical: integratori alimentari, nutraceutici (Nestle Health Science, Solgar, IBSA, Bromatech)
-- cosmetics: cosmetici e dermocosmetica (L'Oreal, Shiseido, Beiersdorf, Collistar, Pupa, KIKO)
-- veterinary: medicina veterinaria (Zoetis, Elanco, Boehringer Vetmedica, MSD Animal Health)
-- digital_health: salute digitale, AI medica, telemedicina
-- healthcare_services: ospedali, farmacie, distributori farmaceutici
 
 FUNCTIONAL_AREA_V2:
 - medical_affairs: MSL, Medical Advisor, Medical Manager, RWE, Medical Information, Medical Education
@@ -6357,28 +6355,13 @@ fertility (sotto womens_health)
 hiv (sotto vaccines)
 obesity (sotto diabetes)
 
-COMPANY_TYPE:
-- Big Pharma: fatturato >10B, brand globale (Roche, Novartis, Pfizer, AstraZeneca, MSD, Lilly, GSK, BMS, J&J, Sanofi, Bayer, AbbVie, Amgen)
-- Mid Pharma: farmaceutico medio (Chiesi, Recordati, Menarini, Angelini, Zambon, Pierre Fabre, Ipsen, UCB)
-- Specialty Pharma: specialistica/rare diseases (Alexion, Ultragenyx, Blueprint, Acceleron)
-- Biotech: biotech puro
-- Medical Device: dispositivi medici
-- Diagnostics: diagnostica
-- CRO: contract research
-- CDMO: contract manufacturing
-- Consumer Health: consumer/OTC
-- Nutraceutical: integratori
-- Cosmetics: cosmetici
-
 Rispondi SOLO con questo JSON (nessun testo prima o dopo):
 {
-  "sector_v2": "<valore>",
   "functional_area_v2": "<valore>",
   "sub_area": "<valore>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<valore>",
   "therapeutic_area_sub": "<valore_sub o null>",
-  "company_type": "<valore>",
   "location": "<città italiana estratta dal titolo o descrizione, null se non trovata>"
 }`;
 
@@ -6394,7 +6377,6 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       };
 
       // Campi v2 — sovrascrive sempre
-      if(result.sector_v2)patch.sector_v2=result.sector_v2;
       if(result.functional_area_v2)patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
       // Seniority — motore deterministico, non IA. Se non trova nessun segnale
@@ -6404,7 +6386,9 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.field_hq)patch.field_hq=result.field_hq;
       if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
       if(result.therapeutic_area_sub)patch.therapeutic_area_sub=result.therapeutic_area_sub;
-      if(result.company_type)patch.company_type=result.company_type;
+      // Settore — dal profilo verificato dell'azienda (companies.sector_v2), non da una nuova stima IA
+      const companySector0=listing.company_id?await getCompanySectorForCompanyId(listing.company_id):await getCompanySectorForListingId(listing.id);
+      if(companySector0)patch.sector_v2=companySector0;
 
       // Location — sovrascrive se trovata nel titolo/descrizione
       if(result.location)patch.location=result.location;
@@ -6419,15 +6403,8 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
         }
       }
 
-      // Campi legacy — sovrascrive sempre con mapping corretto
-      const sectorMap={
-        pharma_rx:'Farmaceutico',biotech:'Biotech',medical_devices:'Dispositivi Medici',
-        cro:'CRO / Clinical Research',cdmo:'CDMO / CMO',cosmetics:'Cosmetica',
-        nutraceutical:'Nutraceutica',consumer_health:'Consumer Health',otc:'Farmaceutico',
-        diagnostics:'Dispositivi Medici',veterinary:'altro',digital_health:'altro',
-        healthcare_services:'altro'
-      };
-      if(result.sector_v2&&sectorMap[result.sector_v2])patch.sector=sectorMap[result.sector_v2];
+      // Campo legacy "sector" (testo libero) — stesso valore verificato dell'azienda
+      if(companySector0)patch.sector=companySector0;
 
       const areaMap={
         medical_affairs:'Medical Affairs',commercial:'Sales',marketing:'Marketing',
@@ -6555,7 +6532,7 @@ async function autoAnalyzeDescriptions(){
 
   // Carica annunci con job_description MA senza sector_v2 o functional_area_v2
   const toAnalyze=await api(
-    'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max' +
+    'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,company_id' +
     '&job_description=not.is.null' +
     '&or=(sector_v2.is.null,functional_area_v2.is.null)' +
     '&order=published_date.desc.nullslast&limit=200'
@@ -6592,12 +6569,10 @@ MAI inventare o stimare. salary_text deve contenere il testo originale esatto, n
 
 JSON:
 {"ral_min":null,"ral_max":null,"salary_text":null,
-"sector_v2":"<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
 "functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
 "sub_area":"<codice sottoarea>",
 "field_hq":"<Field Based|Hybrid|Headquarters>",
 "therapeutic_area":"<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
-"company_type":"<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>",
 "location":"<città italiana>",
 "contract_type":"<TI|TD|Freelance|Stage|altro>"}`;
 
@@ -6605,7 +6580,6 @@ JSON:
       const clean=rawText.replace(/```json|```/g,'').trim();
       const result=JSON.parse(clean);
 
-      const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
       const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
       const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
 
@@ -6623,14 +6597,14 @@ JSON:
         if(patch.ral_min||patch.ral_max)ralFound++;
       }
 
-      if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
       if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
       const detSen1=classifySeniorityDeterministic(listing.job_title,listing.job_description);
       if(detSen1)patch.seniority_v2=detSen1;
+      const companySector1=await getCompanySectorForCompanyId(listing.company_id);
+      if(companySector1)patch.sector_v2=companySector1;
       if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
       if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
-      if(result.company_type)patch.company_type=result.company_type;
       if(result.location&&!listing.location)patch.location=result.location;
       if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
@@ -6986,12 +6960,10 @@ JSON:
   "ral_min": null,
   "ral_max": null,
   "salary_text": null,
-  "sector_v2": "<pharma_rx|consumer_health|otc|biotech|medical_devices|diagnostics|cro|cdmo|nutraceutical|cosmetics|veterinary|digital_health|healthcare_services>",
   "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
   "sub_area": "<msl|medical_advisor|kam|area_manager|isf|product_manager|regulatory_specialist|qa_specialist|cra|pv_specialist|scientist|ecc>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
-  "company_type": "<Big Pharma|Mid Pharma|Specialty Pharma|Biotech|Medical Device|Diagnostics|CRO|CDMO|Consumer Health|Nutraceutical|Cosmetics>",
   "location": "<città italiana>",
   "contract_type": "<TI|TD|Freelance|Stage|altro>",
   "job_description": "<riassunto ruolo max 400 caratteri>"
@@ -7001,7 +6973,6 @@ JSON:
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
-    const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
     const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
     const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
 
@@ -7021,14 +6992,14 @@ JSON:
     }
 
     if(result.job_description)patch.job_description=result.job_description;
-    if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
     if(result.sub_area)patch.sub_area=result.sub_area;
     const detSen2=classifySeniorityDeterministic(title,text);
     if(detSen2)patch.seniority_v2=detSen2;
+    const companySector2=await getCompanySectorForListingId(id);
+    if(companySector2)patch.sector_v2=companySector2;
     if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
     if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
-    if(result.company_type)patch.company_type=result.company_type;
     if(result.location)patch.location=result.location;
     if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
@@ -7109,18 +7080,17 @@ CONVERSIONI (solo se il numero è nel testo):
 "57-95K" → min:57000 max:95000 | "fino a 60K" → min:null max:60000 | "da 57K" → min:57000 max:null
 
 Rispondi SOLO con questo JSON:
-{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","sector_v2":"<pharma_rx|biotech|medical_devices|diagnostics|cro|cdmo|consumer_health|otc|nutraceutical|cosmetics|altro>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
+{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
 :
 `Classifica questo annuncio Life Sciences solo dal titolo.
 Titolo: ${title}
 Rispondi SOLO con JSON:
-{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"sector_v2":"altro","functional_area_v2":"altro","location":null,"contract_type":null,"page_read":false}`;
+{"ral_min":null,"ral_max":null,"salary_text":null,"job_description":null,"functional_area_v2":"altro","location":null,"contract_type":null,"page_read":false}`;
 
     const rawText=await callAIPowerful(prompt,700);
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
-    const _vs2=['pharma_rx','consumer_health','otc','biotech','medical_devices','diagnostics','cro','cdmo','nutraceutical','cosmetics','veterinary','digital_health','healthcare_services'];
     const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
 
     const patch={ai_analyzed:true};
@@ -7137,10 +7107,11 @@ Rispondi SOLO con JSON:
       if(sRal2Max)patch.ral_max=sRal2Max;
     }
     if(result.job_description)patch.job_description=result.job_description;
-    if(result.sector_v2&&_vs2.includes(result.sector_v2))patch.sector_v2=result.sector_v2;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
     const detSen3=classifySeniorityDeterministic(title,pageText);
     if(detSen3)patch.seniority_v2=detSen3;
+    const companySector3=await getCompanySectorForListingId(id);
+    if(companySector3)patch.sector_v2=companySector3;
     if(result.location)patch.location=result.location;
     if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
 
@@ -8457,7 +8428,7 @@ function renderCompanyFilterList(){
   if(!body)return;
   const total=_companyFilterFiltered.reduce((s,c)=>s+c.count,0);
   if(countEl)countEl.textContent=_companyFilterFiltered.length+' aziende · '+total+' annunci';
-  const sectorColor={pharma_rx:'#10b981',biotech:'#6366f1',medical_devices:'#3b82f6',cdmo:'#f59e0b',cro:'#8b5cf6',cosmetics:'#ec4899',nutraceutical:'#f97316'};
+  const sectorColor={'Big Pharma':'#10b981','Mid Pharma':'#10b981','Specialty Pharma':'#10b981','Pharma':'#10b981',Biotech:'#6366f1','Medical Devices':'#3b82f6',Diagnostics:'#3b82f6',CDMO:'#f59e0b',CRO:'#8b5cf6',Chimico:'#f59e0b',Cosmetics:'#ec4899',Nutraceutical:'#f97316','Consumer Health':'#f97316',Veterinary:'#14b8a6','Digital Health':'#6366f1','Healthcare Services':'#64748b','Farmacia/Retail':'#64748b','EHS/HSE Consulting':'#94a3b8',Altro:'#94a3b8'};
   body.innerHTML=`<table style="font-size:12px;width:100%;"><thead><tr style="position:sticky;top:0;background:var(--surface2);"><th style="padding:8px;text-align:center;width:36px;">❌</th><th style="padding:8px;">Azienda</th><th style="text-align:center;width:70px;">Annunci</th><th style="text-align:center;width:80px;">Class.%</th><th style="width:130px;">Settore</th></tr></thead><tbody>${_companyFilterFiltered.map((c,i)=>{const pct=c.count?Math.round(c.classified/c.count*100):0;const secColor=sectorColor[c.sector_v2]||'var(--text2)';return`<tr style="border-bottom:1px solid var(--border);"><td style="text-align:center;padding:6px;"><input type="checkbox" class="company-cb" data-company="${c.name.replace(/"/g,'&quot;')}" style="width:auto;cursor:pointer;" id="ccb-${i}"></td><td style="padding:6px 8px;font-weight:500;">${c.name}</td><td style="text-align:center;font-weight:700;">${c.count}</td><td style="text-align:center;"><span style="font-size:10px;color:${pct>50?'#10b981':'#f59e0b'};">${pct}%</span></td><td style="padding:6px 8px;"><span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${sectorColor[c.sector_v2]||'rgba(0,0,0,0.1)'}20;color:${secColor};">${c.sector_v2?toLabel(c.sector_v2):'⚠️ N/D'}</span></td></tr>`;}).join('')}</tbody></table>`;
 }
 
@@ -9482,11 +9453,13 @@ function renderDemandScatter(){
       <input type="text" id="company-filter-search" placeholder="Cerca azienda..." oninput="filterCompanyList(this.value)" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;width:220px;">
       <select id="company-filter-sector" onchange="filterCompanyList()" style="padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;">
         <option value="">Tutti i settori</option>
-        <option value="pharma_rx">Pharma RX</option>
-        <option value="biotech">Biotech</option>
-        <option value="medical_devices">Medical Devices</option>
-        <option value="cdmo">CDMO</option>
-        <option value="cro">CRO</option>
+        <optgroup label="Pharma">
+          <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+        </optgroup>
+        <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+        <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+        <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+        <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
       </select>
       <button onclick="selectAllCompanies(true)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☑ Seleziona tutti</button>
       <button onclick="selectAllCompanies(false)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☐ Deseleziona tutti</button>
