@@ -645,6 +645,9 @@ a.job-link:hover{text-decoration:underline;}
           <option value="listings_desc">Più annunci</option>
           <option value="recent_desc">Più recenti</option>
         </select>
+        <input type="file" id="companies-csv-import" accept=".csv" style="display:none;" onchange="importCompaniesCSV(event)">
+        <button class="btn btn-secondary" onclick="exportCompaniesCSV()" style="border-color:#22d3ee;color:#22d3ee;" title="Esporta tutte le aziende con i campi compilabili nella schermata azienda">📄 Esporta CSV</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('companies-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Importa un CSV con le informazioni compilate (aggiorna solo i campi non vuoti)">📥 Importa CSV</button>
         <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
       </div>
     </div>
@@ -2988,6 +2991,81 @@ function computeRalBySeniority(listings){
   return stats;
 }
 
+// Istogramma RAL a bucket fissi (per il grafico "Distribuzione RAL") — nessun trimming
+// IQR qui: la forma multi-picco (es. un singolo datore che spinge tanti annunci su un
+// bucket basso) e' esattamente l'informazione che l'istogramma deve mostrare.
+function computeRalHistogram(listings,bucketSize){
+  bucketSize=bucketSize||5000;
+  const vals=listings.filter(l=>l.ral_min||l.ral_max)
+    .map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max))
+    .filter(v=>v>=10000&&v<=350000);
+  if(!vals.length)return{buckets:[],total:0};
+  const min=Math.floor(Math.min(...vals)/bucketSize)*bucketSize;
+  const max=Math.ceil(Math.max(...vals)/bucketSize)*bucketSize;
+  const buckets=[];
+  for(let b=min;b<max;b+=bucketSize){
+    buckets.push({from:b,to:b+bucketSize,count:vals.filter(v=>v>=b&&v<b+bucketSize).length});
+  }
+  return{buckets,total:vals.length};
+}
+
+// Segmentazione in fasce retributive: individua i salti (gap) piu' ampi nella
+// distribuzione RAL ordinata e taglia li' — nessuna soglia arbitraria inventata,
+// le fasce emergono dai dati stessi. Se il mercato e' omogeneo, ritorna 1 solo
+// segmento (nessuna fascia da segnalare).
+function computeRalSegments(listings){
+  const items=listings.filter(l=>l.ral_min||l.ral_max).map(l=>({
+    val:l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max),
+    company:l.ragione_sociale||l.company_name||'N/D'
+  })).filter(x=>x.val>=10000&&x.val<=350000);
+  if(items.length<4)return[];
+  items.sort((a,b)=>a.val-b.val);
+  const gaps=[];
+  for(let i=0;i<items.length-1;i++)gaps.push({idx:i,size:items[i+1].val-items[i].val});
+  const gapSizes=gaps.map(g=>g.size).sort((a,b)=>a-b);
+  const medianGap=gapSizes[Math.floor(gapSizes.length/2)]||1000;
+  const splitCandidates=gaps.filter(g=>g.size>=Math.max(3000,medianGap*3));
+  const chosen=splitCandidates.sort((a,b)=>b.size-a.size).slice(0,3).map(g=>g.idx).sort((a,b)=>a-b);
+  const segments=[];
+  let start=0;
+  [...chosen,items.length-1].forEach(end=>{
+    const seg=items.slice(start,end+1);
+    if(seg.length){
+      const vals=seg.map(x=>x.val).sort((a,b)=>a-b);
+      const byCo={};
+      seg.forEach(x=>byCo[x.company]=(byCo[x.company]||0)+1);
+      segments.push({
+        min:vals[0],max:vals[vals.length-1],median:vals[Math.floor(vals.length/2)],
+        count:seg.length,
+        top_companies:Object.entries(byCo).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([company,count])=>({company,count}))
+      });
+    }
+    start=end+1;
+  });
+  return segments;
+}
+
+// RAL mediana per azienda, ordinate crescenti — usato dal grafico "RAL per azienda"
+// (asse numerico, non lista proporzionale al volume come i Top Datori).
+function computeRalByCompany(listings,maxCompanies){
+  maxCompanies=maxCompanies||10;
+  const byCo={};
+  listings.forEach(l=>{
+    const ral=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+    if(!ral||ral<10000||ral>350000)return;
+    const c=l.ragione_sociale||l.company_name||'N/D';
+    (byCo[c]=byCo[c]||[]).push(ral);
+  });
+  let rows=Object.entries(byCo).map(([company,vals])=>{
+    const sorted=vals.slice().sort((a,b)=>a-b);
+    return{company,median:sorted[Math.floor(sorted.length/2)],count:vals.length};
+  });
+  if(rows.length>maxCompanies){
+    rows=rows.sort((a,b)=>b.count-a.count).slice(0,maxCompanies);
+  }
+  return rows.sort((a,b)=>a.median-b.median);
+}
+
 // ── REPORT BUILDER — Step 2: esecuzione deterministica del piano (query + calcoli,
 // nessuna IA). Il benchmark RAL/scarsita' e' sempre calcolato; le altre sezioni solo
 // se richieste nel piano. ──
@@ -3005,10 +3083,13 @@ async function executeReportPlan(plan){
     if(plan.sections.includes('geo_mix'))sections.geo_mix=computeGeoMixSection(listings,entity.label);
     if(plan.sections.includes('contract_type_mix'))sections.contract_type_mix=computeMixSection(listings,'contract_type',entity.label);
 
-    // Distribuzioni settori + RAL per seniority + gap analysis
+    // Distribuzioni settori + RAL per seniority + istogramma/fasce RAL + gap analysis
     const sector_distribution = computeSectorDistribution(listings);
     const ral_by_seniority = computeRalBySeniority(listings);
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority});
+    const ral_histogram = computeRalHistogram(listings);
+    const ral_segments = computeRalSegments(listings);
+    const ral_by_company = computeRalByCompany(listings);
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_histogram,ral_segments,ral_by_company});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3032,6 +3113,7 @@ async function narrateReport(plan,entityResults){
     excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
     benchmark:r.benchmark,
     ral_by_seniority:r.ral_by_seniority,
+    ral_segments:r.ral_segments&&r.ral_segments.length>1?r.ral_segments:null,
     sector_distribution:r.sector_distribution?r.sector_distribution.slice(0,6):null,
     sections:r.sections,
     gap_vs_first:r.gap_vs_first||null
@@ -3055,6 +3137,7 @@ REGOLE ASSOLUTE SUI DATI:
 - Se "excluded_foreign_count">0, menzionalo esplicitamente (quanti annunci esteri sono stati esclusi e cosa sono, con "excluded_foreign_examples").
 - Per le sezioni con "coverage_pct"<90, menziona che solo quella percentuale di annunci specifica il dato — non dare per scontato che la distribuzione rappresenti il 100% del campione.
 - Usa "ral_by_seniority" per commentare esplicitamente i differenziali retributivi tra livelli (es. quanto guadagna in più/meno un senior specialist rispetto a uno specialist o un entry level, con numeri precisi) — questo dato e' quasi sempre disponibile e va sempre sfruttato, non ignorato.
+- Se "ral_segments" e' presente (non null), il mercato si divide in fasce retributive nette individuate matematicamente dai salti nella distribuzione — descrivi OGNI fascia con il suo range (min-max), quante posizioni contiene, e le aziende che la compongono ("top_companies"). Non inventare nomi per le fasce (es. "entry", "generalista", "specialty") a meno che le aziende/RAL della fascia lo suggeriscano chiaramente — altrimenti descrivile semplicemente per range di RAL. Se "ral_segments" e' null o assente, il mercato e' omogeneo: NON inventare fasce che non esistono.
 - Usa la distribuzione geografica ("sections.geo_mix") per indicare dove si concentra la domanda e cosa significa operativamente.
 - ANOMALIE DA SCORPORARE — controlla sempre "benchmark.concentration_flag" E "top_employers": se un'azienda rappresenta una quota sproporzionata degli annunci (tipicamente oltre il 30-40% del totale) con una RAL fissa o anomala rispetto al resto del mercato, DEVI nominarla esplicitamente e spiegare come distorce i numeri aggregati, citando sia il dato "inquinato" sia quello "depurato" (concentration_flag.company_median_ral vs concentration_flag.diversified_median) quando disponibili. Non trattarla come una nota a margine: e' un fatto centrale della sintesi esecutiva, perche' altrimenti chi legge il report crede che la mediana rappresenti un mercato omogeneo quando invece e' pilotata da un singolo datore.
 - Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
@@ -3135,6 +3218,57 @@ function renderReportHTML(plan,entityResults,narration){
   function renderSection(key,sec){
     return DONUT_SECTIONS.has(key)?donutChart(sec):barRows(sec,SECTION_COLORS[key]||GOLD);
   }
+  function histogramChart(histogram,highlightFrom){
+    if(!histogram||!histogram.buckets||!histogram.buckets.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
+    const buckets=histogram.buckets;
+    const W=560,H=180,padL=34,padR=10,padBottom=28,padTop=20;
+    const innerW=W-padL-padR,innerH=H-padTop-padBottom;
+    const maxCount=Math.max(...buckets.map(b=>b.count),1);
+    const barW=innerW/buckets.length;
+    const steps=4,gridLines=[];
+    for(let i=0;i<=steps;i++){
+      const v=Math.round(maxCount/steps*i);
+      const y=padTop+innerH-(v/maxCount*innerH);
+      gridLines.push(`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="${BORDER}" stroke-width="1"/><text x="${padL-6}" y="${y+3}" text-anchor="end" font-size="9" fill="#888">${v}</text>`);
+    }
+    const bars=buckets.map((b,i)=>{
+      const x=padL+i*barW;
+      const h=(b.count/maxCount)*innerH;
+      const y=padTop+innerH-h;
+      const isHighlight=highlightFrom!=null&&highlightFrom>=b.from&&highlightFrom<b.to;
+      const color=isHighlight?TAN:DARK;
+      const label=Math.round(b.from/1000)+'-'+Math.round(b.to/1000)+'k';
+      return `<rect x="${x+2}" y="${y}" width="${Math.max(0,barW-4)}" height="${Math.max(0,h)}" fill="${color}" fill-opacity="0.9" rx="2"/>${b.count>0?`<text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="9" font-weight="700" fill="${DARK}">${b.count}</text>`:''}<text x="${x+barW/2}" y="${padTop+innerH+16}" text-anchor="middle" font-size="8" fill="#888">${label}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;">${gridLines.join('')}${bars}</svg>`;
+  }
+  function axisBarChart(rows,opts){
+    opts=opts||{};
+    if(!rows||!rows.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
+    const W=560,rowH=26,padL=140,padR=54,padTop=8;
+    const valueFn=opts.valueFn||(r=>r.median);
+    const maxVal=Math.max(...rows.map(valueFn),1);
+    const niceMax=Math.ceil(maxVal/10000)*10000;
+    const innerW=W-padL-padR;
+    const H=padTop+rows.length*rowH+26;
+    const scaleX=v=>padL+(v/niceMax)*innerW;
+    const steps=5,gridLines=[];
+    for(let i=0;i<=steps;i++){
+      const v=Math.round(niceMax/steps*i);
+      const x=scaleX(v);
+      gridLines.push(`<line x1="${x}" y1="${padTop}" x2="${x}" y2="${padTop+rows.length*rowH}" stroke="${BORDER}" stroke-width="1"/><text x="${x}" y="${padTop+rows.length*rowH+16}" text-anchor="middle" font-size="9" fill="#888">${v>=1000?Math.round(v/1000)+'k':v}</text>`);
+    }
+    const bars=rows.map((r,i)=>{
+      const val=valueFn(r);
+      const y=padTop+i*rowH;
+      const barW=Math.max(2,scaleX(val)-padL);
+      const color=opts.colorFn?opts.colorFn(r,i):GOLD;
+      const label=opts.labelFn?opts.labelFn(r):(r.company||'').split(' ').slice(0,3).join(' ');
+      const valLabel=opts.valueLabelFn?opts.valueLabelFn(r):('€'+Math.round(val/1000)+'k');
+      return `<text x="${padL-8}" y="${y+rowH/2+4}" text-anchor="end" font-size="10" fill="#333">${label}</text><rect x="${padL}" y="${y+5}" width="${barW}" height="${rowH-10}" fill="${color}" fill-opacity="0.9" rx="2"/><text x="${padL+barW+6}" y="${y+rowH/2+4}" font-size="10" font-weight="700" fill="${DARK}">${valLabel}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;">${gridLines.join('')}${bars}</svg>`;
+  }
 
   let bodyContent;
   if(n===1){
@@ -3170,6 +3304,12 @@ function renderReportHTML(plan,entityResults,narration){
       </div>
       ${ralSenTable}
       ${b.concentration_flag?`<div class="summary-box" style="border-left-color:${GOLD};"><strong>Nota:</strong> ${b.concentration_flag.company} concentra il ${b.concentration_flag.share_pct}% degli annunci a ${fmt(b.concentration_flag.company_median_ral)} — la mediana depurata da questa concentrazione e' ${fmt(b.concentration_flag.diversified_median)}.</div>`:''}
+      ${e.ral_histogram&&e.ral_histogram.buckets&&e.ral_histogram.buckets.length?`
+      <div class="section-title" style="margin-top:24px;">Distribuzione RAL (n=${e.ral_histogram.total})</div>
+      <div class="chart-box">${histogramChart(e.ral_histogram,b.concentration_flag?b.concentration_flag.company_median_ral:null)}</div>`:''}
+      ${e.ral_by_company&&e.ral_by_company.length>1?`
+      <div class="section-title" style="margin-top:24px;">RAL per azienda</div>
+      <div class="chart-box">${axisBarChart(e.ral_by_company,{colorFn:r=>b.concentration_flag&&r.company===b.concentration_flag.company?TAN:(r.median>=(e.ral_segments&&e.ral_segments.length?e.ral_segments[e.ral_segments.length-1].min:Infinity)?GOLD:DARK)})}</div>`:''}
       <div class="section-title">Talent Scarcity</div>
       <div class="chart-box">
         <div class="chart-title">Top datori (${b.n_companies} aziende, top 3 = ${b.top3_share_pct}%)</div>
@@ -8506,6 +8646,140 @@ async function saveCompany(){
     toast('Azienda salvata!');closeModal('modal-company');loadCompanies();
     ['c-name','c-website','c-linkedin','c-indeed','c-glassdoor'].forEach(id=>document.getElementById(id).value='');
   }catch(e){toast('Errore salvataggio','error');}
+}
+
+// ── EXPORT/IMPORT CSV AZIENDE — solo i campi compilabili nella schermata azienda
+// (profilo + dati di creazione). Import non distruttivo: una cella vuota nel CSV
+// non tocca il valore già presente nel database. ──
+const COMPANY_CSV_FIELD_MAP={
+  'Nome azienda':'name','Ragione Sociale':'ragione_sociale','Tipo':'entity_type','Attiva':'is_active',
+  'Sito Web':'website','LinkedIn':'linkedin_url','Indeed':'indeed_url','Glassdoor':'glassdoor_url',
+  'N. Dipendenti':'dipendenti','Codice Ateco':'codice_ateco','Settore':'sector_v2','Descrizione Attività':'activity_description'
+};
+const COMPANY_CSV_HEADER=['ID',...Object.keys(COMPANY_CSV_FIELD_MAP)];
+
+async function exportCompaniesCSV(){
+  toast('⏳ Esportazione aziende in corso...');
+  let companies;
+  try{ companies=await loadAllCompanies(); }
+  catch(e){ toast('Errore nel caricare le aziende: '+e.message,'error'); return; }
+  if(!companies.length){ toast('Nessuna azienda da esportare','warning'); return; }
+  const esc=v=>{
+    const s=(v===null||v===undefined)?'':String(v);
+    return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const csvLines=[COMPANY_CSV_HEADER.join(',')];
+  companies.forEach(c=>{
+    const row=[esc(c.id),...Object.values(COMPANY_CSV_FIELD_MAP).map(f=>esc(c[f]))];
+    csvLines.push(row.join(','));
+  });
+  const csv='﻿'+csvLines.join('\r\n'); // BOM per far riconoscere UTF-8 a Excel
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='aziende_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  toast('📄 Esportate '+companies.length+' aziende in CSV','success');
+}
+
+async function importCompaniesCSV(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  event.target.value='';
+  const text=(await file.text()).replace(/^﻿/,'');
+  // Tokenizer CSV sul testo intero (non riga-per-riga): un campo tra virgolette può
+  // contenere virgole e a-capo senza rompere il parsing, come vuole lo standard CSV
+  // (es. descrizioni aziendali multi-riga compilate in Excel).
+  function parseCSVFull(str,sep){
+    const table=[];let row=[],cur='',inQ=false;
+    for(let i=0;i<str.length;i++){
+      const ch=str[i];
+      if(inQ){
+        if(ch==='"'){ if(str[i+1]==='"'){cur+='"';i++;} else inQ=false; }
+        else cur+=ch;
+      }else{
+        if(ch==='"')inQ=true;
+        else if(ch===sep){row.push(cur);cur='';}
+        else if(ch==='\r'){/* ignorato, il separatore di riga e' \n */}
+        else if(ch==='\n'){row.push(cur);table.push(row);row=[];cur='';}
+        else cur+=ch;
+      }
+    }
+    if(cur!==''||row.length){row.push(cur);table.push(row);}
+    return table;
+  }
+  const table=parseCSVFull(text,',').filter(r=>r.length>1||(r[0]||'').trim()!=='');
+  if(!table.length){toast('CSV vuoto','error');return;}
+  const headers=table[0].map(h=>h.trim());
+  const rows=table.slice(1).map(vals=>{
+    const row={};headers.forEach((h,j)=>row[h]=(vals[j]||'').trim());return row;
+  });
+  if(!rows.length){toast('Nessuna riga trovata nel CSV','error');return;}
+  if(!confirm(`Importare ${rows.length} righe? Verranno aggiornati solo i campi non vuoti nel CSV — i campi lasciati vuoti non vengono toccati.`))return;
+
+  const NUMERIC_FIELDS=new Set(['dipendenti']);
+  const BOOL_FIELDS=new Set(['is_active']);
+  let updated=0,created=0,skipped=0,errors=0;
+
+  for(const row of rows){
+    const patch={};
+    Object.entries(COMPANY_CSV_FIELD_MAP).forEach(([csvCol,dbField])=>{
+      if(dbField==='name')return; // usato solo per il matching, mai sovrascritto
+      const raw=row[csvCol];
+      if(raw===undefined||raw==='')return; // cella vuota: non tocca il campo esistente
+      if(NUMERIC_FIELDS.has(dbField)){const n=parseInt(raw);if(!isNaN(n))patch[dbField]=n;}
+      else if(BOOL_FIELDS.has(dbField)){patch[dbField]=/^(true|1|si|sì|yes)$/i.test(raw);}
+      else patch[dbField]=raw;
+    });
+
+    const id=(row['ID']||'').trim();
+    const name=(row['Nome azienda']||'').trim();
+    const ragioneSociale=(row['Ragione Sociale']||'').trim();
+
+    try{
+      let existingId=null;
+      if(id){
+        const found=await api('companies?id=eq.'+encodeURIComponent(id)+'&select=id');
+        if(found.length)existingId=found[0].id;
+      }
+      if(!existingId&&name){
+        const found=await api('companies?name=eq.'+encodeURIComponent(name)+'&select=id');
+        if(found.length)existingId=found[0].id;
+      }
+      if(!existingId&&ragioneSociale){
+        const found=await api('companies?ragione_sociale=eq.'+encodeURIComponent(ragioneSociale)+'&select=id');
+        if(found.length)existingId=found[0].id;
+      }
+
+      if(existingId){
+        if(Object.keys(patch).length){
+          await api('companies?id=eq.'+existingId,'PATCH',patch);
+          updated++;
+        }else skipped++;
+      }else if(name||ragioneSociale){
+        await api('companies','POST',{
+          name:name||ragioneSociale,
+          ragione_sociale:ragioneSociale||null,
+          entity_type:patch.entity_type||'life_sciences',
+          is_active:patch.is_active!==undefined?patch.is_active:true,
+          ...patch
+        });
+        created++;
+      }else{
+        skipped++;
+      }
+    }catch(e){
+      console.error('importCompaniesCSV row error:',e.message);
+      errors++;
+    }
+  }
+
+  toast('✅ Import completato: '+updated+' aggiornate, '+created+' create'+(skipped?', '+skipped+' saltate':'')+(errors?', '+errors+' errori':''),errors?'warning':'success');
+  loadCompanies();
 }
 
 let _apifyAllCompanies = [];
