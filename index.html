@@ -2963,6 +2963,7 @@ function computeRalBySeniority(listings){
   const bySen = {};
   listings.forEach(l => {
     const sen = l.seniority_v2 || 'N/D';
+    if (sen === 'not_applicable') return;
     const ral = l.ral_max || l.ral_min;
     if (!ral) return;
     if (!bySen[sen]) bySen[sen] = [];
@@ -2999,7 +3000,7 @@ async function executeReportPlan(plan){
     const{kept:listings,excluded:excludedForeign}=filterOutForeignListings(fetched);
     const benchmark=computeRalBenchmarkSection(listings,entity.label);
     const sections={};
-    if(plan.sections.includes('seniority_mix'))sections.seniority_mix=computeMixSection(listings,'seniority_v2',entity.label);
+    if(plan.sections.includes('seniority_mix'))sections.seniority_mix=computeMixSection(listings,'seniority_v2',entity.label,'not_applicable');
     if(plan.sections.includes('therapeutic_area_mix'))sections.therapeutic_area_mix=computeMixSection(listings,'therapeutic_area',entity.label,'not_applicable');
     if(plan.sections.includes('geo_mix'))sections.geo_mix=computeGeoMixSection(listings,entity.label);
     if(plan.sections.includes('contract_type_mix'))sections.contract_type_mix=computeMixSection(listings,'contract_type',entity.label);
@@ -3024,54 +3025,68 @@ async function executeReportPlan(plan){
 async function narrateReport(plan,entityResults){
   const n=entityResults.length;
 
-  // Executive summary deterministica
-  let executive_summary='';
-  if(n===1){
-    const e=entityResults[0];
-    const mediana=e.benchmark.median;
-    const topSector=e.sector_distribution?e.sector_distribution[0]:null;
-    const p25=e.benchmark.p25;
-    const p75=e.benchmark.p75;
-    executive_summary=`${e.label}: ${e.n_listings} annunci analizzati, RAL mediana €${Math.round(mediana/1000)}k (P25 €${Math.round(p25/1000)}k, P75 €${Math.round(p75/1000)}k). `;
-    if(topSector)executive_summary+=`Concentrazione: ${topSector.key} è il ${topSector.pct}% del mercato. `;
-    executive_summary+=`${e.benchmark.n_companies} aziende attive, con top 3 datori che controllano il ${e.benchmark.top3_share_pct}% della domanda.`;
-  }else{
-    const medians=entityResults.map(e=>({label:e.label,median:e.benchmark.median}));
-    const highest=medians.reduce((a,b)=>a.median>b.median?a:b);
-    const gap=Math.round((highest.median/medians.find(m=>m.label!==highest.label).median-1)*100);
-    executive_summary=`Confronto: ${medians.map(m=>`${m.label} €${Math.round(m.median/1000)}k`).join(' vs ')}. `;
-    executive_summary+=`${highest.label} comanda RAL +${gap}% superiore. Volumi: ${entityResults.map(e=>`${e.label} (${e.n_listings})`).join(', ')}.`;
+  const factsForAI=entityResults.map(r=>({
+    label:r.label,n_listings:r.n_listings,
+    date_range:r.benchmark.date_range,
+    excluded_foreign_count:r.excludedForeign.length,
+    excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
+    benchmark:r.benchmark,
+    ral_by_seniority:r.ral_by_seniority,
+    sector_distribution:r.sector_distribution?r.sector_distribution.slice(0,6):null,
+    sections:r.sections,
+    gap_vs_first:r.gap_vs_first||null
+  }));
+
+  const prompt=`Sei un consulente senior di MC Pharma Consulting che scrive un report di market intelligence PER UN CLIENTE (un'azienda che deve prendere decisioni su assunzioni, retribuzioni o organico). Non stai vendendo servizi di ricerca — stai spiegando cosa significano questi numeri e perché, come farebbe un consulente strategico, non un commerciale.
+
+Scrivi in italiano, basandoti ESCLUSIVAMENTE sui dati numerici forniti sotto. Non inventare numeri, aziende o dettagli non presenti nei dati.
+
+TITOLO RICHIESTO: ${plan.title}
+MODALITA': ${plan.mode}
+FOCUS PRINCIPALE: ${plan.primary_focus||'nessuno specifico, copertura generale'}
+
+DATI CALCOLATI (unica fonte ammessa):
+${JSON.stringify(factsForAI,null,1)}
+
+REGOLE ASSOLUTE SUI DATI:
+- Usa solo i numeri sopra. Se un valore e' null, non menzionarlo o di' che non e' disponibile. Non citare aziende non presenti in "top_employers".
+- Se ci sono 2+ entita', confrontale esplicitamente (differenze %, chi e' piu' alto/basso).
+- Menziona SEMPRE l'arco temporale dei dati usando "date_range" (es. "nel periodo giugno–luglio 2026").
+- Se "excluded_foreign_count">0, menzionalo esplicitamente (quanti annunci esteri sono stati esclusi e cosa sono, con "excluded_foreign_examples").
+- Per le sezioni con "coverage_pct"<90, menziona che solo quella percentuale di annunci specifica il dato — non dare per scontato che la distribuzione rappresenti il 100% del campione.
+- Usa "ral_by_seniority" per commentare esplicitamente i differenziali retributivi tra livelli (es. quanto guadagna in più/meno un senior specialist rispetto a uno specialist o un entry level, con numeri precisi) — questo dato e' quasi sempre disponibile e va sempre sfruttato, non ignorato.
+- Usa la distribuzione geografica ("sections.geo_mix") per indicare dove si concentra la domanda e cosa significa operativamente.
+- ANOMALIE DA SCORPORARE — controlla sempre "benchmark.concentration_flag" E "top_employers": se un'azienda rappresenta una quota sproporzionata degli annunci (tipicamente oltre il 30-40% del totale) con una RAL fissa o anomala rispetto al resto del mercato, DEVI nominarla esplicitamente e spiegare come distorce i numeri aggregati, citando sia il dato "inquinato" sia quello "depurato" (concentration_flag.company_median_ral vs concentration_flag.diversified_median) quando disponibili. Non trattarla come una nota a margine: e' un fatto centrale della sintesi esecutiva, perche' altrimenti chi legge il report crede che la mediana rappresenti un mercato omogeneo quando invece e' pilotata da un singolo datore.
+- Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
+
+REGOLE ASSOLUTE SUL TONO — questo e' il punto piu' importante:
+- VIETATO il linguaggio da pitch commerciale: frasi come "si consiglia di monitorare annunci futuri", "strategia di reclutamento mirata", "contattateci per approfondire", "rappresenta un'opportunita' per il recruiting" sono BANDITE — non dicono nulla di specifico e vanno sostituite con un ragionamento vero.
+- Ogni affermazione in "operational_implication" deve spiegare un MECCANISMO concreto legato ai numeri di QUESTO report (es. concentrazione su pochi datori, differenziale retributivo tra seniority o tra le entita', tipo di contratto prevalente, copertura geografica) — non un consiglio generico che potrebbe applicarsi a qualsiasi ruolo.
+- Esempio del tono corretto: "Due mercati, due strategie di ricerca: il generalista si copre a volume con i canali standard; lo specialty/oncologia richiede ricerca mirata, perche' e' li' che si concentrano scarsita', RAL piu' alte e maggiore difficolta' di reperimento." — nota come la frase spiega IL PERCHE', ancorato a dati specifici, non generico.
+- Esempio del tono SBAGLIATO da evitare: "La domanda e' attiva, si consiglia una strategia di reclutamento mirata e di monitorare i prossimi annunci." — vago, potrebbe dirlo per qualsiasi ruolo, non spiega nulla.
+
+Rispondi SOLO con questo JSON:
+{
+  "executive_summary": "<4-6 frasi: il messaggio piu' importante emerso dai dati (inclusa qualunque anomalia/concentrazione da scorporare), con il ragionamento dietro il numero, non solo il numero>",
+  "entity_notes": [{"label":"<usa ESATTAMENTE uno dei valori di 'label' presenti in factsForAI sopra — es. il nome del ruolo/figura analizzata, MAI il nome di un'azienda anche se la menzioni nel testo>","note":"<3-4 frasi specifiche su questa entita': seniority, geografia, eventuali anomalie — lettura del dato non solo elenco>"}] (un elemento per ogni entita' in factsForAI, stesso ordine),
+  "operational_implication": "<3-4 frasi che spiegano cosa cambia concretamente per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>"
+}`;
+
+  try{
+    const raw=await callAIPowerful(prompt,1100);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    if(!parsed.executive_summary)throw new Error('risposta IA incompleta');
+    return parsed;
+  }catch(e){
+    console.warn('narrateReport error, uso fallback deterministico:',e.message);
+    const e0=entityResults[0];
+    return{
+      executive_summary:'Report basato su '+entityResults.reduce((a,r)=>a+r.n_listings,0)+' annunci totali. RAL mediana '+(e0.benchmark.median?'€'+Math.round(e0.benchmark.median/1000)+'k':'n.d.')+' su '+e0.benchmark.n_companies+' aziende attive.',
+      entity_notes:entityResults.map(r=>({label:r.label,note:r.n_listings+' annunci, RAL mediana '+(r.benchmark.median?'€'+Math.round(r.benchmark.median/1000)+'k':'n.d.')})),
+      operational_implication:''
+    };
   }
-
-  // Entity notes deterministiche
-  const entity_notes=entityResults.map(e=>{
-    const topSector=e.sector_distribution?e.sector_distribution[0]:null;
-    const topSeniority=e.sections.seniority_mix?e.sections.seniority_mix.breakdown[0]:null;
-    let note=`${e.n_listings} annunci, RAL €${Math.round(e.benchmark.median/1000)}k mediana. `;
-    if(topSector)note+=`${topSector.key} rappresenta il ${topSector.pct}%. `;
-    if(topSeniority)note+=`${topSeniority.key} è il ${topSeniority.pct}% della domanda.`;
-    return{label:e.label,note};
-  });
-
-  // Operational implication deterministica
-  let operational_implication='';
-  if(n>1 && entityResults[0].gap_vs_first){
-    const gap=entityResults[1].gap_vs_first;
-    operational_implication=`${gap.label2} ha ${Math.abs(gap.volume_diff)}% ${gap.volume_diff<0?'minore':'maggiore'} volume rispetto a ${gap.label1}. `;
-    if(gap.ral_diff)operational_implication+=`RAL differenziale: ${gap.ral_diff>0?'+':''} ${gap.ral_diff}% (${gap.label2}). `;
-    operational_implication+=`Concentrazione aziende: ${gap.companies_diff>0?'+':''} ${gap.companies_diff}%.`;
-  }else if(n===1){
-    const e=entityResults[0];
-    operational_implication=`Concentrazione dei datori: top 3 controllano ${e.benchmark.top3_share_pct}% della domanda. `;
-    operational_implication+=`RAL distribution: P25–P75 è €${Math.round(e.benchmark.p25/1000)}k–€${Math.round(e.benchmark.p75/1000)}k. `;
-    operational_implication+=`${e.benchmark.n_companies} aziende attive nel mercato.`;
-  }
-
-  return{
-    executive_summary,
-    entity_notes,
-    operational_implication
-  };
 }
 
 // ── REPORT BUILDER — Step 4: rendering nel template Mc Pharma (stesso logo/palette/
@@ -3095,6 +3110,30 @@ function renderReportHTML(plan,entityResults,narration){
     if(!benchmark.top_employers.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
     const topCount=benchmark.top_employers[0].count;
     return benchmark.top_employers.map(t=>`<div class="bar-row"><div class="bar-label">${t.company.split(' ').slice(0,3).join(' ')}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(t.count/topCount*100)}%;background:${GOLD};"></div></div><div class="bar-count">${t.count}</div></div>`).join('');
+  }
+  function donutChart(mixSection){
+    if(!mixSection||!mixSection.breakdown||!mixSection.breakdown.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
+    const items=mixSection.breakdown.slice(0,6);
+    const total=items.reduce((a,r)=>a+r.count,0)||1;
+    const CX=70,CY=70,R=58,r=32;let angle=-Math.PI/2;
+    const colors=['#b8965a','#1c1c1c','#8a9bb0','#c8b89a','#e8c96a','#5c6b7d'];
+    const slices=items.map((it,i)=>{
+      const a=it.count/total*Math.PI*2;
+      const x1=CX+R*Math.cos(angle),y1=CY+R*Math.sin(angle);
+      const x2=CX+R*Math.cos(angle+a),y2=CY+R*Math.sin(angle+a);
+      const xi1=CX+r*Math.cos(angle),yi1=CY+r*Math.sin(angle);
+      const xi2=CX+r*Math.cos(angle+a),yi2=CY+r*Math.sin(angle+a);
+      const large=a>Math.PI?1:0;
+      const path=`M ${xi1} ${yi1} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${r} ${r} 0 ${large} 0 ${xi1} ${yi1} Z`;
+      angle+=a;
+      return `<path d="${path}" fill="${colors[i%colors.length]}" fill-opacity="0.88" stroke="#fff" stroke-width="1.5"/>`;
+    }).join('');
+    const legend=items.map((it,i)=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;"><div style="width:10px;height:10px;border-radius:2px;background:${colors[i%colors.length]};flex-shrink:0;"></div><div style="font-size:11px;color:#333;flex:1;">${it.key}</div><div style="font-size:11px;font-weight:700;color:#1c1c1c;">${it.pct}%</div></div>`).join('');
+    return `<div style="display:flex;gap:16px;align-items:center;"><svg viewBox="0 0 140 140" style="width:110px;height:110px;flex-shrink:0;">${slices}</svg><div style="flex:1;">${legend}</div></div>`;
+  }
+  const DONUT_SECTIONS=new Set(['therapeutic_area_mix','contract_type_mix']);
+  function renderSection(key,sec){
+    return DONUT_SECTIONS.has(key)?donutChart(sec):barRows(sec,SECTION_COLORS[key]||GOLD);
   }
 
   let bodyContent;
@@ -3138,7 +3177,7 @@ function renderReportHTML(plan,entityResults,narration){
       </div>
       ${Object.entries(e.sections).map(([key,sec])=>{
         const covNote=(sec.coverage_pct!=null&&sec.coverage_pct<100)?` <span style="color:#aaa;font-weight:400;text-transform:none;letter-spacing:0;">(dato presente su ${sec.coverage_pct}% degli annunci)</span>`:'';
-        return `<div class="section-title" style="margin-top:24px;">${SECTION_TITLES[key]||key}${covNote}</div><div class="chart-box">${barRows(sec,SECTION_COLORS[key]||GOLD)}</div>`;
+        return `<div class="section-title" style="margin-top:24px;">${SECTION_TITLES[key]||key}${covNote}</div><div class="chart-box">${renderSection(key,sec)}</div>`;
       }).join('')}
     `;
   }else{
@@ -3178,7 +3217,7 @@ function renderReportHTML(plan,entityResults,narration){
       const covNote=covParts.length?` <span style="color:#aaa;font-weight:400;text-transform:none;letter-spacing:0;">(copertura dato — ${covParts.join(', ')})</span>`:'';
       return `
       <div class="section-title" style="margin-top:24px;">${SECTION_TITLES[key]||key}${covNote}</div>
-      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label}</div>${barRows(e.sections[key],SECTION_COLORS[key]||GOLD)}</div>`).join('')}</div>
+      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label}</div>${renderSection(key,e.sections[key])}</div>`).join('')}</div>
     `;
     }).join('');
     // Distribuzioni settori (NUOVO)
