@@ -727,6 +727,7 @@ a.job-link:hover{text-decoration:underline;}
             <option>CRO</option>
             <option>CDMO</option>
             <option>Chimico</option>
+            <option>Agrochimica</option>
             <option>Consumer Health</option>
             <option>Nutraceutical</option>
             <option>Cosmetics</option>
@@ -1062,7 +1063,7 @@ a.job-link:hover{text-decoration:underline;}
             <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
           </optgroup>
           <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
-          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
           <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
           <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
         </select>
@@ -1263,6 +1264,19 @@ a.job-link:hover{text-decoration:underline;}
         <select id="ri-ral" onchange="loadRoleIntelligence()">
           <option value="">Tutti</option>
           <option value="only">Solo con RAL</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Settore</div>
+        <select id="ri-sector" onchange="loadRoleIntelligence()">
+          <option value="">Tutti</option>
+          <optgroup label="Pharma">
+            <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+          </optgroup>
+          <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+          <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
         </select>
       </div>
       <div class="filter-group" style="align-self:flex-end;">
@@ -3390,7 +3404,7 @@ async function analyzeRuolo(){
     </tr></thead><tbody>${data.slice(0,100).map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
       <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
-      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
       <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
       <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
@@ -5769,7 +5783,7 @@ function showDetail(field, value){
     <tbody>${filtered.map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
       <td style="font-size:12px">${l.company_name}</td>
-      <td style="font-size:11px;color:var(--text2)">${l.sector||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
       <td>${l.seniority||'—'}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
       <td>${l.contract_type||'—'}</td>
@@ -6404,8 +6418,6 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
         }
       }
 
-      // Campo legacy "sector" (testo libero) — stesso valore verificato dell'azienda
-      if(companySector0)patch.sector=companySector0;
 
       const areaMap={
         medical_affairs:'Medical Affairs',commercial:'Sales',marketing:'Marketing',
@@ -6832,8 +6844,8 @@ function renderListingsTable(data){
     // Azienda: mostra ragione sociale se disponibile
     const aziendaDisplay=l.ragione_sociale||l.company_name||'—';
 
-    // Settore: usa sector_v2 se disponibile
-    const settoreDisplay=l.sector_v2||l.sector||'—';
+    // Settore: usa sector_v2
+    const settoreDisplay=l.sector_v2||'—';
 
     return `<tr>
     <td><input type="checkbox" class="listing-cb" data-id="${l.id}" onchange="toggleSelectOne(this)" style="width:auto;cursor:pointer;" ${_selectedIds.has(l.id)?'checked':''}></td>
@@ -7394,7 +7406,7 @@ async function loadCompliance(){
     // Chart compliance per settore
     const bySec={};
     data.forEach(l=>{
-      const k=l.sector_v2||l.sector||'N/D';
+      const k=l.sector_v2||'N/D';
       if(!bySec[k])bySec[k]={ok:0,no:0};
       if(l.ral_min||l.ral_max)bySec[k].ok++;
       else bySec[k].no++;
@@ -7481,7 +7493,7 @@ async function loadCompliance(){
     </tr></thead><tbody>${withRal.slice(0,50).map(l=>`<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
       <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
-      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
       <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
       <td><span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span></td>
       <td style="font-size:11px">${l.contract_type||'—'}</td>
@@ -7792,7 +7804,7 @@ async function loadRoleIntelligence(){
       </tr></thead><tbody>${listings.slice(0,50).map(l=>`<tr>
         <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
         <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
-        <td style="font-size:11px;color:var(--text2)">${l.sector_v2||l.sector||'—'}</td>
+        <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
         <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
         <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
         <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
@@ -7987,7 +7999,7 @@ async function loadCompanyDetail(company){
 
     // Settore principale: fonte primaria companies.sector_v2 (profilo azienda), fallback
     // sul settore piu' frequente tra i suoi annunci.
-    const sectors=listings.filter(l=>l.sector_v2||l.sector).map(l=>l.sector_v2||l.sector);
+    const sectors=listings.filter(l=>l.sector_v2).map(l=>l.sector_v2);
     const topSector=sectors.length?Object.entries(sectors.reduce((a,s)=>{a[s]=(a[s]||0)+1;return a;},{} )).sort((a,b)=>b[1]-a[1])[0][0]:'—';
     document.getElementById('cd-kpi-sector').textContent=company.sector_v2||topSector;
 
@@ -9309,6 +9321,19 @@ function renderDemandScatter(){
             <option value="director">Director</option>
           </select>
         </div>
+        <div style="flex:1;min-width:150px;">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-weight:600;">SETTORE</div>
+          <select id="geo-filter-sector" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;">
+            <option value="">Tutti</option>
+            <optgroup label="Pharma">
+              <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+            </optgroup>
+            <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+            <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
+            <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
+            <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
+          </select>
+        </div>
         <button onclick="runGeoAnalysis()" style="padding:10px 24px;border-radius:8px;border:none;background:#10b981;color:white;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🔍 Analizza</button>
       </div>
     </div>
@@ -9458,7 +9483,7 @@ function renderDemandScatter(){
           <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
         </optgroup>
         <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
-        <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+        <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
         <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
         <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
       </select>
