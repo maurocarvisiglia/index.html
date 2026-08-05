@@ -2872,7 +2872,7 @@ ${roleNames.join(', ')}
 FILTRI DISPONIBILI per ogni entita' (tutti opzionali, null se non specificati dalla richiesta):
 - canonical_role: uno dei ruoli validi sopra elencati
 - functional_area: uno tra medical_affairs, commercial, marketing, market_access, regulatory_affairs, quality, clinical_operations, drug_safety, rd, manufacturing, supply_chain, finance, hr, it, business_development, general_management
-- sector_v2: uno tra Big Pharma, Mid Pharma, Specialty Pharma, Pharma (produttore farmaceutico generico, tier non determinato — una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma), Biotech, Medical Devices, Diagnostics, CRO, CDMO, Chimico, Consumer Health, Nutraceutical, Cosmetics, Veterinary, Digital Health, Healthcare Services, Farmacia/Retail, EHS/HSE Consulting, Altro
+- sector_v2: uno tra Big Pharma, Mid Pharma, Specialty Pharma, Pharma (produttore farmaceutico generico, tier non determinato — una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma), Biotech, Medical Devices, Diagnostics, CRO, CDMO, Chimico, Consumer Health, Nutraceutical, Cosmetics, Veterinary, Digital Health, Healthcare Services, Farmacia/Retail, EHS/HSE Consulting, Altro — IMPORTANTE: "Life Sciences" NON e' un sinonimo di "Pharma", e' l'insieme di TUTTI questi settori. Non impostare mai sector_v2 se la richiesta usa termini generici come "Life Sciences", "il settore", "il mercato" senza nominare un settore specifico tra quelli elencati.
 - therapeutic_area: uno tra oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, multiple
 - seniority_v2: uno tra internship, entry_level, associate, specialist, senior_specialist, expert, lead, manager, senior_manager, head_of, director, vp, c_level
 - contract_type: uno tra TI, TD, Freelance, Stage
@@ -2890,6 +2890,7 @@ REGOLE:
 - Se la richiesta e' su una sola figura/area, usa mode="single" con una sola entita'.
 - Se la richiesta non specifica un focus preciso, includi tutte le 4 sezioni disponibili.
 - Non inventare ruoli o valori non presenti nelle liste sopra: se non sei sicuro, usa null per quel filtro.
+- Non restringere MAI il campione a un settore specifico (sector_v2) sulla base di una menzione generica di "Life Sciences" o del nome della piattaforma: questo escluderebbe silenziosamente la maggior parte del mercato reale senza che l'utente lo sappia. Applica sector_v2 SOLO quando l'utente nomina esplicitamente un settore preciso.
 
 Rispondi SOLO con questo JSON, nessun altro testo:
 {
