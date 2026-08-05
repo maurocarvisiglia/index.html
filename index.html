@@ -271,9 +271,9 @@ a.job-link:hover{text-decoration:underline;}
                 <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
               </optgroup>
               <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
-              <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+              <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
               <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
-              <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
+              <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
             </select>
           </div>
           <div class="filter-group">
@@ -604,9 +604,9 @@ a.job-link:hover{text-decoration:underline;}
             <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
           </optgroup>
           <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
-          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
           <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
-          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
         </select>
       </div>
       <div class="filter-group">
@@ -735,6 +735,7 @@ a.job-link:hover{text-decoration:underline;}
             <option>Healthcare Services</option>
             <option>Farmacia/Retail</option>
             <option>EHS/HSE Consulting</option>
+            <option>Consulenza</option>
             <option>Altro</option>
           </select>
         </div>
@@ -906,9 +907,9 @@ a.job-link:hover{text-decoration:underline;}
             <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
           </optgroup>
           <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
-          <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
+          <option>CDMO</option><option>Chimico</option><option>Agrochimica</option><option>Consumer Health</option><option>Nutraceutical</option>
           <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
-          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1063,7 +1064,7 @@ a.job-link:hover{text-decoration:underline;}
           <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
           <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
           <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
-          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
+          <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
         </select>
         <input type="text" id="ci-filter-company" placeholder="🔍 Azienda..."
           style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;width:160px;"
@@ -8428,7 +8429,7 @@ function renderCompanyFilterList(){
   if(!body)return;
   const total=_companyFilterFiltered.reduce((s,c)=>s+c.count,0);
   if(countEl)countEl.textContent=_companyFilterFiltered.length+' aziende · '+total+' annunci';
-  const sectorColor={'Big Pharma':'#10b981','Mid Pharma':'#10b981','Specialty Pharma':'#10b981','Pharma':'#10b981',Biotech:'#6366f1','Medical Devices':'#3b82f6',Diagnostics:'#3b82f6',CDMO:'#f59e0b',CRO:'#8b5cf6',Chimico:'#f59e0b',Cosmetics:'#ec4899',Nutraceutical:'#f97316','Consumer Health':'#f97316',Veterinary:'#14b8a6','Digital Health':'#6366f1','Healthcare Services':'#64748b','Farmacia/Retail':'#64748b','EHS/HSE Consulting':'#94a3b8',Altro:'#94a3b8'};
+  const sectorColor={'Big Pharma':'#10b981','Mid Pharma':'#10b981','Specialty Pharma':'#10b981','Pharma':'#10b981',Biotech:'#6366f1','Medical Devices':'#3b82f6',Diagnostics:'#3b82f6',CDMO:'#f59e0b',CRO:'#8b5cf6',Chimico:'#f59e0b',Agrochimica:'#a3e635',Cosmetics:'#ec4899',Nutraceutical:'#f97316','Consumer Health':'#f97316',Veterinary:'#14b8a6','Digital Health':'#6366f1','Healthcare Services':'#64748b','Farmacia/Retail':'#64748b','EHS/HSE Consulting':'#94a3b8',Consulenza:'#f59e0b',Altro:'#94a3b8'};
   body.innerHTML=`<table style="font-size:12px;width:100%;"><thead><tr style="position:sticky;top:0;background:var(--surface2);"><th style="padding:8px;text-align:center;width:36px;">❌</th><th style="padding:8px;">Azienda</th><th style="text-align:center;width:70px;">Annunci</th><th style="text-align:center;width:80px;">Class.%</th><th style="width:130px;">Settore</th></tr></thead><tbody>${_companyFilterFiltered.map((c,i)=>{const pct=c.count?Math.round(c.classified/c.count*100):0;const secColor=sectorColor[c.sector_v2]||'var(--text2)';return`<tr style="border-bottom:1px solid var(--border);"><td style="text-align:center;padding:6px;"><input type="checkbox" class="company-cb" data-company="${c.name.replace(/"/g,'&quot;')}" style="width:auto;cursor:pointer;" id="ccb-${i}"></td><td style="padding:6px 8px;font-weight:500;">${c.name}</td><td style="text-align:center;font-weight:700;">${c.count}</td><td style="text-align:center;"><span style="font-size:10px;color:${pct>50?'#10b981':'#f59e0b'};">${pct}%</span></td><td style="padding:6px 8px;"><span style="font-size:10px;padding:2px 7px;border-radius:4px;background:${sectorColor[c.sector_v2]||'rgba(0,0,0,0.1)'}20;color:${secColor};">${c.sector_v2?toLabel(c.sector_v2):'⚠️ N/D'}</span></td></tr>`;}).join('')}</tbody></table>`;
 }
 
@@ -9459,7 +9460,7 @@ function renderDemandScatter(){
         <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
         <option>CDMO</option><option>Chimico</option><option>Consumer Health</option><option>Nutraceutical</option>
         <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option><option>Healthcare Services</option>
-        <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Altro</option>
+        <option>Farmacia/Retail</option><option>EHS/HSE Consulting</option><option>Consulenza</option><option>Altro</option>
       </select>
       <button onclick="selectAllCompanies(true)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☑ Seleziona tutti</button>
       <button onclick="selectAllCompanies(false)" class="btn btn-secondary" style="font-size:11px;padding:6px 10px;">☐ Deseleziona tutti</button>
