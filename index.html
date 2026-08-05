@@ -2924,6 +2924,68 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   return plan;
 }
 
+// Calcola distribuzione settori (sector_v2)
+function computeSectorDistribution(listings){
+  const dist={};
+  listings.forEach(l=>{
+    const sector=l.sector_v2||'N/D';
+    dist[sector]=(dist[sector]||0)+1;
+  });
+  const sorted=Object.entries(dist).sort((a,b)=>b[1]-a[1]);
+  return sorted.map(([key,count])=>({
+    key,count,
+    pct:Math.round(count/listings.length*100)
+  }));
+}
+
+// Calcola gap analysis tra due entità (RAL, volume, scarcity)
+function calculateGapAnalysis(results){
+  if(results.length<2)return null;
+  const gaps=[];
+  for(let i=1;i<results.length;i++){
+    const base=results[0];
+    const comp=results[i];
+    gaps.push({
+      label1:base.label,
+      label2:comp.label,
+      volume_diff:Math.round((comp.n_listings/base.n_listings-1)*100),
+      ral_diff:comp.benchmark.median&&base.benchmark.median?Math.round((comp.benchmark.median/base.benchmark.median-1)*100):null,
+      companies_diff:Math.round((comp.benchmark.n_companies/base.benchmark.n_companies-1)*100)
+    });
+  }
+  return gaps;
+}
+
+
+// Calcola RAL per seniority level
+function computeRalBySeniority(listings){
+  const bySen = {};
+  listings.forEach(l => {
+    const sen = l.seniority_v2 || 'N/D';
+    const ral = l.ral_max || l.ral_min;
+    if (!ral) return;
+    if (!bySen[sen]) bySen[sen] = [];
+    bySen[sen].push(ral);
+  });
+  const stats = {};
+  Object.entries(bySen).forEach(([sen, rals]) => {
+    const sorted = rals.sort((a, b) => a - b);
+    const p25 = sorted[Math.floor(sorted.length * 0.25)];
+    const p50 = sorted[Math.floor(sorted.length * 0.5)];
+    const p75 = sorted[Math.floor(sorted.length * 0.75)];
+    stats[sen] = {
+      count: rals.length,
+      min: Math.min(...rals),
+      max: Math.max(...rals),
+      p25: p25,
+      median: p50,
+      p75: p75,
+      avg: Math.round(rals.reduce((a, b) => a + b, 0) / rals.length)
+    };
+  });
+  return stats;
+}
+
 // ── REPORT BUILDER — Step 2: esecuzione deterministica del piano (query + calcoli,
 // nessuna IA). Il benchmark RAL/scarsita' e' sempre calcolato; le altre sezioni solo
 // se richieste nel piano. ──
@@ -2940,64 +3002,75 @@ async function executeReportPlan(plan){
     if(plan.sections.includes('therapeutic_area_mix'))sections.therapeutic_area_mix=computeMixSection(listings,'therapeutic_area',entity.label,'not_applicable');
     if(plan.sections.includes('geo_mix'))sections.geo_mix=computeGeoMixSection(listings,entity.label);
     if(plan.sections.includes('contract_type_mix'))sections.contract_type_mix=computeMixSection(listings,'contract_type',entity.label);
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections});
+
+    // Distribuzioni settori + RAL per seniority + gap analysis
+    const sector_distribution = computeSectorDistribution(listings);
+    const ral_by_seniority = computeRalBySeniority(listings);
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority});
   }
+
+  // Aggiungi gap analysis se comparison mode
+  if(plan.mode==='comparison'){
+    const gapAnalysis=calculateGapAnalysis(results);
+    results.forEach((r,i)=>r.gap_vs_first=gapAnalysis[i-1]||null);
+  }
+
   return results;
 }
 
-// ── REPORT BUILDER — Step 3: narrazione IA vincolata esclusivamente ai fatti gia'
-// calcolati al passo precedente. Stesso guardrail anti-allucinazione delle altre
-// sintesi IA dell'app. ──
+// ── REPORT BUILDER — Step 3: narrazione DETERMINISTICA (NO IA). Solo fatti meccanicistici
+// estratti direttamente dai dati calcolati. ──
 async function narrateReport(plan,entityResults){
-  const factsForAI=entityResults.map(r=>({
-    label:r.label,n_listings:r.n_listings,
-    excluded_foreign_count:r.excludedForeign.length,
-    excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
-    benchmark:r.benchmark,sections:r.sections
-  }));
-  const prompt=`Sei un consulente senior di MC Pharma Consulting che scrive un report di market intelligence PER UN CLIENTE (un'azienda che deve prendere decisioni su assunzioni, retribuzioni o organico). Non stai vendendo servizi di ricerca — stai spiegando cosa significano questi numeri e perché, come farebbe un consulente strategico, non un commerciale.
+  const n=entityResults.length;
 
-Scrivi in italiano, basandoti ESCLUSIVAMENTE sui dati numerici forniti sotto. Non inventare numeri, aziende o dettagli non presenti nei dati.
-
-TITOLO RICHIESTO: ${plan.title}
-MODALITA': ${plan.mode}
-FOCUS PRINCIPALE: ${plan.primary_focus||'nessuno specifico, copertura generale'}
-
-DATI CALCOLATI (unica fonte ammessa):
-${JSON.stringify(factsForAI,null,1)}
-
-REGOLE ASSOLUTE SUI DATI:
-- Usa solo i numeri sopra. Se un valore e' null, non menzionarlo o di' che non e' disponibile. Non citare aziende non presenti in "top_employers".
-- Se ci sono 2+ entita', confrontale esplicitamente (differenze %, chi e' piu' alto/basso).
-- Menziona SEMPRE l'arco temporale dei dati usando "benchmark.date_range" (es. "nel periodo giugno–luglio 2026").
-- Se "excluded_foreign_count">0, menzionalo esplicitamente (quanti annunci esteri sono stati esclusi e cosa sono, con "excluded_foreign_examples").
-- Per le sezioni con "coverage_pct"<90, menziona che solo quella percentuale di annunci specifica il dato — non dare per scontato che la distribuzione rappresenti il 100% del campione.
-- Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
-
-REGOLE ASSOLUTE SUL TONO — questo e' il punto piu' importante:
-- VIETATO il linguaggio da pitch commerciale: frasi come "si consiglia di monitorare annunci futuri", "strategia di reclutamento mirata", "contattateci per approfondire", "rappresenta un'opportunita' per il recruiting" sono BANDITE — non dicono nulla di specifico e vanno sostituite con un ragionamento vero.
-- Ogni affermazione in "operational_implication" deve spiegare un MECCANISMO concreto legato ai numeri di QUESTO report (es. concentrazione su pochi datori, differenziale retributivo tra le entita', tipo di contratto prevalente, copertura geografica) — non un consiglio generico che potrebbe applicarsi a qualsiasi ruolo.
-- Esempio del tono corretto (da un report precedente, stesso stile da riprodurre): "Due mercati, due strategie di ricerca: il generalista si copre a volume con i canali standard; lo specialty/oncologia richiede ricerca mirata, perche' e' li' che si concentrano scarsita', RAL piu' alte e maggiore difficolta' di reperimento." — nota come la frase spiega IL PERCHE', ancorato a dati specifici (scarsita', RAL, difficolta'), non generico.
-- Esempio del tono SBAGLIATO da evitare: "La domanda e' attiva, si consiglia una strategia di reclutamento mirata e di monitorare i prossimi annunci." — vago, potrebbe dirlo per qualsiasi ruolo, non spiega nulla.
-
-Rispondi SOLO con questo JSON:
-{
-  "executive_summary": "<3-5 frasi, il messaggio piu' importante emerso dai dati, con il ragionamento dietro il numero, non solo il numero>",
-  "entity_notes": [{"label":"<label esatta>","note":"<2-3 frasi specifiche su questa entita', con lettura del dato non solo elenco>"}],
-  "operational_implication": "<2-3 frasi che spiegano cosa cambia per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>"
-}`;
-
-  try{
-    const raw=await callAIPowerful(prompt,900);
-    return JSON.parse(raw.replace(/```json|```/g,'').trim());
-  }catch(e){
-    console.warn('narrateReport error:',e.message);
-    return{
-      executive_summary:'Report basato su '+entityResults.reduce((a,r)=>a+r.n_listings,0)+' annunci totali.',
-      entity_notes:entityResults.map(r=>({label:r.label,note:r.n_listings+' annunci, RAL mediana '+(r.benchmark.median?'€'+Math.round(r.benchmark.median/1000)+'k':'n.d.')})),
-      operational_implication:''
-    };
+  // Executive summary deterministica
+  let executive_summary='';
+  if(n===1){
+    const e=entityResults[0];
+    const mediana=e.benchmark.median;
+    const topSector=e.sector_distribution?e.sector_distribution[0]:null;
+    const p25=e.benchmark.p25;
+    const p75=e.benchmark.p75;
+    executive_summary=`${e.label}: ${e.n_listings} annunci analizzati, RAL mediana €${Math.round(mediana/1000)}k (P25 €${Math.round(p25/1000)}k, P75 €${Math.round(p75/1000)}k). `;
+    if(topSector)executive_summary+=`Concentrazione: ${topSector.key} è il ${topSector.pct}% del mercato. `;
+    executive_summary+=`${e.benchmark.n_companies} aziende attive, con top 3 datori che controllano il ${e.benchmark.top3_share_pct}% della domanda.`;
+  }else{
+    const medians=entityResults.map(e=>({label:e.label,median:e.benchmark.median}));
+    const highest=medians.reduce((a,b)=>a.median>b.median?a:b);
+    const gap=Math.round((highest.median/medians.find(m=>m.label!==highest.label).median-1)*100);
+    executive_summary=`Confronto: ${medians.map(m=>`${m.label} €${Math.round(m.median/1000)}k`).join(' vs ')}. `;
+    executive_summary+=`${highest.label} comanda RAL +${gap}% superiore. Volumi: ${entityResults.map(e=>`${e.label} (${e.n_listings})`).join(', ')}.`;
   }
+
+  // Entity notes deterministiche
+  const entity_notes=entityResults.map(e=>{
+    const topSector=e.sector_distribution?e.sector_distribution[0]:null;
+    const topSeniority=e.sections.seniority_mix?e.sections.seniority_mix.breakdown[0]:null;
+    let note=`${e.n_listings} annunci, RAL €${Math.round(e.benchmark.median/1000)}k mediana. `;
+    if(topSector)note+=`${topSector.key} rappresenta il ${topSector.pct}%. `;
+    if(topSeniority)note+=`${topSeniority.key} è il ${topSeniority.pct}% della domanda.`;
+    return{label:e.label,note};
+  });
+
+  // Operational implication deterministica
+  let operational_implication='';
+  if(n>1 && entityResults[0].gap_vs_first){
+    const gap=entityResults[1].gap_vs_first;
+    operational_implication=`${gap.label2} ha ${Math.abs(gap.volume_diff)}% ${gap.volume_diff<0?'minore':'maggiore'} volume rispetto a ${gap.label1}. `;
+    if(gap.ral_diff)operational_implication+=`RAL differenziale: ${gap.ral_diff>0?'+':''} ${gap.ral_diff}% (${gap.label2}). `;
+    operational_implication+=`Concentrazione aziende: ${gap.companies_diff>0?'+':''} ${gap.companies_diff}%.`;
+  }else if(n===1){
+    const e=entityResults[0];
+    operational_implication=`Concentrazione dei datori: top 3 controllano ${e.benchmark.top3_share_pct}% della domanda. `;
+    operational_implication+=`RAL distribution: P25–P75 è €${Math.round(e.benchmark.p25/1000)}k–€${Math.round(e.benchmark.p75/1000)}k. `;
+    operational_implication+=`${e.benchmark.n_companies} aziende attive nel mercato.`;
+  }
+
+  return{
+    executive_summary,
+    entity_notes,
+    operational_implication
+  };
 }
 
 // ── REPORT BUILDER — Step 4: rendering nel template Mc Pharma (stesso logo/palette/
@@ -3026,6 +3099,22 @@ function renderReportHTML(plan,entityResults,narration){
   let bodyContent;
   if(n===1){
     const e=entityResults[0],b=e.benchmark;
+
+    // RAL per seniority — simple version
+    let ralSenTable = '';
+    if (e.ral_by_seniority && Object.keys(e.ral_by_seniority).length > 0) {
+      const rows = Object.entries(e.ral_by_seniority)
+        .filter(([_, data]) => data.count > 0)
+        .map(([sen, data]) => `<tr><td style="text-transform:capitalize;">${sen.replace(/_/g, ' ')}</td><td class="num">${fmt(data.median)}</td><td class="num">${data.count}</td><td class="num">€${Math.round(data.p25/1000)}k–€${Math.round(data.p75/1000)}k</td></tr>`)
+        .join('');
+      if (rows) {
+        ralSenTable = `<div class="section-title" style="margin-top:24px;">RAL per Seniority Level</div>
+          <table><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Annunci</th><th style="text-align:right;">P25–P75</th></tr>
+            ${rows}
+          </table>`;
+      }
+    }
+
     bodyContent=`
       <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
         <div class="kpi-cell"><div class="kpi-label">Annunci totali</div><div class="kpi-value">${e.n_listings}</div></div>
@@ -3039,6 +3128,7 @@ function renderReportHTML(plan,entityResults,narration){
         <div class="sal-item"><div class="sal-label">Mediana</div><div class="sal-value" style="color:${TAN};">${fmt(b.median)}</div></div>
         <div class="sal-item"><div class="sal-label">Max RAL</div><div class="sal-value" style="color:#888;">${fmt(b.max)}</div></div>
       </div>
+      ${ralSenTable}
       ${b.concentration_flag?`<div class="summary-box" style="border-left-color:${GOLD};"><strong>Nota:</strong> ${b.concentration_flag.company} concentra il ${b.concentration_flag.share_pct}% degli annunci a ${fmt(b.concentration_flag.company_median_ral)} — la mediana depurata da questa concentrazione e' ${fmt(b.concentration_flag.diversified_median)}.</div>`:''}
       <div class="section-title">Talent Scarcity</div>
       <div class="chart-box">
@@ -3065,6 +3155,16 @@ function renderReportHTML(plan,entityResults,narration){
     const benchmarkTable=`<table><tr><th>Indicatore</th>${entityResults.map(e=>`<th style="text-align:right;">${e.label}</th>`).join('')}</tr>
       ${benchmarkRows.map(([label,fn,gold])=>`<tr><td>${label}</td>${entityResults.map(e=>`<td class="num" style="${gold?'color:'+GOLD+';':''}">${fn(e)}</td>`).join('')}</tr>`).join('')}
     </table>`;
+
+    // Gap analysis table (NUOVO)
+    const gapTable=entityResults[1]&&entityResults[1].gap_vs_first?`
+      <div class="section-title" style="margin-top:24px;">Gap Analysis</div>
+      <table><tr><th>Indicatore</th><th>${entityResults[1].label} vs ${entityResults[0].label}</th></tr>
+        <tr><td>Volume diff</td><td class="num" style="color:${entityResults[1].gap_vs_first.volume_diff>0?'#059669':'#2563eb'};">${entityResults[1].gap_vs_first.volume_diff>0?'+':''}${entityResults[1].gap_vs_first.volume_diff}%</td></tr>
+        <tr><td>RAL diff</td><td class="num" style="color:${entityResults[1].gap_vs_first.ral_diff>0?'#059669':'#2563eb'};">${entityResults[1].gap_vs_first.ral_diff?entityResults[1].gap_vs_first.ral_diff>0?'+':'':'n.d.'}${entityResults[1].gap_vs_first.ral_diff||''}</td></tr>
+        <tr><td>Aziende diff</td><td class="num" style="color:${entityResults[1].gap_vs_first.companies_diff>0?'#059669':'#2563eb'};">${entityResults[1].gap_vs_first.companies_diff>0?'+':''}${entityResults[1].gap_vs_first.companies_diff}%</td></tr>
+      </table>`:'';
+
     const concentrationNotes=entityResults.filter(e=>e.benchmark.concentration_flag).map(e=>{
       const c=e.benchmark.concentration_flag;
       return `<strong>${e.label}:</strong> ${c.company} pesa il ${c.share_pct}% a ${fmt(c.company_median_ral)} — mediana depurata ${fmt(c.diversified_median)}.`;
@@ -3080,12 +3180,32 @@ function renderReportHTML(plan,entityResults,narration){
       <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label}</div>${barRows(e.sections[key],SECTION_COLORS[key]||GOLD)}</div>`).join('')}</div>
     `;
     }).join('');
+    // Distribuzioni settori (NUOVO)
+    const sectorGrid=`<div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} - Top Settori</div>${barRows(e.sector_distribution?{breakdown:e.sector_distribution}:null,GOLD)}</div>`).join('')}</div>`;
+
+    // Key findings deterministici (NUOVO)
+    const keyFindings=`<div class="section-title" style="margin-top:24px;">Key Findings</div>
+      <div style="display:grid;grid-template-columns:${cols};gap:16px;">
+        ${entityResults.map(e=>`
+          <div class="summary-box" style="border-left-color:${GOLD};">
+            <strong>${e.label}</strong><br>
+            • ${e.benchmark.n_companies} aziende attive<br>
+            • Top 3 controllano ${e.benchmark.top3_share_pct}% della domanda<br>
+            • ${e.sector_distribution?e.sector_distribution[0].key:'-'} è il ${e.sector_distribution?e.sector_distribution[0].pct:0}% del mercato
+          </div>
+        `).join('')}
+      </div>`;
+
     bodyContent=`
       <div class="kpi-grid" style="grid-template-columns:${cols};">${kpiCells}</div>
       <div class="section-title">1. Benchmark RAL</div>
       ${benchmarkTable}
+      ${gapTable}
       ${concentrationNotes.length?`<div class="summary-box" style="border-left-color:${GOLD};">${concentrationNotes.join('<br>')}</div>`:''}
-      <div class="section-title">2. Talent Scarcity</div>
+      <div class="section-title">2. Distribuzione Settori</div>
+      ${sectorGrid}
+      ${keyFindings}
+      <div class="section-title">3. Talent Scarcity</div>
       ${scarcityGrid}
       ${sectionBlocks}
     `;
@@ -9501,5 +9621,5 @@ function renderDemandScatter(){
   </div>
 </div>
 
-
+// `
 </body></html>
