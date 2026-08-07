@@ -44,7 +44,7 @@ async function selectCompaniesFromQueue(limitDaily = 8) {
 
   const { data, error } = await supabase
     .from('enrichment_queue')
-    .select('*, companies(id, nome_azienda, sito_web, ateco)')
+    .select('*, companies(id, name, website)')
     .eq('stato', 'pending')
     .lte('prossimo_tentativo_il', new Date().toISOString())
     .order('priorita', { ascending: false })
@@ -67,7 +67,7 @@ async function enrichCompany(queueRecord) {
   const { id: queue_id, company_id, tentativo_numero } = queueRecord;
   const company = queueRecord.companies;
 
-  log.info(`🚀 [${tentativo_numero + 1}/5] Arricchimento: ${company.nome_azienda}`);
+  log.info(`🚀 [${tentativo_numero + 1}/5] Arricchimento: ${company.name}`);
 
   // Marca come in_progress
   await supabase
@@ -100,9 +100,9 @@ async function enrichCompany(queueRecord) {
       })
       .eq('id', queue_id);
 
-    log.success(`${company.nome_azienda}`);
+    log.success(`${company.name}`);
   } catch (error) {
-    log.error(`${company.nome_azienda}: ${error.message}`);
+    log.error(`${company.name}: ${error.message}`);
 
     // Exponential backoff: 1h → 6h → 24h → 48h → 72h
     const backoffHours = [1, 6, 24, 48, 72];
@@ -126,11 +126,11 @@ async function enrichCompany(queueRecord) {
 // ════════════════════════════════════════════════════════════
 
 async function findCompanyPage(company) {
-  const { nome_azienda, sito_web } = company;
+  const { name, website } = company;
 
-  if (sito_web && sito_web.includes('.')) {
-    log.info(`📍 Usando sito conosciuto: ${sito_web}`);
-    return sito_web;
+  if (website && website.includes('.')) {
+    log.info(`📍 Usando sito conosciuto: ${website}`);
+    return website;
   }
 
   // PORTA 1: TAVILY
@@ -141,7 +141,7 @@ async function findCompanyPage(company) {
         'https://api.tavily.com/search',
         {
           api_key: TAVILY_KEY,
-          query: `${nome_azienda} pharma about company site:.it`,
+          query: `${name} pharma about company site:.it`,
           include_answer: false,
           max_results: 5,
         },
@@ -165,7 +165,7 @@ async function findCompanyPage(company) {
       const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
         headers: { 'X-Subscription-Token': BRAVE_KEY },
         params: {
-          q: `${nome_azienda} about company site:.it`,
+          q: `${name} about company site:.it`,
           count: 5,
         },
         timeout: 10000,
@@ -188,7 +188,7 @@ async function findCompanyPage(company) {
       const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
         headers: { 'X-Subscription-Token': BRAVE_KEY },
         params: {
-          q: `${nome_azienda} site:linkedin.com/company`,
+          q: `${name} site:linkedin.com/company`,
           count: 3,
         },
         timeout: 10000,
@@ -204,7 +204,7 @@ async function findCompanyPage(company) {
     }
   }
 
-  throw new Error(`❌ Nessuna pagina trovata per ${nome_azienda}`);
+  throw new Error(`❌ Nessuna pagina trovata per ${name}`);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -245,7 +245,7 @@ async function structureDataWithLLM(pageText, company) {
 Leggi questo testo estratto dal sito di una pharma/medtech e estrai SOLO ciò che è esplicitamente scritto.
 Non inventare niente. Se un dato non è presente, lascia vuoto (null).
 
-AZIENDA: ${company.nome_azienda}
+AZIENDA: ${company.name}
 TESTO:
 ${pageText.substring(0, 8000)}
 
