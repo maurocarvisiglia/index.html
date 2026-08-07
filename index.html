@@ -770,6 +770,49 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- DATI ARRICCHITI AUTOMATICAMENTE -->
+    <div class="chart-card" style="margin-bottom:24px; border: 2px solid var(--accent2);">
+      <div class="chart-card-title">✨ Dati Arricchiti Automaticamente</div>
+
+      <div style="margin-top:12px; padding:12px; background:var(--surface2); border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-size:11px; color:var(--text2); text-transform:uppercase;">Completeness</span>
+          <span id="enriched-completeness-text" style="font-size:12px; font-weight:700; color:var(--accent2);">0%</span>
+        </div>
+        <div style="background:var(--surface); height:8px; border-radius:4px; overflow:hidden;">
+          <div id="enriched-completeness-bar" style="height:100%; background:var(--accent2); width:0%; transition:width 0.3s;"></div>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+        <div>
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Dipendenti (estratti)</label>
+          <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-dipendenti">—</div>
+        </div>
+        <div>
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Fatturato (range)</label>
+          <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-fatturato">—</div>
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Aree terapeutiche</label>
+          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-ta-badges"></div>
+        </div>
+        <div style="grid-column:1/-1;">
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Descrizione aziendale</label>
+          <div style="font-size:12px; color:var(--text); margin-top:6px; line-height:1.5;" id="enriched-descrizione">—</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <label style="font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:8px;">Decision Makers</label>
+        <div id="enriched-contacts-table" style="font-size:12px; color:var(--text2);">Nessun contatto estratto</div>
+      </div>
+
+      <div style="margin-top:12px; font-size:10px; color:var(--text2); text-align:right;">
+        Ultimo aggiornamento: <span id="enriched-timestamp">—</span>
+      </div>
+    </div>
+
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
         <div class="chart-card-title">Aree funzionali</div>
@@ -8411,6 +8454,100 @@ async function loadCompanyDetail(company){
 
   }catch(e){
     document.getElementById('cd-listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;
+  }
+
+  // Carica dati arricchiti
+  if(company.id){
+    loadEnrichedData(company.id);
+  }
+}
+
+async function loadEnrichedData(companyId){
+  try{
+    // Carica dati arricchiti dalla company
+    const companies=await api(`companies?id=eq.${companyId}&select=dipendenti,fatturato_range,aree_terapeutiche,descrizione_aziendale,completezza_arricchimento,arricchito_il`);
+    if(!companies.length)return;
+
+    const company=companies[0];
+
+    // Progress bar
+    const completeness=company.completezza_arricchimento||0;
+    const progressBar=document.getElementById('enriched-completeness-bar');
+    const progressText=document.getElementById('enriched-completeness-text');
+    if(progressBar){
+      progressBar.style.width=completeness+'%';
+      progressBar.style.background=completeness>=75?'var(--success)':completeness>=50?'var(--accent)':'var(--warning)';
+    }
+    if(progressText)progressText.textContent=completeness+'%';
+
+    // Dipendenti
+    const dipEl=document.getElementById('enriched-dipendenti');
+    if(dipEl){
+      if(company.dipendenti){
+        dipEl.textContent=company.dipendenti>=1000?`${(company.dipendenti/1000).toFixed(0)}k`:company.dipendenti;
+      }else{
+        dipEl.textContent='—';
+      }
+    }
+
+    // Fatturato
+    const fatEl=document.getElementById('enriched-fatturato');
+    if(fatEl){
+      fatEl.textContent=company.fatturato_range||'—';
+    }
+
+    // Aree terapeutiche
+    const taEl=document.getElementById('enriched-ta-badges');
+    if(taEl){
+      if(company.aree_terapeutiche&&company.aree_terapeutiche.length>0){
+        taEl.innerHTML=company.aree_terapeutiche.map(ta=>`<span class="badge badge-accent" style="margin:4px 4px 0 0;">${ta}</span>`).join('');
+      }else{
+        taEl.innerHTML='<span style="color:var(--text2);font-size:13px;">—</span>';
+      }
+    }
+
+    // Descrizione
+    const descEl=document.getElementById('enriched-descrizione');
+    if(descEl){
+      descEl.textContent=company.descrizione_aziendale||'—';
+    }
+
+    // Timestamp ultimo aggiornamento
+    const tsEl=document.getElementById('enriched-timestamp');
+    if(tsEl&&company.arricchito_il){
+      const date=new Date(company.arricchito_il);
+      tsEl.textContent='Ultimo aggiornamento: '+date.toLocaleDateString('it-IT')+' '+date.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    }
+
+    // Carica decision makers
+    const contacts=await api(`company_contacts?company_id=eq.${companyId}&select=nome,ruolo,email,telefono,linkedin_url`);
+    const ctEl=document.getElementById('enriched-contacts-table');
+    if(ctEl){
+      if(contacts.length>0){
+        ctEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left;padding:8px;color:var(--text2);">Nome</th>
+            <th style="text-align:left;padding:8px;color:var(--text2);">Ruolo</th>
+            <th style="text-align:left;padding:8px;color:var(--text2);">Email</th>
+            <th style="text-align:left;padding:8px;color:var(--text2);">Telefono</th>
+            <th style="text-align:left;padding:8px;color:var(--text2);">LinkedIn</th>
+          </tr></thead>
+          <tbody>
+            ${contacts.map(c=>`<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px;">${c.nome||'—'}</td>
+              <td style="padding:8px;">${c.ruolo||'—'}</td>
+              <td style="padding:8px;"><a href="mailto:${c.email}" style="color:var(--accent2);text-decoration:none;">${c.email||'—'}</a></td>
+              <td style="padding:8px;">${c.telefono||'—'}</td>
+              <td style="padding:8px;">${c.linkedin_url?`<a href="${c.linkedin_url}" target="_blank" style="color:var(--accent2);text-decoration:none;">LinkedIn ↗</a>`:'—'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>`;
+      }else{
+        ctEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessun contatto identificato</div>';
+      }
+    }
+  }catch(e){
+    console.error('Errore caricamento dati arricchiti:',e);
   }
 }
 
