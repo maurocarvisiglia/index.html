@@ -2,11 +2,11 @@
   "name": "ls-intelligence-enrichment-agent",
   "version": "1.0.0",
   "description": "Autonomous company enrichment agent for LS Intelligence",
-  "main": "enrichment-agent.js",
+  "main": "apollo-enrichment-agent.js",
   "type": "module",
   "scripts": {
-    "start": "node enrichment-agent.js",
-    "dev": "node enrichment-agent.js",
+    "start": "node apollo-enrichment-agent.js",
+    "dev": "node apollo-enrichment-agent.js",
     "test": "node --eval \"console.log('Test mode')\""
   },
   "keywords": [
