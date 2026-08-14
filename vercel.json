@@ -3,6 +3,10 @@
     {
       "path": "/api/enrichment",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/apollo-enrichment",
+      "schedule": "0 7 * * *"
     }
   ]
 }
