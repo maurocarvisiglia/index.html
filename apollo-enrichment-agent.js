@@ -68,6 +68,26 @@ async function enrichDomain(domain) {
   return res.data.organization || null;
 }
 
+// Apollo restituisce SEMPRE i dati della casa madre globale (estimated_num_employees,
+// departmental_head_count, fatturato, crescita) — mai il dato della sola filiale
+// italiana. Per "dipendenti" (campo trattato ovunque nell'app come headcount Italia)
+// usiamo invece un conteggio via People Search filtrato per persona in Italia: e' una
+// sottostima nota (conta solo i profili LinkedIn indicizzati da Apollo, non il totale
+// reale), ma e' un dato Italia-specifico e omogeneo tra aziende — scelta deliberata
+// dell'utente: meglio sottostimato-ma-corretto che globale-ma-sbagliato.
+async function getItalyEmployeeCount(domain) {
+  try {
+    const res = await axios.post(
+      'https://api.apollo.io/api/v1/mixed_people/api_search',
+      { q_organization_domains_list: [domain], person_locations: ['Italy'], page: 1, per_page: 1 },
+      { headers: { 'x-api-key': APOLLO_KEY, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    return Number.isFinite(res.data.total_entries) ? res.data.total_entries : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Aggiunge al catalogo scollegato apollo_industries solo le industry mai viste
 // (chiave = apollo_tag_id, non il testo, per evitare doppioni su varianti di label)
 async function upsertIndustryCatalog(industries, tagHash) {
@@ -139,7 +159,10 @@ async function runApolloDailyBatch() {
 
       const revenueRange = revenueToRange(org.annual_revenue);
       const patch = {};
-      if (!c.dipendenti && org.estimated_num_employees) patch.dipendenti = org.estimated_num_employees;
+      if (!c.dipendenti) {
+        const italyCount = await getItalyEmployeeCount(c.domain);
+        if (italyCount != null) patch.dipendenti = italyCount;
+      }
       if (!c.fatturato_range && revenueRange) patch.fatturato_range = revenueRange;
       if (!c.descrizione_aziendale && org.short_description) patch.descrizione_aziendale = org.short_description;
       if (!c.linkedin_url && org.linkedin_url) patch.linkedin_url = org.linkedin_url;
