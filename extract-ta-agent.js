@@ -8,9 +8,11 @@ dotenv.config();
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const SOURCE = 'gemini_ta_extraction';
-// Piano gratuito Gemini: 20 richieste/giorno per questo progetto+modello. Margine di
-// sicurezza a 15 per non rischiare di sbattere contro il tetto a meta' giornata.
-const DAILY_LIMIT = Number(process.env.TA_DAILY_LIMIT || 15);
+// Piano gratuito Gemini: 20 richieste/giorno per questo progetto+modello. Tetto basso
+// (non solo per la quota Gemini, ma perche' la funzione serverless Vercel ha un limite
+// di durata: 8 aziende * ~4s di pausa gia' arrivano vicino al bordo, con margine per
+// eventuali retry non si puo' salire senza rischiare FUNCTION_INVOCATION_TIMEOUT).
+const DAILY_LIMIT = Number(process.env.TA_DAILY_LIMIT || 8);
 
 function isDailyQuotaExhausted(e) {
   // La sottostringa "PerDay" sta dentro error.details[].violations[].quotaId,
@@ -19,7 +21,7 @@ function isDailyQuotaExhausted(e) {
   return e.response?.status === 429 && /PerDay/i.test(fullError);
 }
 
-async function retryWithBackoff(fn, maxRetries = 4, initialDelayMs = 3000) {
+async function retryWithBackoff(fn, maxRetries = 2, initialDelayMs = 2000) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
@@ -48,7 +50,7 @@ Rispondi SOLO con un array JSON di stringhe, es. ["oncology","immunology"] oppur
   const res = await retryWithBackoff(() => axios.post(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_KEY}`,
     { contents: [{ parts: [{ text: prompt }] }] },
-    { timeout: 30000 }
+    { timeout: 12000 }
   ));
   const raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
   const clean = raw.replace(/```json|```/g, '').trim();
