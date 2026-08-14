@@ -8,6 +8,7 @@ dotenv.config();
 const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const APOLLO_KEY = process.env.APOLLO_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const DAILY_LIMIT = Number(process.env.APOLLO_DAILY_LIMIT || 20);
 
 const supabase = createClient(SB_URL, SB_KEY);
@@ -88,6 +89,26 @@ async function getItalyEmployeeCount(domain) {
   }
 }
 
+// Traduce la descrizione aziendale (Apollo la restituisce sempre in inglese, anche
+// per aziende italiane) usando un modello Gemini diverso da quello dell'estrazione
+// aree terapeutiche (quota giornaliera separata, per non farsi concorrenza a vicenda).
+// Se la traduzione fallisce per qualsiasi motivo (quota, rete, ecc.) si ripiega sul
+// testo originale in inglese invece di bloccare l'arricchimento dell'azienda.
+async function translateDescriptionToItalian(text) {
+  if (!GEMINI_KEY || !text) return text;
+  try {
+    const res = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${GEMINI_KEY}`,
+      { contents: [{ parts: [{ text: `Traduci in italiano corrente questo testo aziendale, senza aggiungere o omettere informazioni. Rispondi SOLO con la traduzione, niente altro.\n\nTESTO:\n"""${text}"""` }] }] },
+      { timeout: 12000 }
+    );
+    const translated = res.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    return translated || text;
+  } catch (e) {
+    return text;
+  }
+}
+
 // Aggiunge al catalogo scollegato apollo_industries solo le industry mai viste
 // (chiave = apollo_tag_id, non il testo, per evitare doppioni su varianti di label)
 async function upsertIndustryCatalog(industries, tagHash) {
@@ -164,7 +185,9 @@ async function runApolloDailyBatch() {
         if (italyCount != null) patch.dipendenti = italyCount;
       }
       if (!c.fatturato_range && revenueRange) patch.fatturato_range = revenueRange;
-      if (!c.descrizione_aziendale && org.short_description) patch.descrizione_aziendale = org.short_description;
+      if (!c.descrizione_aziendale && org.short_description) {
+        patch.descrizione_aziendale = await translateDescriptionToItalian(org.short_description);
+      }
       if (!c.linkedin_url && org.linkedin_url) patch.linkedin_url = org.linkedin_url;
       if (c.crescita_dipendenti_12m == null && org.organization_headcount_twelve_month_growth != null) {
         patch.crescita_dipendenti_12m = org.organization_headcount_twelve_month_growth;
