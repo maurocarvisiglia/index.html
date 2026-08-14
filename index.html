@@ -1664,6 +1664,24 @@ a.job-link:hover{text-decoration:underline;}
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-contact">
+  <div class="modal">
+    <div class="modal-title" id="contact-modal-title">Nuovo decision maker</div>
+    <input type="hidden" id="dm-id">
+    <div class="form-grid">
+      <div class="form-group full"><div class="form-label">Nome *</div><input type="text" id="dm-nome" placeholder="es. Mario Rossi"></div>
+      <div class="form-group"><div class="form-label">Ruolo</div><input type="text" id="dm-ruolo" placeholder="es. HR Manager"></div>
+      <div class="form-group"><div class="form-label">Email</div><input type="email" id="dm-email" placeholder="nome@azienda.com"></div>
+      <div class="form-group"><div class="form-label">Telefono</div><input type="text" id="dm-telefono" placeholder="+39..."></div>
+      <div class="form-group"><div class="form-label">LinkedIn URL</div><input type="url" id="dm-linkedin" placeholder="https://linkedin.com/in/..."></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-contact')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveContact()">Salva decision maker</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL ANNUNCIO -->
 <div class="modal-overlay" id="modal-listing">
   <div class="modal">
@@ -8730,34 +8748,92 @@ async function loadEnrichedData(companyId){
     }
 
     // Carica decision makers
-    const contacts=await api(`company_contacts?company_id=eq.${companyId}&select=nome,ruolo,email,telefono,linkedin_url`);
-    const ctEl=document.getElementById('enriched-contacts-table');
-    if(ctEl){
-      if(contacts.length>0){
-        ctEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
-          <thead><tr style="border-bottom:1px solid var(--border);">
-            <th style="text-align:left;padding:8px;color:var(--text2);">Nome</th>
-            <th style="text-align:left;padding:8px;color:var(--text2);">Ruolo</th>
-            <th style="text-align:left;padding:8px;color:var(--text2);">Email</th>
-            <th style="text-align:left;padding:8px;color:var(--text2);">Telefono</th>
-            <th style="text-align:left;padding:8px;color:var(--text2);">LinkedIn</th>
-          </tr></thead>
-          <tbody>
-            ${contacts.map(c=>`<tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:8px;">${c.nome||'—'}</td>
-              <td style="padding:8px;">${c.ruolo||'—'}</td>
-              <td style="padding:8px;"><a href="mailto:${c.email}" style="color:var(--accent2);text-decoration:none;">${c.email||'—'}</a></td>
-              <td style="padding:8px;">${c.telefono||'—'}</td>
-              <td style="padding:8px;">${c.linkedin_url?`<a href="${c.linkedin_url}" target="_blank" style="color:var(--accent2);text-decoration:none;">LinkedIn ↗</a>`:'—'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`;
-      }else{
-        ctEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessun contatto identificato</div>';
-      }
-    }
+    await loadCompanyContacts(companyId);
   }catch(e){
     console.error('Errore caricamento dati arricchiti:',e);
+  }
+}
+
+/* ── DECISION MAKERS — CRUD ── */
+async function loadCompanyContacts(companyId){
+  const contacts=await api(`company_contacts?company_id=eq.${companyId}&select=id,nome,ruolo,email,telefono,linkedin_url&order=nome.asc`);
+  const ctEl=document.getElementById('enriched-contacts-table');
+  if(!ctEl)return;
+  const addBtn=`<button class="btn btn-secondary" style="font-size:11px;padding:5px 10px;margin-bottom:10px;" onclick="openContactModal()">+ Aggiungi decision maker</button>`;
+  if(contacts.length>0){
+    ctEl.innerHTML=addBtn+`<table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Nome</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Ruolo</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Email</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Telefono</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">LinkedIn</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${contacts.map(c=>`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${c.nome||'—'}</td>
+          <td style="padding:8px;">${c.ruolo||'—'}</td>
+          <td style="padding:8px;">${c.email?`<a href="mailto:${c.email}" style="color:var(--accent2);text-decoration:none;">${c.email}</a>`:'—'}</td>
+          <td style="padding:8px;">${c.telefono||'—'}</td>
+          <td style="padding:8px;">${c.linkedin_url?`<a href="${c.linkedin_url}" target="_blank" style="color:var(--accent2);text-decoration:none;">LinkedIn ↗</a>`:'—'}</td>
+          <td style="padding:8px;white-space:nowrap;">
+            <button onclick='openContactModal(${JSON.stringify(c).replace(/'/g,"&#39;")})' style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:12px;margin-right:8px;">✎</button>
+            <button onclick="deleteContact('${c.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  }else{
+    ctEl.innerHTML=addBtn+'<div style="color:var(--text2);font-size:13px;">Nessun contatto identificato</div>';
+  }
+}
+
+function openContactModal(contact){
+  document.getElementById('contact-modal-title').textContent=contact?'Modifica decision maker':'Nuovo decision maker';
+  document.getElementById('dm-id').value=contact?.id||'';
+  document.getElementById('dm-nome').value=contact?.nome||'';
+  document.getElementById('dm-ruolo').value=contact?.ruolo||'';
+  document.getElementById('dm-email').value=contact?.email||'';
+  document.getElementById('dm-telefono').value=contact?.telefono||'';
+  document.getElementById('dm-linkedin').value=contact?.linkedin_url||'';
+  openModal('modal-contact');
+}
+
+async function saveContact(){
+  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
+  const id=document.getElementById('dm-id').value;
+  const nome=document.getElementById('dm-nome').value.trim();
+  if(!nome){toast('Inserisci il nome','error');return;}
+  const body={
+    nome,
+    ruolo:document.getElementById('dm-ruolo').value.trim()||null,
+    email:document.getElementById('dm-email').value.trim()||null,
+    telefono:document.getElementById('dm-telefono').value.trim()||null,
+    linkedin_url:document.getElementById('dm-linkedin').value.trim()||null,
+  };
+  try{
+    if(id){
+      await api('company_contacts?id=eq.'+id,'PATCH',{...body,verificato:true});
+    }else{
+      await api('company_contacts','POST',{...body,company_id:currentCompany.id,fonte_scoperta:'manuale',verificato:true});
+    }
+    closeModal('modal-contact');
+    toast('✅ Decision maker salvato','success');
+    await loadCompanyContacts(currentCompany.id);
+  }catch(e){
+    toast('Errore salvataggio: '+e.message,'error');
+  }
+}
+
+async function deleteContact(id){
+  if(!confirm('Eliminare questo contatto?'))return;
+  try{
+    await api('company_contacts?id=eq.'+id,'DELETE');
+    toast('Contatto eliminato');
+    if(currentCompany)await loadCompanyContacts(currentCompany.id);
+  }catch(e){
+    toast('Errore eliminazione: '+e.message,'error');
   }
 }
 
