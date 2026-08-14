@@ -126,6 +126,36 @@ a.job-link:hover{text-decoration:underline;}
 .kpi-value{font-size:24px;font-weight:700;color:var(--text);}
 .kpi-sub{font-size:11px;color:var(--text2);margin-top:4px;}
 
+/* KPI raggruppate per tema (scheda azienda) */
+.kpi-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+.kpi-group{background:var(--surface);border:1px solid var(--border);border-radius:0 10px 10px 0;border-left-width:3px;border-left-style:solid;padding:16px;}
+.kpi-group.overview{border-left-color:var(--accent2);}
+.kpi-group.hiring{border-left-color:var(--accent);}
+.kpi-group.pay{border-left-color:var(--success);}
+.kpi-group-title{font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;}
+.kpi-mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;}
+.kpi-mini-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;margin-bottom:3px;}
+.kpi-mini-value{font-size:19px;font-weight:700;color:var(--text);}
+
+/* Seniority — barra unica impilata (ha un ordine, non e' una classifica) */
+.stacked-bar{display:flex;height:26px;border-radius:4px;overflow:hidden;margin:6px 0 14px;}
+.stacked-seg{height:100%;}
+.stacked-legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:11px;color:var(--text2);}
+.stacked-legend .legend-item{display:flex;align-items:center;gap:6px;}
+.legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+
+/* Area terapeutica — lollipop, adatto a poche categorie sparse */
+.lolli-row{display:flex;align-items:center;gap:10px;margin-bottom:11px;}
+.lolli-label{width:120px;font-size:11px;color:var(--text2);flex-shrink:0;}
+.lolli-track{flex:1;position:relative;height:2px;background:var(--surface2);border-radius:2px;}
+.lolli-line{position:absolute;top:0;left:0;height:2px;background:var(--success);opacity:.5;}
+.lolli-dot{position:absolute;top:50%;width:10px;height:10px;border-radius:50%;background:var(--success);transform:translate(-50%,-50%);border:2px solid var(--surface);}
+.lolli-count{font-size:11px;color:var(--text);width:24px;text-align:right;font-weight:600;}
+
+/* Mix contratto — donut */
+.donut-wrap{display:flex;align-items:center;gap:20px;justify-content:center;padding:8px 0;flex-wrap:wrap;}
+.donut-legend{font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:8px;}
+
 /* CLUSTER INFO INLINE */
 .cluster-inline{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
 .cluster-tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font-size:11px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
@@ -690,23 +720,34 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
-    <div class="company-kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Dipendenti</div><div class="kpi-value" id="cd-kpi-employees">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Fatturato</div><div class="kpi-value" id="cd-kpi-revenue">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Settore</div><div class="kpi-value" id="cd-kpi-sector">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Hiring Manager</div><div class="kpi-value" id="cd-kpi-hm">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
-    </div>
-    <div class="company-kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Field/HQ</div><div class="kpi-value" id="cd-kpi-hq">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Primo annuncio</div><div class="kpi-value" id="cd-kpi-first">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Ultimo annuncio</div><div class="kpi-value" id="cd-kpi-last">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Annunci totali</div><div class="kpi-value" id="cd-kpi-total">—</div></div>
-    </div>
-    <div class="company-kpi-grid">
-      <div class="kpi-card" style="border-color:var(--success)"><div class="kpi-label">Ultimi 30gg</div><div class="kpi-value" id="cd-kpi-30" style="color:var(--success)">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Con RAL</div><div class="kpi-value" id="cd-kpi-ral">—</div></div>
-      <div class="kpi-card" style="border-color:var(--accent)"><div class="kpi-label">RAL media</div><div class="kpi-value" id="cd-kpi-ral-avg" style="color:var(--accent)">—</div></div>
-      <div class="kpi-card"><div class="kpi-label">Opportunity Score</div><div class="kpi-value" id="cd-kpi-opp">—</div></div>
+    <div class="kpi-groups">
+      <div class="kpi-group overview">
+        <div class="kpi-group-title">🏢 Panoramica azienda</div>
+        <div class="kpi-mini-grid">
+          <div><div class="kpi-mini-label">Dipendenti</div><div class="kpi-mini-value" id="cd-kpi-employees">—</div></div>
+          <div><div class="kpi-mini-label">Fatturato</div><div class="kpi-mini-value" id="cd-kpi-revenue">—</div></div>
+          <div><div class="kpi-mini-label">Settore</div><div class="kpi-mini-value" id="cd-kpi-sector">—</div></div>
+          <div><div class="kpi-mini-label">Field/HQ</div><div class="kpi-mini-value" id="cd-kpi-hq">—</div></div>
+        </div>
+      </div>
+      <div class="kpi-group hiring">
+        <div class="kpi-group-title">📋 Attività di hiring</div>
+        <div class="kpi-mini-grid">
+          <div><div class="kpi-mini-label">Annunci totali</div><div class="kpi-mini-value" id="cd-kpi-total">—</div></div>
+          <div><div class="kpi-mini-label">Ultimi 30gg</div><div class="kpi-mini-value" id="cd-kpi-30" style="color:var(--success)">—</div></div>
+          <div><div class="kpi-mini-label">Primo annuncio</div><div class="kpi-mini-value" id="cd-kpi-first">—</div></div>
+          <div><div class="kpi-mini-label">Ultimo annuncio</div><div class="kpi-mini-value" id="cd-kpi-last">—</div></div>
+        </div>
+        <div style="margin-top:10px;"><div class="kpi-mini-label">Hiring Manager</div><div class="kpi-mini-value" style="font-size:14px;" id="cd-kpi-hm">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
+      </div>
+      <div class="kpi-group pay">
+        <div class="kpi-group-title">💶 Retribuzione &amp; opportunity</div>
+        <div class="kpi-mini-grid">
+          <div><div class="kpi-mini-label">Con RAL</div><div class="kpi-mini-value" id="cd-kpi-ral">—</div></div>
+          <div><div class="kpi-mini-label">RAL media</div><div class="kpi-mini-value" style="color:var(--accent);" id="cd-kpi-ral-avg">—</div></div>
+          <div style="grid-column:1/-1;"><div class="kpi-mini-label">Opportunity score</div><div class="kpi-mini-value" style="color:var(--success);" id="cd-kpi-opp">—</div></div>
+        </div>
+      </div>
     </div>
 
     <!-- PROFILO AZIENDA — editabile + ricerca web -->
@@ -791,41 +832,43 @@ a.job-link:hover{text-decoration:underline;}
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+      <div style="display:grid; grid-template-columns:1.1fr 1fr; gap:24px; margin-top:16px;">
         <div>
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Dipendenti Italia (stima)</label>
-          <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-dipendenti">—</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Dipendenti Italia (stima)</label>
+              <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-dipendenti">—</div>
+            </div>
+            <div>
+              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Fatturato (dato globale gruppo)</label>
+              <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-fatturato">—</div>
+            </div>
+            <div>
+              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Crescita dipendenti 12 mesi (dato globale gruppo)</label>
+              <div style="font-size:20px; font-weight:700; margin-top:4px;" id="enriched-crescita">—</div>
+            </div>
+            <div>
+              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Industry Apollo (dato globale gruppo)</label>
+              <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-industry-badges">—</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;">
+            <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Aree terapeutiche</label>
+            <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-ta-badges"></div>
+          </div>
+          <div style="margin-top:14px;">
+            <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Descrizione aziendale</label>
+            <div style="font-size:12px; color:var(--text); margin-top:6px; line-height:1.5;" id="enriched-descrizione">—</div>
+          </div>
+          <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+            <label style="font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:8px;">Decision Makers</label>
+            <div id="enriched-contacts-table" style="font-size:12px; color:var(--text2);">Nessun contatto estratto</div>
+          </div>
         </div>
         <div>
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Fatturato (dato globale gruppo)</label>
-          <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-fatturato">—</div>
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:10px;">Reparti (Apollo, dato globale gruppo) — categorie corporate generiche, non tassonomia LS Intelligence</label>
+          <div id="enriched-departments">—</div>
         </div>
-        <div>
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Crescita dipendenti 12 mesi (dato globale gruppo)</label>
-          <div style="font-size:20px; font-weight:700; margin-top:4px;" id="enriched-crescita">—</div>
-        </div>
-        <div>
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Industry Apollo (dato globale gruppo)</label>
-          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-industry-badges">—</div>
-        </div>
-        <div style="grid-column:1/-1;">
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Aree terapeutiche</label>
-          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-ta-badges"></div>
-        </div>
-        <div style="grid-column:1/-1;">
-          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Descrizione aziendale</label>
-          <div style="font-size:12px; color:var(--text); margin-top:6px; line-height:1.5;" id="enriched-descrizione">—</div>
-        </div>
-      </div>
-
-      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-        <label style="font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:8px;">Reparti (Apollo, dato globale gruppo) — categorie corporate generiche, non tassonomia LS Intelligence</label>
-        <div id="enriched-departments">—</div>
-      </div>
-
-      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
-        <label style="font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:8px;">Decision Makers</label>
-        <div id="enriched-contacts-table" style="font-size:12px; color:var(--text2);">Nessun contatto estratto</div>
       </div>
 
       <div style="margin-top:12px; font-size:10px; color:var(--text2); text-align:right;">
@@ -849,9 +892,13 @@ a.job-link:hover{text-decoration:underline;}
         <div id="cd-chart-ta"><div class="loading">Caricamento...</div></div>
       </div>
       <div class="chart-card">
-        <div class="chart-card-title">Benchmark salariale per funzione</div>
-        <div id="cd-chart-ral"><div class="loading">Caricamento...</div></div>
+        <div class="chart-card-title">Mix contratto</div>
+        <div id="cd-chart-contract"><div class="loading">Caricamento...</div></div>
       </div>
+    </div>
+    <div class="chart-card" style="margin-bottom:24px;">
+      <div class="chart-card-title">Benchmark salariale per funzione</div>
+      <div id="cd-chart-ral"><div class="loading">Caricamento...</div></div>
     </div>
 
     <!-- OPPORTUNITY SCORE + AI SUMMARY -->
@@ -3908,6 +3955,73 @@ function renderRuoloBar(id, data, cls){
       <div class="bar-track"><div class="bar-fill ${cls==='blue'?'blue':''}" style="width:${(n/max*100).toFixed(1)}%;${cls==='accent'?'background:var(--accent)':''}"></div></div>
       <div class="bar-count">${n}</div>
     </div>`).join('');
+}
+
+// Seniority ha un ordine naturale (junior -> senior): una barra unica impilata mostra
+// la composizione della progressione, invece di una classifica per grandezza come
+// renderRuoloBar — stessa lista SENORDER usata altrove per ordinare la seniority.
+const SENIORITY_ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','head','vp','c_level'];
+function renderStackedOrdinalBar(id, data){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
+  const sorted=data.slice().sort((a,b)=>{
+    const ia=SENIORITY_ORDER.indexOf(a[0]),ib=SENIORITY_ORDER.indexOf(b[0]);
+    return(ia===-1?99:ia)-(ib===-1?99:ib);
+  });
+  const total=sorted.reduce((s,[,n])=>s+n,0)||1;
+  const segs=sorted.map(([l,n],i)=>{
+    const pct=n/total*100;
+    const shade=0.22+(i/(Math.max(sorted.length-1,1)))*0.78;
+    return{l,n,pct,color:`rgba(201,169,110,${shade.toFixed(2)})`};
+  });
+  el.innerHTML=`
+    <div class="stacked-bar">${segs.map(s=>`<div class="stacked-seg" style="width:${s.pct.toFixed(1)}%;background:${s.color};" title="${s.l}: ${s.n}"></div>`).join('')}</div>
+    <div class="stacked-legend">${segs.map(s=>`<div class="legend-item"><span class="legend-dot" style="background:${s.color};"></span>${s.l} — ${s.n}</div>`).join('')}</div>`;
+}
+
+// Poche categorie sparse (es. area terapeutica): un lollipop e' piu' leggibile di
+// barre piene quando i valori sono bassi e distanziati.
+function renderLollipopChart(id, data){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
+  const max=Math.max(...data.map(d=>d[1]),1);
+  el.innerHTML=data.map(([l,n])=>{
+    const pct=(n/max*100).toFixed(1);
+    return`<div class="lolli-row">
+      <div class="lolli-label">${l}</div>
+      <div class="lolli-track"><div class="lolli-line" style="width:${pct}%;"></div><div class="lolli-dot" style="left:${pct}%;"></div></div>
+      <div class="lolli-count">${n}</div>
+    </div>`;
+  }).join('');
+}
+
+// Mix contratto: composizione di un totale con poche categorie fisse -> torta legittima
+// (a differenza di aree funzionali/seniority che hanno troppe categorie per essere leggibili a torta).
+const CONTRACT_COLORS={TI:'var(--success)',TD:'var(--accent2)',Stage:'var(--accent)',Freelance:'#a78bfa',Agenzia:'var(--text2)',altro:'var(--text2)'};
+function renderDonutChart(id, data){
+  const el=document.getElementById(id);
+  if(!el)return;
+  if(!data.length){el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Nessun dato</div>';return;}
+  const total=data.reduce((s,[,n])=>s+n,0)||1;
+  let offset=0;
+  const circumference=100;
+  const arcs=data.map(([l,n])=>{
+    const pct=n/total*100;
+    const dash=`${pct.toFixed(2)} ${(circumference-pct).toFixed(2)}`;
+    const dashoffset=(circumference-offset+25).toFixed(2);
+    offset+=pct;
+    return`<circle cx="21" cy="21" r="15.9" fill="transparent" stroke="${CONTRACT_COLORS[l]||'var(--text2)'}" stroke-width="6" stroke-dasharray="${dash}" stroke-dashoffset="${dashoffset}" transform="rotate(-90 21 21)"></circle>`;
+  }).join('');
+  const legend=data.map(([l,n])=>`<div class="legend-item"><span class="legend-dot" style="background:${CONTRACT_COLORS[l]||'var(--text2)'};"></span>${l} — ${n} (${Math.round(n/total*100)}%)</div>`).join('');
+  el.innerHTML=`<div class="donut-wrap">
+    <svg width="120" height="120" viewBox="0 0 42 42" role="img" aria-label="Mix contratto">
+      <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="var(--surface2)" stroke-width="6"></circle>
+      ${arcs}
+    </svg>
+    <div class="donut-legend">${legend}</div>
+  </div>`;
 }
 
 function backToCompanies(){
@@ -8440,15 +8554,21 @@ async function loadCompanyDetail(company){
     const areaData=Object.entries(byArea).sort((a,b)=>b[1]-a[1]).slice(0,8);
     renderRuoloBar('cd-chart-areas',areaData,'');
 
-    // Seniority
+    // Seniority — barra unica impilata (ha un ordine naturale, non e' una classifica)
     const bySen={}; listings.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySen[k]=(bySen[k]||0)+1;});
-    renderRuoloBar('cd-chart-seniority',Object.entries(bySen).sort((a,b)=>b[1]-a[1]),'blue');
+    renderStackedOrdinalBar('cd-chart-seniority',Object.entries(bySen));
 
-    // Area terapeutica
+    // Area terapeutica — lollipop (poche categorie sparse)
     const byTA={}; listings.filter(l=>l.therapeutic_area).forEach(l=>{byTA[l.therapeutic_area]=(byTA[l.therapeutic_area]||0)+1;});
     const taData=Object.entries(byTA).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    if(taData.length) renderRuoloBar('cd-chart-ta',taData,'accent');
+    if(taData.length) renderLollipopChart('cd-chart-ta',taData);
     else document.getElementById('cd-chart-ta').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Dati TA non disponibili</div>';
+
+    // Mix contratto — torta (poche categorie, composizione di un totale)
+    const byContract={}; listings.filter(l=>l.contract_type).forEach(l=>{byContract[l.contract_type]=(byContract[l.contract_type]||0)+1;});
+    const contractData=Object.entries(byContract).sort((a,b)=>b[1]-a[1]);
+    if(contractData.length) renderDonutChart('cd-chart-contract',contractData);
+    else document.getElementById('cd-chart-contract').innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;">Dati contratto non disponibili</div>';
 
     // RAL per funzione
     const ralByArea={}; withRal.forEach(l=>{
@@ -8478,6 +8598,8 @@ async function loadCompanyDetail(company){
     if(oppEl){oppEl.textContent=oppScore;oppEl.className='score-ring '+scoreClass(oppScore);}
     if(oppBar){oppBar.style.width=oppScore+'%';oppBar.style.background=oppScore>60?'var(--success)':oppScore>30?'var(--accent)':'var(--text2)';}
     if(oppLabel)oppLabel.textContent=opportunityLabel(oppScore);
+    const oppKpiEl=document.getElementById('cd-kpi-opp');
+    if(oppKpiEl)oppKpiEl.textContent=oppScore+' — '+opportunityLabel(oppScore);
 
     // ── TABELLA ANNUNCI ──
     document.getElementById('cd-listings-count').textContent=listings.length+' annunci';
