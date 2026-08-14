@@ -1,6 +1,6 @@
-// Vercel Serverless Function for scheduled Apollo.io enrichment
+// Vercel Serverless Function for scheduled therapeutic-area extraction (Gemini)
 
-import { runApolloDailyBatch } from '../apollo-enrichment-agent.js';
+import { runTaExtractionDailyBatch } from '../extract-ta-agent.js';
 
 export const config = { maxDuration: 60 };
 
@@ -15,11 +15,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('🚀 Avvio Apollo enrichment da Vercel Cron...');
-    const result = await runApolloDailyBatch();
-    res.status(200).json({ message: 'Apollo enrichment completato', timestamp: new Date().toISOString(), ...result });
+    console.log('🚀 Avvio estrazione aree terapeutiche da Vercel Cron...');
+    const result = await runTaExtractionDailyBatch();
+    res.status(200).json({ message: 'Estrazione TA completata', timestamp: new Date().toISOString(), ...result });
   } catch (error) {
-    console.error('❌ Errore Apollo enrichment:', error.message);
+    console.error('❌ Errore estrazione TA:', error.message);
     res.status(500).json({ error: error.message });
   }
 }
