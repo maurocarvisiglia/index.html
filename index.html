@@ -261,6 +261,10 @@ a.job-link:hover{text-decoration:underline;}
               <option value="hr">HR</option>
               <option value="it">IT</option>
               <option value="business_development">Business Development</option>
+              <option value="general_management">General Management</option>
+              <option value="healthcare_services">Healthcare Services</option>
+              <option value="legal">Legal</option>
+              <option value="customer_service">Customer Service</option>
             </select>
           </div>
           <div class="filter-group">
@@ -567,6 +571,9 @@ a.job-link:hover{text-decoration:underline;}
           <option value="it">IT</option>
           <option value="business_development">Business Development</option>
           <option value="general_management">General Management</option>
+          <option value="healthcare_services">Healthcare Services</option>
+          <option value="legal">Legal</option>
+          <option value="customer_service">Customer Service</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1289,6 +1296,9 @@ a.job-link:hover{text-decoration:underline;}
           <option value="it">IT</option>
           <option value="business_development">Business Development</option>
           <option value="general_management">General Management</option>
+          <option value="healthcare_services">Healthcare Services</option>
+          <option value="legal">Legal</option>
+          <option value="customer_service">Customer Service</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1958,7 +1968,10 @@ async function importVocationsCSV(event){
     if(s.includes('K')){const n=parseFloat(s.replace('K',''))*1000;return n>=10000&&n<=500000?Math.round(n):null;}
     const n=parseInt(s.replace(/\./g,''));return n&&n>=10000&&n<=500000?n:null;
   };
-  const contractMap={permanent:'TI',contract:'TD',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Agenzia','n/a':'altro'};
+  // 'n/a' non ha piu' un valore fisso: significa "non specificato", quindi resta
+  // null invece di finire nella falsa categoria "altro" (vedi diagnosi: il 33%
+  // del dataset finiva in "altro" solo perche' la fonte diceva N/A).
+  const contractMap={permanent:'TI',contract:'TI',temporary:'TD',internship:'altro',apprenticeship:'TI',freelance:'Agenzia'};
   const sectorMap={'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health'};
   let ok=0,skip=0,errors=0;
   for(let idx=0;idx<rows.length;idx++){
@@ -1979,7 +1992,7 @@ async function importVocationsCSV(event){
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
     const sector_v2=sectorMap[settoreRaw]||null;
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
-    const contract_type=contractMap[contractRaw]||'altro';
+    const contract_type=contractMap[contractRaw]||null;
     const isAgenzia=contract_type==='Agenzia';
     const tl=title.toLowerCase();
     let functional_area_v2=null;
@@ -2153,9 +2166,8 @@ async function syncCompaniesFromVocations(rows){
     if(!company||seen.has(company))continue;
     seen.add(company);
     try{
+      const ragioneSociale=(row['Ragione sociale']||'').trim()||null;
       const coData={
-        name:company,
-        ragione_sociale:(row['Ragione sociale']||'').trim()||null,
         website:(row['URL azienda']||'').trim()||null,
         iva:(row['IVA']||'').trim()||null,
         dipendenti:row['Dipendenti']?parseInt(row['Dipendenti'])||null:null,
@@ -2166,12 +2178,9 @@ async function syncCompaniesFromVocations(rows){
         collar:(row['Collar']||'').trim()||null,
         orario:(row['Orario']||'').trim()||null,
         categorie_protette:(row['Categorie protette']||'').trim()||null,
-        is_active:true,entity_type:'life_sciences',
         last_updated_vocations:new Date().toISOString()
       };
-      const existing=await api('companies?name=eq.'+encodeURIComponent(company)+'&select=id');
-      if(existing.length)await api('companies?id=eq.'+existing[0].id,'PATCH',coData);
-      else await api('companies','POST',coData);
+      await findOrCreateCompany(company,ragioneSociale,coData,{overwrite:true});
     }catch(e){console.warn('Company sync error:',company,e.message);}
   }
 }
@@ -2275,9 +2284,10 @@ async function importVocations(){
             const location=city?`${city}, ${region}`:region;
             const publishedDate=pos.createdAt?new Date(pos.createdAt*1000).toISOString().split('T')[0]:null;
 
-            // Mappa contratto
-            const contractMap={permanent:'TI',temporary:'TD',internship:'Stage',apprenticeship:'TI',freelance:'Freelance'};
-            const contractType=contractMap[pos.contract]||'altro';
+            // Mappa contratto — unificata con la pipeline di import CSV (stessa logica,
+            // 'contract' e non specificato non finiscono piu' nella falsa categoria "altro").
+            const contractMap={permanent:'TI',contract:'TI',temporary:'TD',internship:'altro',apprenticeship:'TI',freelance:'Agenzia'};
+            const contractType=contractMap[pos.contract]||null;
 
             // Mappa smart working
             const remoteMap={yes:true,hybrid:true,no:false};
@@ -2727,7 +2737,10 @@ function classifySeniorityFromText(t){
   if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
   if(/senior manager/i.test(t))return 'senior_manager';
   if(/\bmanager\b|\bresponsabile\b|\bcapo\b/i.test(t))return 'manager';
-  if(/\blead\b|coordinat/i.test(t))return 'lead';
+  // "lead" da solo intercetta anche l'uso verbale generico ("prepared to lead",
+  // "ability to lead" nei requisiti soft-skill) che non indica alcun livello di
+  // seniority — escluso esplicitamente. "coordinat" resta invariato (raro come verbo).
+  if(/coordinat/i.test(t)||(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t)))return 'lead';
   if(/\bprincipal\b|distinguished/i.test(t))return 'principal';
   if(/\bexpert\b/i.test(t))return 'expert';
   if(/\bsenior\b/i.test(t))return 'senior_specialist';
@@ -2870,6 +2883,73 @@ async function api(path,method,body){
   if(!r.ok){const e=await r.text();throw new Error(e);}
   if(method==='DELETE')return true;
   const t=await r.text();return t?JSON.parse(t):[];
+}
+
+/* ═══ SISTEMA ANTI-DUPLICATI AZIENDE ═══
+   Stessa formattazione diversa (es. "Pfizer" / "Pfizer Italia S.r.l." / "PFIZER S.R.L.")
+   creava aziende separate per la stessa azienda reale (40 gruppi trovati e uniti
+   manualmente). Ogni punto di creazione azienda deve passare da findOrCreateCompany()
+   invece di fare INSERT diretto, cosi' un'azienda gia' esistente (per nome O ragione
+   sociale, normalizzati) viene riusata invece che duplicata. ═══ */
+function normalizeCompanyName(name){
+  if(!name)return '';
+  let n=name.toLowerCase();
+  n=n.replace(/\b(s\.?p\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|s\.?n\.?c\.?|s\.?t\.?p\.?|ltd|inc|italia|italy|s\.?u\.?|società|per azioni|a responsabilità limitata|unipersonale|in breve.*|o .*società.*)\b/gi,'');
+  n=n.replace(/[.,'’\-–—()]/g,' ');
+  n=n.replace(/\s+/g,' ').trim();
+  return n;
+}
+
+let _companyIndexCache=null; // Map: chiave normalizzata (nome o ragione_sociale) -> record azienda
+async function loadCompanyIndex(forceRefresh){
+  if(_companyIndexCache&&!forceRefresh)return;
+  const rows=await api('companies?select=id,name,ragione_sociale');
+  _companyIndexCache=new Map();
+  rows.forEach(c=>{
+    const key1=normalizeCompanyName(c.name);
+    if(key1&&!_companyIndexCache.has(key1))_companyIndexCache.set(key1,c);
+    const key2=normalizeCompanyName(c.ragione_sociale);
+    if(key2&&!_companyIndexCache.has(key2))_companyIndexCache.set(key2,c);
+  });
+}
+
+// Trova un'azienda esistente (per nome O ragione sociale normalizzati) o ne crea una
+// nuova. Default: extraFields riempie SOLO i campi mancanti dell'esistente — non
+// sovrascrive mai un dato gia' presente (cautela usata ovunque in questa sessione).
+// opts.overwrite:true forza l'aggiornamento anche dei campi gia' valorizzati — da
+// usare solo per sync periodici pensati per rinfrescare dati volatili (es. import
+// CSV Vocations: dipendenti/posizioni_aperte cambiano ad ogni esportazione), MAI
+// per dati di ricerca/arricchimento verificati manualmente.
+async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
+  extraFields=extraFields||{};
+  opts=opts||{};
+  await loadCompanyIndex();
+  const key1=normalizeCompanyName(name);
+  const key2=normalizeCompanyName(ragioneSociale);
+  const existing=(key1&&_companyIndexCache.get(key1))||(key2&&_companyIndexCache.get(key2));
+
+  if(existing){
+    const patch={};
+    if(!existing.ragione_sociale&&ragioneSociale)patch.ragione_sociale=ragioneSociale;
+    for(const[k,v] of Object.entries(extraFields)){
+      if(v==null||v==='')continue;
+      const isMissing=existing[k]===undefined||existing[k]===null||existing[k]==='';
+      if(isMissing||opts.overwrite)patch[k]=v;
+    }
+    if(Object.keys(patch).length){
+      await api('companies?id=eq.'+existing.id,'PATCH',patch);
+      Object.assign(existing,patch);
+    }
+    return existing.id;
+  }
+
+  const body={name:name||ragioneSociale,ragione_sociale:ragioneSociale||null,entity_type:'life_sciences',is_active:true,...extraFields};
+  const inserted=await api('companies','POST',body);
+  const row=Array.isArray(inserted)?inserted[0]:inserted;
+  const id=row?.id;
+  if(id&&key1)_companyIndexCache.set(key1,{id,name:body.name,ragione_sociale:body.ragione_sociale});
+  if(id&&key2)_companyIndexCache.set(key2,{id,name:body.name,ragione_sociale:body.ragione_sociale});
+  return id;
 }
 
 // ── REPORT BUILDER — query generica per filtri (nessuna IA, solo composizione query) ──
@@ -3037,19 +3117,28 @@ function computeRalBySeniority(listings){
 // Istogramma RAL a bucket fissi (per il grafico "Distribuzione RAL") — nessun trimming
 // IQR qui: la forma multi-picco (es. un singolo datore che spinge tanti annunci su un
 // bucket basso) e' esattamente l'informazione che l'istogramma deve mostrare.
-function computeRalHistogram(listings,bucketSize){
-  bucketSize=bucketSize||5000;
-  const vals=listings.filter(l=>l.ral_min||l.ral_max)
-    .map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max))
-    .filter(v=>v>=10000&&v<=350000);
-  if(!vals.length)return{buckets:[],total:0};
-  const min=Math.floor(Math.min(...vals)/bucketSize)*bucketSize;
-  const max=Math.ceil(Math.max(...vals)/bucketSize)*bucketSize;
+function computeRalHistogram(listings){
+  // Esclude prima gli outlier statistici (IQR) — un singolo valore anomalo non deve
+  // dettare il range dell'intero grafico. Il conteggio escluso resta tracciato.
+  const{kept,excludedCount}=filterRalOutlierListings(listings);
+  const vals=kept.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
+  if(!vals.length)return{buckets:[],total:0,excludedCount};
+
+  // Numero di bucket adattivo (target ~10) invece di una larghezza fissa: con gli
+  // outlier gia' rimossi il range e' contenuto, ma restiamo adattivi per ogni campione.
+  const rawMin=Math.min(...vals),rawMax=Math.max(...vals);
+  const range=Math.max(rawMax-rawMin,1);
+  const targetBuckets=10;
+  const rawBucketSize=range/targetBuckets;
+  const bucketSize=[1000,2500,5000,10000,20000,25000,50000].find(s=>s>=rawBucketSize)||50000;
+
+  const min=Math.floor(rawMin/bucketSize)*bucketSize;
+  const max=Math.ceil(rawMax/bucketSize)*bucketSize;
   const buckets=[];
   for(let b=min;b<max;b+=bucketSize){
     buckets.push({from:b,to:b+bucketSize,count:vals.filter(v=>v>=b&&v<b+bucketSize).length});
   }
-  return{buckets,total:vals.length};
+  return{buckets,total:vals.length,excludedCount};
 }
 
 // Segmentazione in fasce retributive: individua i salti (gap) piu' ampi nella
@@ -3092,10 +3181,12 @@ function computeRalSegments(listings){
 // (asse numerico, non lista proporzionale al volume come i Top Datori).
 function computeRalByCompany(listings,maxCompanies){
   maxCompanies=maxCompanies||10;
+  // Stesso filtro IQR dell'istogramma: un'azienda con un solo annuncio a RAL
+  // anomala non deve dominare la scala del grafico a scapito di tutte le altre.
+  const{kept,excludedCount}=filterRalOutlierListings(listings);
   const byCo={};
-  listings.forEach(l=>{
+  kept.forEach(l=>{
     const ral=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
-    if(!ral||ral<10000||ral>350000)return;
     const c=l.ragione_sociale||l.company_name||'N/D';
     (byCo[c]=byCo[c]||[]).push(ral);
   });
@@ -3106,7 +3197,7 @@ function computeRalByCompany(listings,maxCompanies){
   if(rows.length>maxCompanies){
     rows=rows.sort((a,b)=>b.count-a.count).slice(0,maxCompanies);
   }
-  return rows.sort((a,b)=>a.median-b.median);
+  return{rows:rows.sort((a,b)=>a.median-b.median),excludedCount};
 }
 
 // ── REPORT BUILDER — Step 2: esecuzione deterministica del piano (query + calcoli,
@@ -3131,8 +3222,8 @@ async function executeReportPlan(plan){
     const ral_by_seniority = computeRalBySeniority(listings);
     const ral_histogram = computeRalHistogram(listings);
     const ral_segments = computeRalSegments(listings);
-    const ral_by_company = computeRalByCompany(listings);
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_histogram,ral_segments,ral_by_company});
+    const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3289,26 +3380,55 @@ function renderReportHTML(plan,entityResults,narration){
     opts=opts||{};
     if(!rows||!rows.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
     const W=560,rowH=26,padL=140,padR=54,padTop=8;
+    // Nomi lunghi (es. "GLAXOSMITHKLINE VACCINES S.R.L.") sforavano il bordo sinistro
+    // dell'SVG e venivano tagliati a caso da text-anchor="end". Invece di troncarli,
+    // li spezziamo su due righe (a capo sullo spazio piu' vicino al centro) e la riga
+    // si allarga di conseguenza — nessun dato del nome va perso.
+    const maxLabelChars=22;
+    function wrapLabel(text){
+      text=text||'';
+      if(text.length<=maxLabelChars)return[text];
+      const mid=Math.floor(text.length/2);
+      let splitAt=-1,bestDist=Infinity;
+      for(let i=0;i<text.length;i++){
+        if(text[i]===' '){const d=Math.abs(i-mid);if(d<bestDist){bestDist=d;splitAt=i;}}
+      }
+      if(splitAt===-1)return[text.length>maxLabelChars?text.substring(0,maxLabelChars-1)+'…':text];
+      let line1=text.substring(0,splitAt),line2=text.substring(splitAt+1);
+      if(line2.length>maxLabelChars)line2=line2.substring(0,maxLabelChars-1)+'…';
+      return[line1,line2];
+    }
     const valueFn=opts.valueFn||(r=>r.median);
     const maxVal=Math.max(...rows.map(valueFn),1);
     const niceMax=Math.ceil(maxVal/10000)*10000;
     const innerW=W-padL-padR;
-    const H=padTop+rows.length*rowH+26;
     const scaleX=v=>padL+(v/niceMax)*innerW;
+
+    const rowLines=rows.map(r=>wrapLabel(opts.labelFn?opts.labelFn(r):(r.company||'')));
+    const rowHeights=rowLines.map(lines=>lines.length>1?Math.round(rowH*1.55):rowH);
+    const rowY=[];let cursor=padTop;
+    rowHeights.forEach(h=>{rowY.push(cursor);cursor+=h;});
+    const totalRowsH=cursor-padTop;
+    const H=padTop+totalRowsH+26;
+
     const steps=5,gridLines=[];
     for(let i=0;i<=steps;i++){
       const v=Math.round(niceMax/steps*i);
       const x=scaleX(v);
-      gridLines.push(`<line x1="${x}" y1="${padTop}" x2="${x}" y2="${padTop+rows.length*rowH}" stroke="${BORDER}" stroke-width="1"/><text x="${x}" y="${padTop+rows.length*rowH+16}" text-anchor="middle" font-size="9" fill="#888">${v>=1000?Math.round(v/1000)+'k':v}</text>`);
+      gridLines.push(`<line x1="${x}" y1="${padTop}" x2="${x}" y2="${padTop+totalRowsH}" stroke="${BORDER}" stroke-width="1"/><text x="${x}" y="${padTop+totalRowsH+16}" text-anchor="middle" font-size="9" fill="#888">${v>=1000?Math.round(v/1000)+'k':v}</text>`);
     }
     const bars=rows.map((r,i)=>{
       const val=valueFn(r);
-      const y=padTop+i*rowH;
+      const rowTop=rowY[i],rowHi=rowHeights[i];
+      const barCenterY=rowTop+rowHi/2;
       const barW=Math.max(2,scaleX(val)-padL);
       const color=opts.colorFn?opts.colorFn(r,i):GOLD;
-      const label=opts.labelFn?opts.labelFn(r):(r.company||'').split(' ').slice(0,3).join(' ');
+      const lines=rowLines[i];
       const valLabel=opts.valueLabelFn?opts.valueLabelFn(r):('€'+Math.round(val/1000)+'k');
-      return `<text x="${padL-8}" y="${y+rowH/2+4}" text-anchor="end" font-size="10" fill="#333">${label}</text><rect x="${padL}" y="${y+5}" width="${barW}" height="${rowH-10}" fill="${color}" fill-opacity="0.9" rx="2"/><text x="${padL+barW+6}" y="${y+rowH/2+4}" font-size="10" font-weight="700" fill="${DARK}">${valLabel}</text>`;
+      const labelSvg=lines.length>1
+        ?`<text x="${padL-8}" y="${barCenterY-3}" text-anchor="end" font-size="10" fill="#333">${lines[0]}</text><text x="${padL-8}" y="${barCenterY+10}" text-anchor="end" font-size="10" fill="#333">${lines[1]}</text>`
+        :`<text x="${padL-8}" y="${barCenterY+4}" text-anchor="end" font-size="10" fill="#333">${lines[0]}</text>`;
+      return `${labelSvg}<rect x="${padL}" y="${barCenterY-(rowH-10)/2}" width="${barW}" height="${rowH-10}" fill="${color}" fill-opacity="0.9" rx="2"/><text x="${padL+barW+6}" y="${barCenterY+4}" font-size="10" font-weight="700" fill="${DARK}">${valLabel}</text>`;
     }).join('');
     return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;">${gridLines.join('')}${bars}</svg>`;
   }
@@ -3349,10 +3469,12 @@ function renderReportHTML(plan,entityResults,narration){
       ${b.concentration_flag?`<div class="summary-box" style="border-left-color:${GOLD};"><strong>Nota:</strong> ${b.concentration_flag.company} concentra il ${b.concentration_flag.share_pct}% degli annunci a ${fmt(b.concentration_flag.company_median_ral)} — la mediana depurata da questa concentrazione e' ${fmt(b.concentration_flag.diversified_median)}.</div>`:''}
       ${e.ral_histogram&&e.ral_histogram.buckets&&e.ral_histogram.buckets.length?`
       <div class="section-title" style="margin-top:24px;">Distribuzione RAL (n=${e.ral_histogram.total})</div>
-      <div class="chart-box">${histogramChart(e.ral_histogram,b.concentration_flag?b.concentration_flag.company_median_ral:null)}</div>`:''}
+      <div class="chart-box">${histogramChart(e.ral_histogram,b.concentration_flag?b.concentration_flag.company_median_ral:null)}
+      ${e.ral_histogram.excludedCount?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_histogram.excludedCount} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)</div>`:''}</div>`:''}
       ${e.ral_by_company&&e.ral_by_company.length>1?`
       <div class="section-title" style="margin-top:24px;">RAL per azienda</div>
-      <div class="chart-box">${axisBarChart(e.ral_by_company,{colorFn:r=>b.concentration_flag&&r.company===b.concentration_flag.company?TAN:(r.median>=(e.ral_segments&&e.ral_segments.length?e.ral_segments[e.ral_segments.length-1].min:Infinity)?GOLD:DARK)})}</div>`:''}
+      <div class="chart-box">${axisBarChart(e.ral_by_company,{colorFn:r=>b.concentration_flag&&r.company===b.concentration_flag.company?TAN:(r.median>=(e.ral_segments&&e.ral_segments.length?e.ral_segments[e.ral_segments.length-1].min:Infinity)?GOLD:DARK)})}
+      ${e.ral_by_company_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_by_company_excluded} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)</div>`:''}</div>`:''}
       <div class="section-title">Talent Scarcity</div>
       <div class="chart-box">
         <div class="chart-title">Top datori (${b.n_companies} aziende, top 3 = ${b.top3_share_pct}%)</div>
@@ -4858,23 +4980,15 @@ Scrivi 3-4 frasi che descrivono: la strategia di hiring attuale, le aree che sta
       const searchedAt=new Date().toISOString();
       const researchNote='['+new Date().toLocaleDateString('it-IT')+'] '+companyAnalysis;
       try{
-        const enc=encodeURIComponent(ciCompany);
-        const existing=await api('companies?or=(ragione_sociale.ilike.*'+enc+'*,name.ilike.*'+enc+'*)&select=*&limit=1');
         const ragSoc=data[0]?.ragione_sociale||ciCompany;
         const sectors=[...new Set(data.map(l=>l.sector_v2).filter(Boolean))].join(', ')||null;
         const posAperte=data.filter(l=>{const d=l.published_date?new Date(l.published_date):null;return d&&d>new Date(Date.now()-90*864e5);}).length;
-        const enrichData={last_researched_at:searchedAt,research_notes:researchNote,posizioni_aperte:posAperte||null,sectors:sectors};
+        const website=data.find(l=>l.url)?.url?.match(/^https?:\/\/[^\/]+/)?.[0]||null;
+        await loadCompanyIndex();
+        const wasExisting=!!((ragSoc&&_companyIndexCache.get(normalizeCompanyName(ragSoc)))||(ciCompany&&_companyIndexCache.get(normalizeCompanyName(ciCompany))));
+        await findOrCreateCompany(ciCompany,ragSoc,{last_researched_at:searchedAt,research_notes:researchNote,posizioni_aperte:posAperte||null,sectors:sectors,website:website},{overwrite:true});
         const savedEl=document.getElementById('ci-company-saved-at');
-        if(existing.length){
-          const upd={...enrichData};
-          if(!existing[0].ragione_sociale)upd.ragione_sociale=ragSoc;
-          await api('companies?id=eq.'+existing[0].id,'PATCH',upd);
-          if(savedEl)savedEl.textContent='✅ Scheda aggiornata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
-        } else {
-          const website=data.find(l=>l.url)?.url?.match(/^https?:\/\/[^\/]+/)?.[0]||null;
-          await api('companies','POST',{name:ragSoc,ragione_sociale:ragSoc,entity_type:'life_sciences',is_active:true,sectors:sectors,posizioni_aperte:posAperte||null,last_researched_at:searchedAt,research_notes:researchNote,website:website});
-          if(savedEl)savedEl.textContent='✅ Nuova scheda creata il '+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
-        }
+        if(savedEl)savedEl.textContent=(wasExisting?'✅ Scheda aggiornata il ':'✅ Nuova scheda creata il ')+new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
       }catch(e){
         console.warn('Save company research error:',e.message);
       }
@@ -4895,15 +5009,12 @@ async function savePriorityCompaniesToDB(priorityCompanies,allListings){
   const now=new Date().toISOString(),d90=new Date(Date.now()-90*864e5);
   for(const pc of priorityCompanies){
     try{
-      const enc=encodeURIComponent(pc.company);
-      const existing=await api('companies?or=(ragione_sociale.ilike.*'+enc+'*,name.ilike.*'+enc+'*)&select=*&limit=1');
       const listings=allListings.filter(l=>(l.ragione_sociale||l.company_name||'').toLowerCase().includes(pc.company.toLowerCase()));
       const sectors=[...new Set(listings.map(l=>l.sector_v2).filter(Boolean))].join(', ')||null;
       const posAperte=listings.filter(l=>l.published_date&&new Date(l.published_date)>d90).length;
       const ragSoc=listings[0]?.ragione_sociale||pc.company;
       const note='['+new Date().toLocaleDateString('it-IT')+'] PRIORITY: '+(pc.reason||'');
-      if(existing.length){await api('companies?id=eq.'+existing[0].id,'PATCH',{last_researched_at:now,research_notes:note,posizioni_aperte:posAperte||null,sectors:sectors});}
-      else{await api('companies','POST',{name:ragSoc,ragione_sociale:ragSoc,entity_type:'life_sciences',is_active:true,sectors:sectors,posizioni_aperte:posAperte||null,last_researched_at:now,research_notes:note});}
+      await findOrCreateCompany(pc.company,ragSoc,{last_researched_at:now,research_notes:note,posizioni_aperte:posAperte||null,sectors:sectors},{overwrite:true});
     }catch(e){console.warn('savePriorityCompaniesToDB:',pc.company,e.message);}
   }
   toast('✅ '+priorityCompanies.length+' aziende salvate in DB','success');
@@ -5120,14 +5231,11 @@ async function linkAllListingsToCompanies(){
     let created=0;
     for(const rag of missing){
       try{
-        await api('companies','POST',{
-          name:rag,
-          ragione_sociale:rag,
-          entity_type:'life_sciences',
-          is_active:true
-        });
-        created++;
-      }catch(e){} // ignora duplicati
+        await loadCompanyIndex();
+        const already=!!_companyIndexCache.get(normalizeCompanyName(rag));
+        await findOrCreateCompany(rag,rag,{});
+        if(!already)created++;
+      }catch(e){}
     }
     if(created>0)toast('✅ Create '+created+' nuove schede azienda');
 
@@ -6194,6 +6302,25 @@ function trimmedRal(listings){
   return iqrFiltered.slice(cut,iqrFiltered.length-cut);
 }
 
+// Stesso metodo IQR di trimmedRal(), ma applicato ad annunci (non a valori nudi) e
+// riusabile da qualunque grafico/sezione RAL — cosi' un singolo valore anomalo non
+// distorce la scala di un grafico anche quando non e' l'unico dato aggregato.
+// < 6 valori validi: IQR non e' affidabile su campioni cosi' piccoli, nessuna esclusione.
+function filterRalOutlierListings(listings){
+  const withVal=listings
+    .filter(l=>l.ral_min||l.ral_max)
+    .map(l=>({l,v:l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)}))
+    .filter(x=>x.v>=16000&&x.v<=350000);
+  if(withVal.length<6)return{kept:withVal.map(x=>x.l),excludedCount:0};
+  const sorted=withVal.map(x=>x.v).slice().sort((a,b)=>a-b);
+  const q1=sorted[Math.floor(sorted.length*0.25)];
+  const q3=sorted[Math.floor(sorted.length*0.75)];
+  const iqr=q3-q1;
+  const lowerFence=q1-1.5*iqr,upperFence=q3+1.5*iqr;
+  const kept=withVal.filter(x=>x.v>=lowerFence&&x.v<=upperFence).map(x=>x.l);
+  return{kept,excludedCount:withVal.length-kept.length};
+}
+
 /* ═══ REPORT BUILDER — funzioni di analisi generiche, deterministiche, nessuna IA ═══
    Riusabili per qualsiasi ruolo/filtro/confronto: calcolano solo numeri.
    L'IA (altrove) narra questi risultati, non li produce mai. ═══ */
@@ -6657,6 +6784,9 @@ FUNCTIONAL_AREA_V2:
 - it: IT, Digital, Software, Data Engineer, System Administrator
 - business_development: BD, Licensing, Partnerships, M&A
 - general_management: General Manager, Country Manager, CEO, COO, Managing Director
+- healthcare_services: Farmacista, Infermiere, Fisioterapista, Medico, ruoli clinici/assistenziali senza funzione aziendale specifica
+- legal: Legal Counsel, Avvocato, Compliance legale, Diritto societario
+- customer_service: Customer Service, Assistenza clienti, Front Office, Receptionist
 
 SUB_AREA — codice breve (esempi):
 msl, medical_advisor, medical_manager, medical_director, medical_excellence, medical_information, rwe,
@@ -6698,7 +6828,7 @@ FIELD_HQ:
 
 THERAPEUTIC_AREA — solo se menzionata esplicitamente nel titolo o descrizione:
 THERAPEUTIC_AREA (livello 1) — solo se menzionata esplicitamente:
-oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, consumer_health, multiple, not_applicable
+oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, neuroscience, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, ta_consumer_health, multiple, not_applicable
 
 THERAPEUTIC_AREA_SUB (livello 2, più specifica) — usa se riconosci:
 leukemia, lymphoma, myeloma, prostate_cancer, breast_cancer, lung_cancer (sotto oncology)
@@ -6734,15 +6864,19 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
         classification_source:'groq_v2'
       };
 
-      // Campi v2 — sovrascrive sempre
-      if(result.functional_area_v2)patch.functional_area_v2=result.functional_area_v2;
+      // Campi v2 — sovrascrive sempre, MA solo se il valore è nella tassonomia
+      // ufficiale (evita che un'allucinazione dell'IA scriva un codice inventato,
+      // il tipo esatto di errore che ha corrotto questi campi in passato).
+      const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management','healthcare_services','legal','customer_service'];
+      const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
+      if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
       // Seniority — motore deterministico, non IA. Se non trova nessun segnale
       // (titolo/descrizione), NON sovrascrive il valore esistente.
       const deterministicSeniority=classifySeniorityDeterministic(listing.job_title,listing.job_description);
       if(deterministicSeniority)patch.seniority_v2=deterministicSeniority;
       if(result.field_hq)patch.field_hq=result.field_hq;
-      if(result.therapeutic_area)patch.therapeutic_area=result.therapeutic_area;
+      if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
       if(result.therapeutic_area_sub)patch.therapeutic_area_sub=result.therapeutic_area_sub;
       // Settore — dal profilo verificato dell'azienda (companies.sector_v2), non da una nuova stima IA
       const companySector0=listing.company_id?await getCompanySectorForCompanyId(listing.company_id):await getCompanySectorForListingId(listing.id);
@@ -6768,7 +6902,8 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
         quality:'Quality Assurance',clinical_operations:'Clinical Operations',
         drug_safety:'Pharmacovigilance',rd:'R&D',manufacturing:'Produzione',
         supply_chain:'Supply Chain',finance:'Finance',hr:'HR',
-        it:'IT',business_development:'Business Development',general_management:'altro'
+        it:'IT',business_development:'Business Development',general_management:'altro',
+        healthcare_services:'Healthcare',legal:'Legal',customer_service:'Customer Service'
       };
       if(result.functional_area_v2&&areaMap[result.functional_area_v2])patch.functional_area=areaMap[result.functional_area_v2];
 
@@ -6880,107 +7015,6 @@ const LS_SITES = [
     }
   }
 ];
-
-async function autoAnalyzeDescriptions(){
-  const btn=document.getElementById('btn-auto-analyze');
-  btn.textContent='⏳ Verifica...';
-  btn.disabled=true;
-
-  // Carica annunci con job_description MA senza sector_v2 o functional_area_v2
-  const toAnalyze=await api(
-    'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,company_id' +
-    '&job_description=not.is.null' +
-    '&or=(sector_v2.is.null,functional_area_v2.is.null)' +
-    '&order=published_date.desc.nullslast&limit=200'
-  );
-
-  if(!toAnalyze.length){
-    toast('✅ Tutti gli annunci con descrizione sono già stati analizzati!');
-    btn.textContent='⚡ Auto-analisi descrizioni';
-    btn.disabled=false;
-    return;
-  }
-
-  if(!confirm(`Trovati ${toAnalyze.length} annunci con descrizione da analizzare.\nProcedo automaticamente con AI?\n\nVerranno estratti: settore, area, seniority, RAL (se presente nel testo).`)){
-    btn.textContent='⚡ Auto-analisi descrizioni';
-    btn.disabled=false;
-    return;
-  }
-
-  let ok=0, failed=0, ralFound=0;
-
-  for(const listing of toAnalyze){
-    try{
-      btn.textContent=`⏳ ${ok+failed}/${toAnalyze.length}...`;
-
-      const prompt=`Sei un esperto HR nel settore Life Sciences italiano.
-Analizza questa descrizione di annuncio. Rispondi SOLO con JSON valido.
-
-Titolo: ${listing.job_title}
-Azienda: ${listing.company_name||'N/D'}
-Descrizione: ${(listing.job_description||'').substring(0,2000)}
-
-⚠️ REGOLA ASSOLUTA RAL: restituisci ral_min e ral_max SOLO se nel testo c'è un numero esplicito.
-MAI inventare o stimare. salary_text deve contenere il testo originale esatto, null se assente.
-
-JSON:
-{"ral_min":null,"ral_max":null,"salary_text":null,
-"functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
-"sub_area":"<codice sottoarea>",
-"field_hq":"<Field Based|Hybrid|Headquarters>",
-"therapeutic_area":"<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
-"location":"<città italiana>",
-"contract_type":"<TI|TD|Freelance|Stage|altro>"}`;
-
-      const rawText=await callAI(prompt,500);
-      const clean=rawText.replace(/```json|```/g,'').trim();
-      const result=JSON.parse(clean);
-
-      const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
-      const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
-
-      const patch={ai_analyzed:true,classified_at:new Date().toISOString(),classification_source:'groq_v2_auto'};
-
-      // RAL — solo se salary_text presente
-      patch.ral_min=null;
-      patch.ral_max=null;
-      if(result.salary_text&&result.salary_text!=='null'&&result.salary_text!==null){
-        const rMin=result.ral_min?parseInt(result.ral_min):null;
-        const rMax=result.ral_max?parseInt(result.ral_max):null;
-        if(rMin&&rMin>=10000&&rMin<=500000)patch.ral_min=rMin;
-        if(rMax&&rMax>=10000&&rMax<=500000)patch.ral_max=rMax;
-        if(patch.ral_min&&patch.ral_max&&patch.ral_min>patch.ral_max){patch.ral_min=null;patch.ral_max=null;}
-        if(patch.ral_min||patch.ral_max)ralFound++;
-      }
-
-      if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
-      if(result.sub_area)patch.sub_area=result.sub_area;
-      const detSen1=classifySeniorityDeterministic(listing.job_title,listing.job_description);
-      if(detSen1)patch.seniority_v2=detSen1;
-      const companySector1=await getCompanySectorForCompanyId(listing.company_id);
-      if(companySector1)patch.sector_v2=companySector1;
-      if(result.field_hq&&['Field Based','Hybrid','Headquarters'].includes(result.field_hq))patch.field_hq=result.field_hq;
-      if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
-      if(result.location&&!listing.location)patch.location=result.location;
-      if(result.contract_type&&['TI','TD','Freelance','Stage','altro'].includes(result.contract_type))patch.contract_type=result.contract_type;
-
-      await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
-      ok++;
-
-    }catch(e){
-      console.error('Auto-analyze error:',listing.job_title,e.message);
-      failed++;
-    }
-    await new Promise(r=>setTimeout(r,250)); // rate limit Groq
-  }
-
-  btn.textContent='⚡ Auto-analisi descrizioni';
-  btn.disabled=false;
-  toast(`✅ Analizzati ${ok} annunci — ${ralFound} RAL trovate${failed?`, ${failed} errori`:''}`, 'success');
-  loadListings();
-  refreshPendingBadges();
-  loadDashboard();
-}
 
 /* ── PULIZIA ANNUNCI ── */
 async function cleanupListings(){
@@ -8773,13 +8807,13 @@ Rispondi SOLO con questo JSON:
 async function saveCompany(){
   const name=document.getElementById('c-name').value.trim();
   if(!name){toast('Inserisci il nome azienda','error');return;}
-  const body={name,entity_type:document.getElementById('c-type').value,
+  const extraFields={entity_type:document.getElementById('c-type').value,
     website:document.getElementById('c-website').value||null,
     linkedin_url:document.getElementById('c-linkedin').value||null,
     indeed_url:document.getElementById('c-indeed').value||null,
     glassdoor_url:document.getElementById('c-glassdoor').value||null};
   try{
-    await api('companies','POST',body);
+    await findOrCreateCompany(name,null,extraFields,{overwrite:true});
     toast('Azienda salvata!');closeModal('modal-company');loadCompanies();
     ['c-name','c-website','c-linkedin','c-indeed','c-glassdoor'].forEach(id=>document.getElementById(id).value='');
   }catch(e){toast('Errore salvataggio','error');}
@@ -8883,29 +8917,17 @@ async function importCompaniesCSV(event){
         const found=await api('companies?id=eq.'+encodeURIComponent(id)+'&select=id');
         if(found.length)existingId=found[0].id;
       }
-      if(!existingId&&name){
-        const found=await api('companies?name=eq.'+encodeURIComponent(name)+'&select=id');
-        if(found.length)existingId=found[0].id;
-      }
-      if(!existingId&&ragioneSociale){
-        const found=await api('companies?ragione_sociale=eq.'+encodeURIComponent(ragioneSociale)+'&select=id');
-        if(found.length)existingId=found[0].id;
-      }
-
       if(existingId){
         if(Object.keys(patch).length){
           await api('companies?id=eq.'+existingId,'PATCH',patch);
           updated++;
         }else skipped++;
       }else if(name||ragioneSociale){
-        await api('companies','POST',{
-          name:name||ragioneSociale,
-          ragione_sociale:ragioneSociale||null,
-          entity_type:patch.entity_type||'life_sciences',
-          is_active:patch.is_active!==undefined?patch.is_active:true,
-          ...patch
-        });
-        created++;
+        await loadCompanyIndex();
+        const key1=normalizeCompanyName(name),key2=normalizeCompanyName(ragioneSociale);
+        const already=!!((key1&&_companyIndexCache.get(key1))||(key2&&_companyIndexCache.get(key2)));
+        await findOrCreateCompany(name||ragioneSociale,ragioneSociale||null,{entity_type:'life_sciences',is_active:true,...patch},{overwrite:true});
+        if(already)updated++;else created++;
       }else{
         skipped++;
       }

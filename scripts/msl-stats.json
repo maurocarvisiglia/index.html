@@ -1,0 +1,86 @@
+{
+  "nListings": 17,
+  "nCompanies": 8,
+  "ralMin": 34000,
+  "ralMax": 104500,
+  "avg": 64132,
+  "median": 65250,
+  "top3Share": 59,
+  "topEmployers": [
+    [
+      "ASTRAZENECA S.P.A.",
+      4
+    ],
+    [
+      "MSD ITALIA S.R.L.",
+      3
+    ],
+    [
+      "MERCK SERONO S.P.A.",
+      3
+    ],
+    [
+      "NEURAXPHARM ITALY S.P.A.",
+      2
+    ],
+    [
+      "ALEXION PHARMA ITALY SRL  - SOC. UNIPERSONALE -",
+      2
+    ],
+    [
+      "OPELLA HEALTHCARE ITALY S.R.L. O OPELLA HEALTHCARE ITALY S.R.L. SOCIETA' BENEFIT",
+      1
+    ],
+    [
+      "SANOFI S.R.L.",
+      1
+    ],
+    [
+      "ARGENX ITALY S.R.L.",
+      1
+    ]
+  ],
+  "seniorityStats": [
+    {
+      "seniority": "senior_specialist",
+      "count": 12,
+      "median": 67000
+    },
+    {
+      "seniority": "specialist",
+      "count": 3,
+      "median": 40000
+    },
+    {
+      "seniority": "lead",
+      "count": 1,
+      "median": 76000
+    },
+    {
+      "seniority": "entry_level",
+      "count": 1,
+      "median": 48000
+    }
+  ],
+  "byTA": {
+    "non specificata": 2,
+    "oncology": 5,
+    "multiple": 5,
+    "neurology": 1,
+    "cardiovascular": 2,
+    "diabetes": 1,
+    "gastroenterology": 1
+  },
+  "byGeo": {
+    "Lombardia / Nord Ovest": 12,
+    "Emilia-Romagna / Centro-Nord": 2,
+    "Lazio / Centro": 3
+  },
+  "byContract": {
+    "TI": 11,
+    "TD": 5,
+    "altro": 1
+  },
+  "excludedCount": 2,
+  "dateRange": "26 Giu 2026 – 5 Ago 2026"
+}

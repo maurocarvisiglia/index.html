@@ -1,0 +1,347 @@
+﻿
+==========================================================================================
+"Direttore/Direttrice di Farmacia" — 14 record
+==========================================================================================
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-06-27T08:31:28.855+00:00
+Competenze: Capacità Organizzative, Leadership, Capacità Di Lavorare In Una Realtà Strutturata, Passione Per La Professione Di Farmacista, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità Verso I Bisogni Dei Pazienti
+Profilo: Farmacista
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-07-03T09:52:57.718+00:00
+Competenze: Capacità Organizzative, Leadership, Lavoro In Realtà Strutturata, Entusiasmo, Passione, Curiosità, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità Verso I Bisogni Dei Pazienti, Gestione Del Team, Monitoraggio Kpi, Analisi Performance Economico-Finanziarie, Gestione Ordini, Gestione Magazzino, Gestione Attività
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-07-03T09:53:02.327+00:00
+Competenze: Capacità Organizzative, Leadership Verso Il Team, Capacità Di Lavorare In Una Realtà Strutturata, Entusiasmo, Passione, Curiosità Verso La Professione Di Farmacista, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità Verso I Bisogni Dei Pazienti, Gestione Del Team, Monitoraggio Dei Principali Kpi, Analisi Delle P
+
+[Farmacista Direttore] — DRMAX ECOMM ITALIA S.R.L. — classified_at: 2026-07-09T07:38:17.609+00:00
+Competenze: Gestione Della Farmacia, Gestione Della Turnistica Dei Dipendenti, Attenzione Ai Bisogni Del Paziente, Flessibilità, Propensione Alla Formazione, Capacità Di Lavorare In Gruppo
+Profilo: Farmacista, Laureato In Farmacia, Laureato In Chimica E Tecnologie Farmaceutiche
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-07-27T09:53:56.623+00:00
+Competenze: Capacità Organizzative, Leadership, Lavoro In Team, Entusiasmo, Passione, Curiosità, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità
+Profilo: Farmacista
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-07-27T09:57:39.124+00:00
+Competenze: Capacità Organizzative, Leadership, Monitoraggio Kpi, Analisi Performance Economico-Finanziarie, Gestione Ordini, Gestione Magazzino, Gestione Cassa, Relazione Con Professionisti E Operatori Sanitari, Fidelizzazione Clienti, Organizzazione Iniziative Per La Comunità, Coordinamento Team, Verifica Policy Aziendali, Conoscenza Adempimenti 
+
+[Farmacista Direttore] — DRMAX ECOMM ITALIA S.R.L. — classified_at: 2026-07-27T09:59:26.242+00:00
+Competenze: Attenzione Ai Bisogni Del Paziente, Flessibilità, Propensione Alla Formazione, Capacità Di Lavorare In Gruppo
+Profilo: Farmacista, Laureato In Chimica E Tecnologie Farmaceutiche
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: 2026-07-27T10:05:44.026+00:00
+Competenze: Capacità Organizzative, Leadership, Lavoro In Realtà Strutturate, Entusiasmo, Passione, Curiosità, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità Verso I Bisogni Dei Pazienti, Gestione Del Team, Analisi Kpi, Gestione Magazzino, Gestione Cassa, Marketing, Comunicazione
+Profilo: Farmacista, Direttore Di Farmaci
+
+[Direttore] — La farmacia — classified_at: 2026-08-11T09:56:16.522+00:00
+Competenze: Gestione Del Team, Organizzazione Orari, Gestione Turni, Gestione Ferie, Gestione Mansioni, Monitoraggio Kpi, Analisi Performance Economico-Finanziarie, Gestione Ordini, Gestione Magazzino, Gestione Attività Di Cassa, Relazione Con Professionisti Sanitari, Relazione Con Operatori Sanitari, Fidelizzazione Clienti, Organizzazione Iniziati
+
+[Direttore] — La farmacia — classified_at: 2026-08-11T09:56:30.263+00:00
+Competenze: Organizzazione, Leadership, Gestione Del Team, Monitoraggio Kpi, Analisi Performance Economico-Finanziarie, Gestione Ordini, Gestione Magazzino, Gestione Cassa, Relazione Con Professionisti Sanitari, Fidelizzazione Clienti, Organizzazione Iniziative, Rapporti Con Autorità Pubbliche E Sanitarie, Coordinamento, Lavoro In Team, Rispetto Po
+
+[Direttore] — La farmacia — classified_at: 2026-08-11T09:56:43.93+00:00
+Competenze: Gestione Del Team, Monitoraggio Dei Kpi, Analisi Delle Performance Economico-Finanziarie, Gestione Degli Ordini, Gestione Del Magazzino, Attività Di Cassa, Relazione Con Professionisti E Operatori Sanitari, Fidelizzazione Dei Clienti, Organizzazione Di Iniziative Verso La Comunità, Attività Informative, Rapporti Con Le Autorità Pubblich
+
+[Farmacista Direttore] — Benufarma — classified_at: null
+Competenze: Leadership, Capacità di ascolto, Empatia, Capacità di risoluzione dei problemi, Gestione della complessità, Orientamento agli obiettivi, Orientamento all'identità aziendale
+Profilo: Laureato in Farmacia, Laureato in CTF, Iscritto all'Ordine dei Farmacisti, Leader
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: null
+Competenze: Organizzative, Leadership, Lavorare In Realtà Strutturata, Entusiasmo, Passione, Curiosità, Proattività, Orientamento Al Risultato, Comunicative, Sensibilità Verso I Bisogni Dei Pazienti
+Profilo: Farmacista, Iscritto All’Ordine Dei Farmacisti
+
+[Farmacista Direttore] — LABORATORIO DELLA FARMACIA — classified_at: null
+Competenze: Capacità Organizzative, Leadership, Capacità Di Lavorare In Una Realtà Strutturata, Entusiasmo, Passione, Curiosità, Proattività, Orientamento Al Risultato, Capacità Comunicative, Sensibilità Verso I Bisogni Dei Pazienti
+Profilo: Direttore Di Farmacia, Farmacista
+
+==========================================================================================
+"Ottico/a abilitato" — 8 record
+==========================================================================================
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-06-29T15:43:02.211+00:00
+Competenze: Abilitazione Alla Professione Di Ottico, Conoscenze Di Ottica Di Base, Passione Per La Moda E Per Il Brand, Buona Conoscenza Delle Tecniche Di Vendita E Assistenza Clienti, Ottime Capacità Relazionali, Spirito Di Squadra
+Profilo: Ottico/A Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:14:22.578+00:00
+Competenze: Conoscenze Di Ottica Di Base, Passione Per La Moda, Conoscenza Delle Tecniche Di Vendita, Conoscenza Delle Tecniche Di Assistenza Clienti, Capacità Relazionali, Spirito Di Squadra
+Profilo: Ottico/A Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:14:27.913+00:00
+Competenze: Conoscenze Di Ottica Di Base, Passione Per La Moda, Passione Per Il Brand, Tecniche Di Vendita, Assistenza Clienti, Capacità Relazionali, Spirito Di Squadra
+Profilo: Ottico Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:14:35.593+00:00
+Competenze: Capacità Relazionali, Misurazione Della Vista, Orientamento Al Cliente, Conoscenza Prodotti (Lenti E Montature), Conoscenze Di Ottica Di Base, Passione Per La Moda, Passione Per Il Brand, Tecniche Di Vendita, Assistenza Clienti, Spirito Di Squadra
+Profilo: Ottico Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:14:47.706+00:00
+Competenze: Conoscenze Di Ottica Di Base, Passione Per La Moda, Passione Per Il Brand, Tecniche Di Vendita, Assistenza Clienti, Capacità Relazionali, Spirito Di Squadra
+Profilo: Ottico/A Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:14:51.57+00:00
+Competenze: Conoscenze Di Ottica Di Base, Passione Per La Moda E Per Il Brand, Tecniche Di Vendita, Assistenza Clienti, Capacità Relazionali, Spirito Di Squadra, Conoscenza Prodotti, Misurazione Della Vista
+Profilo: Ottico Abilitato
+
+[Marketing Specialist] — Luxottica — classified_at: 2026-07-27T10:23:44.574+00:00
+Competenze: Benessere Visivo, Lavorare A Contatto Con Il Pubblico, Controllo Della Vista, Gestione Dell’Area Vendita, Lavorare Con Strumenti E Prodotti Innovativi, Apprendimento Veloce, Lavoro Di Squadra, Effettuare Check Up Visivi, Supporto Clienti Applicazioni Lenti A Contatto, Accompagnamento Clienti Scelta Prodotti, Promozione Brand E Prodotti,
+
+[Ottico/Optometrista] — Luxottica — classified_at: 2026-08-11T10:03:08.113+00:00
+Competenze: Tecniche Di Vendita, Assistenza Clienti, Capacità Relazionali, Spirito Di Squadra, Conoscenza Dei Prodotti, Misurazione Della Vista
+Profilo: Ottico Abilitato
+
+==========================================================================================
+"Detailer" — 5 record
+==========================================================================================
+
+[Informatore Scientifico del Farmaco] — Beiersdorf — classified_at: 2026-07-09T07:37:15.45+00:00
+Competenze: Comunicazione scientifica, Capacità di presentazione, Gestione relazioni con medici, farmacisti e KOL, Gestione autonoma del territorio, Pianificazione strutturata delle attività sul campo, Approccio analitico e orientato ai dati, Autonomia, Orientamento ai risultati, Spirito di squadra, Conoscenza della dermocosmesi
+Profilo: Laureato i
+
+[Medical Representative] — Beiersdorf — classified_at: 2026-08-11T10:03:02.002+00:00
+Competenze: Conoscenza della dermocosmesi, Comunicazione scientifica, Gestione autonoma del territorio, Pianificazione strutturata delle attività sul campo, Relazioni con medici, farmacisti e KOL, Analisi orientata ai dati, Presentazione e comunicazione con i professionisti sanitari, Autonomia e orientamento ai risultati, Buona conoscenza della lin
+
+[Medical Representative] — Beiersdorf — classified_at: 2026-08-11T10:07:54.861+00:00
+Competenze: Comunicazione scientifica, Presentazione, Gestione relazioni con medici, Gestione relazioni con farmacisti, Gestione relazioni con Key Opinion Leader (KOL), Gestione autonoma del territorio, Pianificazione strutturata delle attività sul campo, Approccio analitico, Orientamento ai dati, Autonomia, Orientamento ai risultati, Spirito di sq
+
+[Informatore Scientifico del Farmaco] — Beiersdorf — classified_at: null
+Competenze: Comunicazione scientifica, Capacità di presentazione, Gestione delle relazioni con medici, farmacisti e KOL, Gestione autonoma del territorio, Pianificazione strutturata delle attività sul campo, Approccio analitico e orientato ai dati, Autonomia, Orientamento ai risultati, Spirito di squadra
+Profilo: Laureato in discipline scientifiche
+
+[Informatore Scientifico del Farmaco] — Beiersdorf — classified_at: null
+Competenze: Comunicazione scientifica, Capacità di presentazione, Gestione autonoma del territorio, Pianificazione strutturata delle attività sul campo, Approccio analitico, Orientamento ai dati, Autonomia, Orientamento ai risultati, Spirito di squadra, Conoscenza della dermocosmesi, Gestione delle relazioni con medici, farmacisti e KOL
+Profilo: La
+
+==========================================================================================
+"Senior Regional Sales Manager, Trauma (North Italy)" — 5 record
+==========================================================================================
+
+[Area Manager Commercial] — Stryker — classified_at: 2026-07-27T09:52:04.596+00:00
+Competenze: Leadership, Sales management, Forecasting, Pipeline development, Budget accountability, Stakeholder management, Relationship management, KOL engagement, Indirect channel management, CRM systems, Data-driven decision making, Communication (Italian & English), Financial acumen, Compliance and ethics, Medical devices / orthopedics knowledg
+
+[Area Manager Commercial] — Stryker — classified_at: 2026-07-27T10:01:23.875+00:00
+Competenze: Leadership, Coaching, Sviluppo team, Gestione delle performance, Previsione vendite, Sviluppo pipeline, Responsabilità di budget, Costruzione relazioni, Acquisizione clienti, Gestione ecosistema complesso, Collaborazione interfunzionale, Analisi dati performance, Implementazione azioni mirate, Gestione del cambiamento, Innovazione, Semp
+
+[Field Sales Manager] — Stryker — classified_at: 2026-08-11T09:50:31.307+00:00
+Competenze: Leadership, Coaching, Team development, Sales performance management, Forecasting, Pipeline development, Budget management, Stakeholder management, Customer relationship management, Business growth, New customer acquisition, Channel management, Cross-functional collaboration, Customer experience, Performance analysis, Change management,
+
+[Field Sales Manager] — Stryker — classified_at: 2026-08-11T09:50:43.888+00:00
+Competenze: Leadership, Sales performance, Forecasting, Pipeline development, Budget accountability, Relationship building, Stakeholder management, Customer acquisition, Channel management, Cross-functional collaboration, Customer experience, Performance analysis, Change management, Innovation, Simplification, Scalability, Best practice sharing, Em
+
+[Field Sales Manager] — Stryker — classified_at: 2026-08-11T10:07:42.816+00:00
+Competenze: Leadership, Sales management, Forecasting, Pipeline development, Budget accountability, Stakeholder management, Relationship management, KOL engagement, Indirect channel management, CRM systems, Data-driven decision making, Communication (Italian & English), Financial acumen, Compliance and ethics, Medical devices / orthopedics knowledg
+
+==========================================================================================
+"Informatore Specialist M/F" — 4 record
+==========================================================================================
+
+[Informatore Scientifico del Farmaco] — Kolinpharma — classified_at: 2026-07-03T09:54:17.579+00:00
+Competenze: Mappatura del territorio, Contatto con medici, Gestione colloquio, Rendicontazione visite, Motivazione, Entusiasmo, Competenze di vendita, Organizzazione, Strategia, Comunicazione
+Profilo: Laureato magistrale in discipline scientifiche (scienze biologiche, biotecnologie, farmacia, CTF e affini), Informatore scientifico
+
+[Informatore Scientifico del Farmaco] — Kolinpharma — classified_at: 2026-07-27T10:18:17.467+00:00
+Competenze: Preparazione scientifica, Motivazione, Entusiasmo, Competenze commerciali, Capacità di comunicazione, Gestione del colloquio, Capacità di rendicontazione
+Profilo: Laureato in discipline scientifiche (Scienze Biologiche, Biotecnologie, Farmacia, CTF)
+
+[Medical Information Specialist] — Kolinpharma — classified_at: 2026-08-11T09:53:30.707+00:00
+Competenze: Mappatura del territorio, Contatto con i medici, Gestione del colloquio con i medici, Attività di rendicontazione visite, Competenze di vendita, Organizzazione, Strategia, Comunicazione
+Profilo: Laureato magistrale in discipline scientifiche, Informatore Scientifico
+
+[Medical Information Specialist] — Kolinpharma — classified_at: 2026-08-11T09:53:32.393+00:00
+Competenze: Preparazione scientifica, Attività commerciale, Organizzazione, Strategia, Comunicazione, Vendita
+Profilo: Laureato magistrale in discipline scientifiche
+
+==========================================================================================
+"Project Engineer" — 4 record
+==========================================================================================
+
+[Project Manager] — Boehringer Ingelheim Italia S.p.A. — classified_at: 2026-07-27T10:29:25.689+00:00
+Competenze: Conoscenza dei requisiti normativi GxP, Attività di qualificazione (IQ/OQ/PQ), Pacchetto Microsoft Office, Excel, Word, PowerPoint, Outlook, AutoCAD, Metodologie e strumenti di project management (MS Project), Comunicazione, Capacità interpersonali, Capacità organizzative, Capacità di prioritizzazione, Proattività, Apprendimento continu
+
+[Process Engineer] — Nephrocare — classified_at: 2026-08-11T09:51:11.025+00:00
+Competenze: AutoCAD 2D, AutoCAD Inventor (plus), Microsoft Office, GMP, Lean Manufacturing, Siemens PLCs, motion control systems, pneumatic circuits, electrical schematics, Minitab, SAP, project management, regulatory compliance, cross-functional collaboration
+Profilo: Mechanical Engineer, Electrical Engineer, Industrial Engineer, Process Engineer
+
+[Process Engineer] — Kedrion — classified_at: 2026-08-11T09:53:04.042+00:00
+Competenze: Gestione delle attività e della documentazione necessaria alla corretta gestione dei progetti di investimento di sito, Pianificazione dei progetti di investimento di sito, Gestione degli interventi relativi ai progetti di sito effettuati da tecnici di ditte esterne, Analisi delle criticità/difettosità degli impianti, Formulazione di pro
+
+[Process Engineer] — Fresenius medical care — classified_at: 2026-08-11T09:54:26.919+00:00
+Competenze: Project Management, Technical Documentation, Feasibility Studies, Risk Assessment, Process Improvement, Gmp Standards, Lean Manufacturing, Autocad 2D, Microsoft Office, Analytical Skills, Problem-Solving, Communication Skills, Stakeholder Management, Cross-Functional Teamwork, International Teamwork, Organizational Skills, Project Coord
+
+==========================================================================================
+"Regional Sales Manager, Extremities (Northern & Central Italy)" — 4 record
+==========================================================================================
+
+[Field Sales Manager] — Stryker — classified_at: 2026-07-03T12:14:36.276+00:00
+Competenze: CRM, Microsoft Office, Sales, Marketing, Leadership, People management, Strategic relationship building, Forecasting, Stakeholder management, Healthcare industry knowledge, Medical Devices, Operating room environment experience, Analytical skills, Communication
+Profilo: Regional Sales Manager
+
+[Area Manager Commercial] — Stryker — classified_at: 2026-07-27T10:00:28.177+00:00
+Competenze: Leadership, Gestione del cambiamento, Capacità analitiche, Problem solving, Comunicazione, Gestione degli stakeholder, Competenze commerciali, Gestione delle relazioni con i clienti, Gestione del talento, Previsione delle vendite, Competenza CRM, Competenza Microsoft Office, Gestione delle priorità
+Profilo: Laureato in Business, Ingegne
+
+[Area Manager Commercial] — Stryker — classified_at: 2026-07-27T10:00:50.549+00:00
+Competenze: Leadership, Gestione del cambiamento, Capacità analitiche, Problem solving, Gestione delle priorità, Comunicazione, Gestione degli stakeholder, Crm, Microsoft Office, Coaching, Sviluppo del talento, Costruzione di relazioni strategiche, Previsione delle vendite, Reclutamento, Onboarding
+Profilo: Manager Commerciale, Ingegnere, Esperto d
+
+[Area Manager Commercial] — Stryker — classified_at: 2026-07-27T10:01:16.031+00:00
+Competenze: Leadership, Coaching, Sviluppo del team, Performance commerciale, Gestione pipeline di vendita, Previsione vendite, Gestione relazioni strategiche, Relazioni con i clienti, Collaborazione interfunzionale, Analisi performance di vendita, Gestione del cambiamento, Reclutamento, Onboarding, Sviluppo del talento, Gestione cicli di vendita c
+
+==========================================================================================
+"Field Service Engineer" — 3 record
+==========================================================================================
+
+[Field Service Engineer] — ARJO ITALIA S.P.A. — classified_at: 2026-06-27T08:23:11.898+00:00
+Competenze: Elettronica, Elettrotecnica, Meccanica, Idraulica, MS Office, Inglese, Conoscenza apparecchiature medicali (preferenziale)
+Profilo: Perito Elettronico, Perito Elettrotecnico
+
+[Industry Technical Consultant] — Sintesy — classified_at: 2026-07-27T10:02:26.375+00:00
+Competenze: Lettura E Interpretazione Di Schemi Elettrici, Uso Della Strumentazione Di Misura (Multimetro, Oscilloscopio), Conoscenza Dei Fondamentali Di Elettronica Ed Elettrotecnica, Ricerca Guasti In Ambito Elettrico/Elettrotecnico, Dimestichezza Con Il Pc, Manualità, Conoscenza Dei Requisiti Normativi Del Regolamento Ue 2017/745 (Mdr), Conoscen
+
+[Industry Technical Consultant] — Philips — classified_at: 2026-07-27T10:25:05.574+00:00
+Competenze: N/A
+Profilo: Tecnico Per Assistenza, Ingegnere Per Assistenza
+
+==========================================================================================
+"Clinical Sales Specialist North-East Italy - Vascular" — 3 record
+==========================================================================================
+
+[Informatore Scientifico del Dispositivo Medico] — Bd — classified_at: 2026-07-06T08:41:52.067+00:00
+Competenze: Business acumen, Eccellenti capacità di comunicazione, Comportamento professionale, Forte pensiero analitico e concettuale, Stile di lavoro orientato agli obiettivi e alle prestazioni, Automotivato, Responsabile, Forte spirito di squadra, Competenza in MS Office e altri software pertinenti
+Profilo: Laureato in campo scientifico, Profess
+
+[Clinical Sales Specialist] — Bd — classified_at: 2026-07-27T09:57:20.846+00:00
+Competenze: University degree in a scientific field or medical/commercial training, Minimum 3 years of experience in Peripheral Vascular, Strong business acumen, Excellent communication skills, Strong analytical and conceptual thinking, Goal- and performance-oriented, Self-motivated and team player, Proficient in MS Office, Willingness to travel do
+
+[Clinical Sales Specialist] — Bd — classified_at: 2026-07-27T09:59:15.914+00:00
+Competenze: Business acumen, Comunicazione eccellente, Professionalità, Pensiero analitico e concettuale, Orientamento agli obiettivi e alla performance, Automotivazione, Responsabilità, Spirito di squadra, Competenza in MS Office e software pertinenti
+Profilo: Laureato in campo scientifico, Professionista con formazione medica/commerciale, Special
+
+==========================================================================================
+"Technology Sales Representative (Emilia Romagna)" — 2 record
+==========================================================================================
+
+[Sales Specialist] — MSD ITALIA S.R.L. — classified_at: 2026-07-06T08:46:26.817+00:00
+Competenze: Relationship Building, Comunicazione Interpersonale, Apprendimento Continuo, Competenze Tecniche, Proattività, Organizzazione, Gestione del Territorio, Gestione delle Priorità, Gestione del Tempo, Analisi, Problem Solving, Lavoro Indipendente, Lavoro Collaborativo, Account Management, Customer Management, Data Analysis, Market Analytics
+
+[Area Manager Commercial] — MSD ITALIA S.R.L. — classified_at: 2026-07-27T09:52:17.496+00:00
+Competenze: Account Management, Customer Management, Data Analysis, Market Analytics, Product Knowledge, Sales Reporting, Technical Knowledge, Technical Product Sales, Veterinary Sciences
+Profilo: Dairy Farmer, Farm Manager, Veterinary Professional, Animal Nutritionist
+
+==========================================================================================
+"Clinical Pathology Research Associate" — 2 record
+==========================================================================================
+
+[Research Associate] — Merck — classified_at: null
+Competenze: Flow cytometer operation, Instrument compensation, Acquisition, Data analysis, Hematology, Clinical chemistry, Coagulation, Urinalysis, Immunophenotyping, Multicolor flow cytometry panel design, Instrument calibration, Maintenance, Troubleshooting, Data review, Attention to detail, Organizational skills, Time-management, Teamwork, Commu
+
+[Laboratory Researcher] — Merck — classified_at: null
+Competenze: Operazione Di Citometro A Flusso, Compensazione Dello Strumento, Acquisizione E Analisi Dello Strumento, Esperienza In Laboratori Biomedici, Farmaceutici O Cro, Attenzione Ai Dettagli, Impegno Per La Qualità Dei Dati, Capacità Organizzative, Gestione Del Tempo, Orientamento Al Team, Capacità Di Comunicazione Efficaci, Capacità Di Lavora
+
+==========================================================================================
+"External Manufacturing Manager" — 2 record
+==========================================================================================
+
+[Supply Chain Manager] — CHIESI ITALIA SPA — classified_at: 2026-06-27T07:53:43.923+00:00
+Competenze: Problem solving, Gestione delle priorità, Gestione dei rischi, Gestione della supply chain, Gestione degli stakeholder, Capacità analitiche, Gestione del personale, Conoscenza SAP, Conoscenza IBP, Lavoro interfunzionale
+Profilo: Professionista della Supply Chain, Laureato in discipline scientifiche, Ingegnere
+
+[Production Manager] — CHIESI ITALIA SPA — classified_at: 2026-07-27T10:12:23.596+00:00
+Competenze: Risoluzione dei problemi, Gestione delle priorità, Gestione dei rischi, Gestione della supply chain, Gestione degli stakeholder, Capacità analitiche, Gestione del personale, Conoscenza SAP, Conoscenza IBP, Lavoro interfunzionale
+Profilo: Professionista della Supply Chain, Laureato in discipline scientifiche, Ingegnere
+
+==========================================================================================
+"Technology Transfer Engineer" — 2 record
+==========================================================================================
+
+[Business Development Manager] — Beaver-visitec international italy — classified_at: 2026-06-29T06:51:11.137+00:00
+Competenze: Problem Solving, Analisi Dati, Progettazione Di Processo, Sviluppo Prototipi, Gestione Del Rischio, Ingegneria Elettrica, Elettronica, Ecad, Progettazione Meccanica, Mcad, Ingegneria Di Sistema, Sviluppo Prodotto, Produzione, Supply Chain, Sourcing, Operations, Pianificazione Della Capacità, Documentazione Tecnica, Lean Manufacturing, S
+
+[Process Engineer] — Beaver-visitec international italy — classified_at: 2026-07-27T10:29:14.134+00:00
+Competenze: Risoluzione dei problemi, Analisi Dati, Progettazione Di Processo, Sviluppo Prototipi, Gestione Del Rischio, Ingegneria Elettrica, Elettronica, ECAD, Progettazione Meccanica, MCAD, Ingegneria Di Sistema, Sviluppo Prodotto, Produzione, Catena di fornitura, Approvvigionamento, Operations, Pianificazione Della Capacità, Documentazione Tecn
+
+==========================================================================================
+"Third Party Manufactory Junior" — 2 record
+==========================================================================================
+
+[Supply Chain Manager] — Davines — classified_at: 2026-07-27T09:53:25.437+00:00
+Competenze: Capacità analitiche, Orientamento ai risultati, Interesse nei processi di produzione
+Profilo: Laureato Magistrale in Ingegneria Gestionale, Laureato Magistrale in Economia
+
+[Operatore di Produzione] — Davines — classified_at: 2026-08-11T10:04:05.044+00:00
+Competenze: configurazione ERP, MRP, pianificazione delle attività lavorative, pianificazione dettagliata delle risorse, gestione dei percorsi di sviluppo prodotto con terze parti, gestione delle relazioni con stakeholder e terze parti, conoscenza della lingua inglese, elevate capacità analitiche, orientamento ai risultati, interesse nei processi d
+
+==========================================================================================
+"I&C Technician" — 2 record
+==========================================================================================
+
+[Manutentore] — Newcleo — classified_at: 2026-07-27T10:27:22.586+00:00
+Competenze: Instrumentation, Control systems, Automation, PLC, Test facility design, Commissioning, Technical documentation, Project coordination
+Profilo: Instrumentation and Control Technician
+
+[Process Engineer] — Newcleo — classified_at: 2026-08-11T09:50:41.95+00:00
+Competenze: Instrumentation, Control, Automation, Technical check, Test programs, I&C component selection, Material quantity estimates, Commissioning, Facility operation manuals, Design and analysis principles for large or complex systems
+Profilo: Technical school diploma in Electronics or Automation, I&C Technician
+
+==========================================================================================
+"Maintenance & Engineering Coordinator" — 2 record
+==========================================================================================
+
+[Manutentore] — Solenis — classified_at: 2026-07-09T07:33:54.642+00:00
+Competenze: Autocad, Microsoft Office, Documentazione Tecnica, Impianti Industriali, Gestione Della Manutenzione, Capacità Organizzative, Pianificazione, Problem Solving, Miglioramento Continuo, Gestione Priorità, Capacità Relazionali, Collaborazione, Precisione, Attenzione A Sicurezza, Qualità E Conformità
+Profilo: Ingegnere Meccanico, Ingegnere C
+
+[Process Engineer] — Solenis — classified_at: 2026-07-27T10:20:40.657+00:00
+Competenze: AutoCAD, Microsoft Office, Inglese fluente, Documentazione tecnica, Manutenzione industriale, Gestione fornitori e appaltatori, Capacità organizzative e di pianificazione, Risoluzione dei problemi, Miglioramento continuo, Sicurezza, qualità e conformità
+Profilo: Ingegnere Meccanico, Ingegnere Chimico, Ingegnere Elettrico, Ingegnere Elet
+
+==========================================================================================
+"OPEX Expert" — 2 record
+==========================================================================================
+
+[Process Engineer] — FARMACEUTICI FORMENTI S.P.A. — classified_at: 2026-06-26T09:35:31.265+00:00
+Competenze: Lean, Six Sigma, OPEX, Continuous Improvement, TPM, Kaizen, 5S, VSM, SMED, A3 problem solving, Root cause analysis, OEE measurement, Power BI, Excel, Minitab, Process engineering, Project Management, Change management, Cross-functional collaboration, Bilingual communication (Italian and English)
+Profilo: Ingegnere Industriale, Ingegnere
+
+[Business Development Manager] — FARMACEUTICI FORMENTI S.P.A. — classified_at: 2026-06-29T06:49:07.125+00:00
+Competenze: Continuous improvement, Grünenthal’s Business System (GOBS), Lean, Six Sigma, TPM concepts, Knowledge transfer, Good manufacturing practices, Best demonstrated practices, Sviluppo presentazioni, Standardizzazione processi, Materiali di formazione, Iniziative di trasformazione culturale, SMED, MFA (Material Flow Analysis), Process engine
+
+==========================================================================================
+"Global Supply Chain Planning Specialist" — 2 record
+==========================================================================================
+
+[Supply Planner] — Amplifon — classified_at: 2026-07-27T09:56:15.284+00:00
+Competenze: Conoscenza delle metriche di performance delle scorte (fatturato, contributo al margine, COGS), Competenze avanzate in Excel e BI, Conoscenza di ERP/Oracle, Familiarità con strumenti di previsione/rifornimento, Competenze di modellazione analitica e statistica, Risoluzione strutturata dei problemi, Competenze di comunicazione e collabor
+
+[Supply Chain Manager] — Amplifon — classified_at: 2026-08-11T09:55:49.452+00:00
+Competenze: Inventory management, Forecasting, Supply chain planning, Stock performance metrics, Excel, BI skills, ERP/Oracle knowledge, Forecasting/replenishment tools, Analytical skills, Statistical modelling skills, Structured problem-solving, Communication skills, Collaboration skills, Attention to detail, Data reliability, S&OP, Demand plannin
+
+==========================================================================================
+"Direttore/Direttrice a Porto Ercole (Grosseto)" — 2 record
+==========================================================================================
+
+[Farmacista Direttore] — Farmacia cocchi — classified_at: 2026-07-27T10:05:53.342+00:00
+Competenze: Capacità organizzative, Leadership, Capacità di lavorare in una realtà strutturata, Entusiasmo, Passione, Curiosità, Proattività, Orientamento al risultato, Capacità comunicative, Sensibilità verso i bisogni dei pazienti
+Profilo: Direttore di Farmacia, Direttrice di Farmacia, Farmacista, Iscritto all’Ordine dei Farmacisti
+
+[Direttore] — Lafarmacia.alconsiglio — classified_at: 2026-08-11T09:56:20.171+00:00
+Competenze: Gestione del team, Organizzazione orari, Gestione turni, Gestione ferie, Gestione mansioni, Monitoraggio KPI, Analisi performance economico-finanziarie, Gestione ordini, Gestione magazzino, Gestione attività di cassa, Relazione con professionisti sanitari, Relazione con operatori sanitari, Fidelizzazione clienti, Organizzazione iniziati
+
+==========================================================================================
+"Anatomic Pathology Technician" — 2 record
+==========================================================================================
+
+[Laboratory Researcher] — Merck — classified_at: 2026-07-06T08:42:27.485+00:00
+Competenze: Autopsie Su Specie Roditori E Non Roditori, Isto-Tecnica Di Routine (Processazione, Inclusione, Sezionamento E Colorazione Dei Tessuti), Attività Di Laboratorio Ausiliarie, Conformità Agli Standard Good Laboratory Practice (Glp), Competenza In Ms Office Suite, Competenza Nei Sistemi Operativi Windows, Esperienza Con Applicazioni Di Gest
+
+[Tecnico di Laboratorio] — Merck — classified_at: 2026-08-11T09:54:49.96+00:00
+Competenze: High school diploma (5-year), Italian language, English language, MS Office, Windows operating systems, Laboratory management applications, Digital pathology, Team collaboration, Time management, Proactive attitude, Autonomy
+Profilo: Laboratory Technician, Histology Technician
+
+==========================================================================================
+"Managing Director" — 2 record
+==========================================================================================
+
+[Managing Director] — NXSTAGE ITALY S.P.A. — classified_at: 2026-07-27T09:55:48.062+00:00
+Competenze: Sales leadership, Marketing leadership, Customer relationship management, Pricing, Tender management, Strategic account management, Cross-functional leadership, MedTech/healthcare industry knowledge, Procurement and compliance, Negotiation, Communication, Change management, Data analysis, MS Office, CRM, SAP, Italian fluency, English fl
+
+[Country Manager] — FRESENIUS HEMOCARE — classified_at: 2026-07-27T10:00:38.287+00:00
+Competenze: Leadership, Trasformazione Commerciale, Gestione Clienti, Pricing, Gestione Gare D'Appalto, Gestione Account Strategici, Gestione Team, Gestione Della Complessità, Allineamento Stakeholder, Conseguimento Risultati, Negoziazione, Comunicazione, Guida Al Cambiamento E All'Innovazione, Competenza Ms Office, Competenza Crm/Sap, Analisi Dati

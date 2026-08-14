@@ -14,8 +14,8 @@ const SB_URL = process.env.SUPABASE_URL || 'https://ehrayeltqottgvkzvbdk.supabas
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TAVILY_KEY = process.env.TAVILY_API_KEY;
 const BRAVE_KEY = process.env.BRAVE_SEARCH_API_KEY;
-const GROQ_KEY = process.env.GROQ_API_KEY;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const TOGETHER_KEY = process.env.TOGETHER_API_KEY;
+const FIRECRAWL_KEY = process.env.FIRECRAWL_API_KEY;
 
 if (!SB_KEY) {
   console.error('❌ SUPABASE_SERVICE_ROLE_KEY non configurato');
@@ -25,7 +25,7 @@ if (!SB_KEY) {
 const supabase = createClient(SB_URL, SB_KEY);
 
 // ════════════════════════════════════════════════════════════
-// LOGGER
+// LOGGER + RETRY HELPER
 // ════════════════════════════════════════════════════════════
 
 const log = {
@@ -34,6 +34,20 @@ const log = {
   warn: (msg) => console.warn(`⚠️  ${msg}`),
   error: (msg) => console.error(`❌ ${msg}`),
 };
+
+// Retry helper con exponential backoff
+async function retryWithBackoff(fn, maxRetries = 3, initialDelayMs = 1000) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries - 1) throw error;
+      const delayMs = initialDelayMs * Math.pow(2, attempt);
+      log.warn(`Retry ${attempt + 1}/${maxRetries - 1} in ${delayMs}ms...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
 
 // ════════════════════════════════════════════════════════════
 // FASE 1: SELEZIONA AZIENDE DALLA CODA
@@ -133,20 +147,22 @@ async function findCompanyPage(company) {
     return website;
   }
 
-  // PORTA 1: TAVILY
+  // PORTA 1: TAVILY con retry
   if (TAVILY_KEY) {
     try {
       log.info('🔍 Tavily: ricerca pagina azienda...');
-      const res = await axios.post(
-        'https://api.tavily.com/search',
-        {
-          api_key: TAVILY_KEY,
-          query: `${name} pharma about company site:.it`,
-          include_answer: false,
-          max_results: 5,
-        },
-        { timeout: 10000 }
-      );
+      const res = await retryWithBackoff(async () => {
+        return await axios.post(
+          'https://api.tavily.com/search',
+          {
+            api_key: TAVILY_KEY,
+            query: `${name} pharma about company site:.it`,
+            include_answer: false,
+            max_results: 5,
+          },
+          { timeout: 10000 }
+        );
+      }, 2);
 
       if (res.data.results?.length > 0) {
         const url = res.data.results[0].url;
@@ -158,18 +174,20 @@ async function findCompanyPage(company) {
     }
   }
 
-  // PORTA 2: BRAVE SEARCH
+  // PORTA 2: BRAVE SEARCH (fallback) con retry
   if (BRAVE_KEY) {
     try {
-      log.info('🔍 Brave: ricerca pagina azienda...');
-      const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
-        headers: { 'X-Subscription-Token': BRAVE_KEY },
-        params: {
-          q: `${name} about company site:.it`,
-          count: 5,
-        },
-        timeout: 10000,
-      });
+      log.info('🔍 Brave: ricerca pagina azienda (fallback)...');
+      const res = await retryWithBackoff(async () => {
+        return await axios.get('https://api.search.brave.com/res/v1/web/search', {
+          headers: { 'X-Subscription-Token': BRAVE_KEY },
+          params: {
+            q: `${name} about company site:.it`,
+            count: 5,
+          },
+          timeout: 10000,
+        });
+      }, 2);
 
       if (res.data.web?.results?.length > 0) {
         const url = res.data.web.results[0].url;
@@ -181,18 +199,20 @@ async function findCompanyPage(company) {
     }
   }
 
-  // PORTA 3: LinkedIn fallback
+  // PORTA 3: LinkedIn fallback con retry
   if (BRAVE_KEY) {
     try {
       log.info('🔍 LinkedIn fallback...');
-      const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
-        headers: { 'X-Subscription-Token': BRAVE_KEY },
-        params: {
-          q: `${name} site:linkedin.com/company`,
-          count: 3,
-        },
-        timeout: 10000,
-      });
+      const res = await retryWithBackoff(async () => {
+        return await axios.get('https://api.search.brave.com/res/v1/web/search', {
+          headers: { 'X-Subscription-Token': BRAVE_KEY },
+          params: {
+            q: `${name} site:linkedin.com/company`,
+            count: 3,
+          },
+          timeout: 10000,
+        });
+      }, 2);
 
       if (res.data.web?.results?.length > 0) {
         const url = res.data.web.results[0].url;
@@ -214,13 +234,15 @@ async function findCompanyPage(company) {
 async function extractPageText(url) {
   log.info(`📄 Estrazione testo da: ${url.substring(0, 60)}...`);
 
+  // PORTA 1: Jina Reader con retry
   try {
-    // Jina Reader
     const jinaUrl = `https://r.jina.ai/${url}`;
-    const response = await axios.get(jinaUrl, {
-      headers: { Accept: 'application/json' },
-      timeout: 15000,
-    });
+    const response = await retryWithBackoff(async () => {
+      return await axios.get(jinaUrl, {
+        headers: { Accept: 'application/json' },
+        timeout: 15000,
+      });
+    }, 2);
 
     const markdown = response.data.data?.content || response.data.content;
 
@@ -228,12 +250,40 @@ async function extractPageText(url) {
       throw new Error('Contenuto estratto troppo breve');
     }
 
-    log.success(`Estratti ${markdown.length} caratteri`);
+    log.success(`Jina estratti ${markdown.length} caratteri`);
     return markdown;
   } catch (error) {
     log.warn(`⚠️  Jina estrazione fallita: ${error.message}`);
-    throw new Error(`❌ Estrazione testo fallita per ${url}`);
   }
+
+  // PORTA 2: Firecrawl fallback con retry
+  if (FIRECRAWL_KEY) {
+    try {
+      log.info('🔥 Firecrawl: estrazione testo (fallback)...');
+      const response = await retryWithBackoff(async () => {
+        return await axios.post('https://api.firecrawl.dev/v0/scrape', {
+          url: url,
+          formats: ['markdown'],
+        }, {
+          headers: { Authorization: `Bearer ${FIRECRAWL_KEY}` },
+          timeout: 30000,
+        });
+      }, 2);
+
+      const markdown = response.data.markdown;
+
+      if (!markdown || markdown.length < 100) {
+        throw new Error('Contenuto estratto troppo breve');
+      }
+
+      log.success(`Firecrawl estratti ${markdown.length} caratteri`);
+      return markdown;
+    } catch (error) {
+      log.warn(`⚠️  Firecrawl fallito: ${error.message}`);
+    }
+  }
+
+  throw new Error(`❌ Estrazione testo fallita per ${url}`);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -277,14 +327,18 @@ ISTRUZIONI CRITICHE:
 
 Ritorna SOLO il JSON, niente altro.`;
 
-  // Tenta Groq
-  if (GROQ_KEY) {
-    try {
-      log.info('🧠 Groq: strutturazione dati...');
-      const response = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
+  // PORTA 1: Together AI con retry
+  if (!TOGETHER_KEY) {
+    throw new Error('TOGETHER_API_KEY non configurata: impossibile strutturare i dati');
+  }
+
+  try {
+    log.info('🧠 Together AI: strutturazione dati...');
+    const response = await retryWithBackoff(async () => {
+      return await axios.post(
+        'https://api.together.xyz/v1/chat/completions',
         {
-          model: 'llama-3.1-8b-instant',
+          model: 'meta-llama/Llama-3.1-8b-instruct-turbo',
           temperature: 0,
           messages: [
             {
@@ -295,49 +349,27 @@ Ritorna SOLO il JSON, niente altro.`;
           ],
         },
         {
-          headers: { Authorization: `Bearer ${GROQ_KEY}` },
+          headers: { Authorization: `Bearer ${TOGETHER_KEY}` },
           timeout: 30000,
         }
       );
+    }, 2);
 
-      const jsonStr = response.data.choices[0].message.content;
-      const parsed = JSON.parse(jsonStr);
-      log.success(`Groq strutturato`);
-      return { ...parsed, llm_used: 'groq' };
-    } catch (e) {
-      log.warn(`⚠️  Groq fallito: ${e.message}`);
-    }
+    const jsonStr = response.data.choices[0].message.content;
+    const parsed = JSON.parse(jsonStr);
+    log.success(`Together AI strutturato`);
+    return { ...parsed, llm_used: 'together' };
+  } catch (e) {
+    const reason = e.response?.status
+      ? `HTTP ${e.response.status} ${JSON.stringify(e.response.data)}`
+      : e.message;
+    // Non salviamo mai uno schema vuoto come se fosse un risultato valido:
+    // un fallimento della strutturazione LLM deve propagarsi come errore
+    // e finire nel normale ciclo di retry/backoff della coda, altrimenti
+    // l'azienda viene marcata "completed" con dati tutti null (vedi bug
+    // storico: 11 aziende salvate come arricchite al 0% di completezza).
+    throw new Error(`Strutturazione dati LLM fallita: ${reason}`);
   }
-
-  // Fallback: Gemini
-  if (GEMINI_KEY) {
-    try {
-      log.info('🧠 Gemini: strutturazione dati (fallback)...');
-      const response = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`,
-        {
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-        },
-        {
-          params: { key: GEMINI_KEY },
-          timeout: 30000,
-        }
-      );
-
-      const jsonStr = response.data.candidates[0].content.parts[0].text;
-      const parsed = JSON.parse(jsonStr);
-      log.success(`Gemini strutturato`);
-      return { ...parsed, llm_used: 'gemini' };
-    } catch (e) {
-      log.warn(`⚠️  Gemini fallito: ${e.message}`);
-    }
-  }
-
-  throw new Error('❌ Entrambi gli LLM falliti');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -360,11 +392,11 @@ async function validateAndSaveData(company_id, extractedData) {
     fatturato_range = null;
   }
 
-  // Validazione TA
+  // Validazione TA (tassonomia reale usata dall'app, non il vecchio glossario abbandonato)
   const { data: validTA } = await supabase
-    .from('therapeutic_areas_glossary')
-    .select('codice');
-  const validTACodes = validTA.map((t) => t.codice);
+    .from('therapeutic_areas')
+    .select('code');
+  const validTACodes = validTA.map((t) => t.code);
   const filteredTA = (aree_terapeutiche || []).filter((ta) => validTACodes.includes(ta));
 
   if (filteredTA.length !== (aree_terapeutiche || []).length) {
@@ -485,6 +517,13 @@ async function runDailyEnrichment() {
 export { runDailyEnrichment };
 
 // Se eseguito direttamente (node enrichment-agent.js)
-if (import.meta.url === `file://${process.argv[1]}`) {
-  runDailyEnrichment();
+const isCLI = process.argv[1] && process.argv[1].includes('enrichment-agent.js');
+if (isCLI) {
+  console.log('🚀 Avviando runDailyEnrichment()...');
+  (async () => {
+    await runDailyEnrichment();
+  })().catch(e => {
+    log.error(`ERRORE TOP-LEVEL: ${e.message}`);
+    process.exit(1);
+  });
 }
