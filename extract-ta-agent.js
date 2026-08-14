@@ -13,8 +13,10 @@ const SOURCE = 'gemini_ta_extraction';
 const DAILY_LIMIT = Number(process.env.TA_DAILY_LIMIT || 15);
 
 function isDailyQuotaExhausted(e) {
-  const msg = e.response?.data?.error?.message || '';
-  return e.response?.status === 429 && /PerDay/i.test(msg);
+  // La sottostringa "PerDay" sta dentro error.details[].violations[].quotaId,
+  // non in error.message — bisogna guardare l'intero oggetto errore, non solo il messaggio.
+  const fullError = JSON.stringify(e.response?.data?.error || {});
+  return e.response?.status === 429 && /PerDay/i.test(fullError);
 }
 
 async function retryWithBackoff(fn, maxRetries = 4, initialDelayMs = 3000) {
