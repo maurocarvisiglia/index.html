@@ -800,6 +800,14 @@ a.job-link:hover{text-decoration:underline;}
           <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Fatturato (range)</label>
           <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-fatturato">—</div>
         </div>
+        <div>
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Crescita dipendenti (12 mesi)</label>
+          <div style="font-size:20px; font-weight:700; margin-top:4px;" id="enriched-crescita">—</div>
+        </div>
+        <div>
+          <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Industry (Apollo)</label>
+          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-industry-badges">—</div>
+        </div>
         <div style="grid-column:1/-1;">
           <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Aree terapeutiche</label>
           <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;" id="enriched-ta-badges"></div>
@@ -808,6 +816,11 @@ a.job-link:hover{text-decoration:underline;}
           <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Descrizione aziendale</label>
           <div style="font-size:12px; color:var(--text); margin-top:6px; line-height:1.5;" id="enriched-descrizione">—</div>
         </div>
+      </div>
+
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <label style="font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; display:block; margin-bottom:8px;">Reparti (Apollo) — categorie corporate generiche, non tassonomia LS Intelligence</label>
+        <div id="enriched-departments">—</div>
       </div>
 
       <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
@@ -8371,8 +8384,11 @@ async function loadCompanyDetail(company){
     const empValue=company.dipendenti||(withEmp?withEmp.company_employees:null);
     document.getElementById('cd-kpi-employees').textContent=empValue?
       (empValue>=1000?`${(empValue/1000).toFixed(0)}k`:empValue):'—';
-    document.getElementById('cd-kpi-revenue').textContent=withRev?
-      (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—';
+    // Fatturato: fonte primaria companies.fatturato_range (arricchimento Apollo/manuale).
+    // job_listings.company_revenue_usd non e' mai popolato in pratica — prima di questo
+    // fix la KPI mostrava sempre "—" anche con il dato disponibile nel profilo azienda.
+    document.getElementById('cd-kpi-revenue').textContent=company.fatturato_range||(withRev?
+      (withRev.company_revenue_usd>=1e9?`$${(withRev.company_revenue_usd/1e9).toFixed(1)}B`:`$${(withRev.company_revenue_usd/1e6).toFixed(0)}M`):'—');
 
     // Settore principale: fonte primaria companies.sector_v2 (profilo azienda), fallback
     // sul settore piu' frequente tra i suoi annunci.
@@ -8499,7 +8515,7 @@ async function loadCompanyDetail(company){
 async function loadEnrichedData(companyId){
   try{
     // Carica dati arricchiti dalla company
-    const companies=await api(`companies?id=eq.${companyId}&select=dipendenti,fatturato_range,aree_terapeutiche,descrizione_aziendale,completezza_arricchimento,arricchito_il`);
+    const companies=await api(`companies?id=eq.${companyId}&select=dipendenti,fatturato_range,aree_terapeutiche,descrizione_aziendale,completezza_arricchimento,arricchito_il,crescita_dipendenti_12m,apollo_industry,apollo_industries`);
     if(!companies.length)return;
 
     const company=companies[0];
@@ -8528,6 +8544,44 @@ async function loadEnrichedData(companyId){
     const fatEl=document.getElementById('enriched-fatturato');
     if(fatEl){
       fatEl.textContent=company.fatturato_range||'—';
+    }
+
+    // Crescita dipendenti (12 mesi) — frazione da Apollo, es. 0.05 = +5%
+    const crescitaEl=document.getElementById('enriched-crescita');
+    if(crescitaEl){
+      if(company.crescita_dipendenti_12m!=null){
+        const pct=(company.crescita_dipendenti_12m*100).toFixed(1);
+        crescitaEl.textContent=(company.crescita_dipendenti_12m>=0?'+':'')+pct+'%';
+        crescitaEl.style.color=company.crescita_dipendenti_12m>=0?'var(--success)':'var(--danger)';
+      }else{
+        crescitaEl.textContent='—';
+        crescitaEl.style.color='var(--text)';
+      }
+    }
+
+    // Industry Apollo — categoria merceologica scollegata dalla tassonomia LS Intelligence
+    const indEl=document.getElementById('enriched-industry-badges');
+    if(indEl){
+      const industries=(company.apollo_industries&&company.apollo_industries.length)?company.apollo_industries:(company.apollo_industry?[company.apollo_industry]:[]);
+      indEl.innerHTML=industries.length?
+        industries.map(i=>`<span class="badge badge-accent" style="margin:0 4px 0 0;">${i}</span>`).join(''):
+        '<span style="color:var(--text2);font-size:13px;">—</span>';
+    }
+
+    // Reparti (Apollo departmental_head_count) — categorie corporate generiche
+    const deptEl=document.getElementById('enriched-departments');
+    if(deptEl){
+      try{
+        const depts=await api(`company_department_headcount?company_id=eq.${companyId}&select=department,headcount&order=headcount.desc`);
+        if(depts.length){
+          deptEl.innerHTML='<div class="chart-card-mini" id="enriched-departments-bars"></div>';
+          renderRuoloBar('enriched-departments-bars',depts.slice(0,10).map(d=>[d.department,d.headcount]),'accent');
+        }else{
+          deptEl.innerHTML='<span style="color:var(--text2);font-size:13px;">—</span>';
+        }
+      }catch(e){
+        deptEl.innerHTML='<span style="color:var(--text2);font-size:13px;">—</span>';
+      }
     }
 
     // Aree terapeutiche
