@@ -8417,7 +8417,7 @@ async function loadApolloProgress(){
         <div style="height:100%;background:var(--accent2);width:${pct}%;transition:width 0.3s;"></div>
       </div>
       <div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);">
-        <div><div class="kpi-mini-label" style="color:var(--success);">Arricchite</div><div class="kpi-mini-value" style="color:var(--success);">${enriched}</div></div>
+        <div><div class="kpi-mini-label" style="color:var(--success);">Arricchite</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('enriched')">${enriched}</div></div>
         <div><div class="kpi-mini-label">Da processare</div><div class="kpi-mini-value">${remaining}</div></div>
         <div><div class="kpi-mini-label" style="color:var(--accent);">Scartate (mismatch)</div><div class="kpi-mini-value" style="color:var(--accent);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('mismatch')">${mismatched}</div></div>
         <div><div class="kpi-mini-label" style="color:var(--danger);">Non trovate</div><div class="kpi-mini-value" style="color:var(--danger);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('not_found')">${notFound}</div></div>
@@ -8427,21 +8427,40 @@ async function loadApolloProgress(){
   }
 }
 
+const APOLLO_EXCLUSION_TITLES={mismatch:'Aziende scartate per mismatch',not_found:'Aziende non trovate su Apollo',enriched:'Aziende arricchite'};
+
+// Nome azienda cliccabile ovunque in questo modal: chiude il modal e apre la scheda,
+// stesso comportamento della tabella principale aziende.
+function companyLinkHtml(c){
+  if(!c)return '—';
+  const json=JSON.stringify(c).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return `<span class="company-link" style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='viewCompanyFromExclusions(${json})'>${c.name||'—'}</span>`;
+}
+function viewCompanyFromExclusions(company){
+  closeModal('modal-apollo-exclusions');
+  openCompanyDetail(company);
+}
+
 async function openApolloExclusions(type){
   const titleEl=document.getElementById('apollo-exclusions-title');
   const bodyEl=document.getElementById('apollo-exclusions-body');
-  titleEl.textContent=type==='mismatch'?'Aziende scartate per mismatch':'Aziende non trovate su Apollo';
+  titleEl.textContent=APOLLO_EXCLUSION_TITLES[type]||'Aziende';
   bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
   openModal('modal-apollo-exclusions');
   try{
-    const logs=await api(`enrichment_log?select=company_id,campi_estratti,timestamp&api_usata=eq.apollo&campi_estratti->>esito=eq.${type}&order=timestamp.desc`);
+    let logs;
+    if(type==='enriched'){
+      logs=await api(`enrichment_log?select=company_id,campi_estratti,timestamp&api_usata=eq.apollo&parsing_riuscito=eq.true&order=timestamp.desc`);
+    }else{
+      logs=await api(`enrichment_log?select=company_id,campi_estratti,timestamp&api_usata=eq.apollo&campi_estratti->>esito=eq.${type}&order=timestamp.desc`);
+    }
     if(!logs.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda in questa categoria</div>';return;}
     const companyIds=logs.map(l=>l.company_id);
-    const companies=await api(`companies?select=id,name,ragione_sociale,website&id=in.(${companyIds.join(',')})`);
+    const companies=await api(`companies?select=*&id=in.(${companyIds.join(',')})`);
     const nameMap=new Map(companies.map(c=>[c.id,c]));
 
     if(type==='mismatch'){
-      bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Se il nome trovato da Apollo è la stessa azienda (magari con ragione sociale diversa da quella salvata), correggi il campo e conferma: verrà aggiornata la ragione sociale e l'azienda verrà arricchita.</div>
+      bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Se il nome trovato da Apollo è la stessa azienda (magari con ragione sociale diversa da quella salvata), correggi il campo e conferma: verrà aggiornata la ragione sociale e l'azienda verrà arricchita. Clicca sul nome per aprire la scheda azienda.</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="border-bottom:1px solid var(--border);">
           <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
@@ -8454,7 +8473,7 @@ async function openApolloExclusions(type){
           const apolloName=l.campi_estratti?.apollo_name||'';
           const rowId='mm-'+l.company_id;
           return `<tr style="border-bottom:1px solid var(--border);" id="row-${rowId}">
-            <td style="padding:8px;">${c?.name||'—'}</td>
+            <td style="padding:8px;">${companyLinkHtml(c)}</td>
             <td style="padding:8px;color:var(--text2);">${apolloName||'—'}</td>
             <td style="padding:8px;"><input type="text" id="input-${rowId}" value="${(c?.ragione_sociale||apolloName||'').replace(/"/g,'&quot;')}" style="width:100%;font-size:12px;padding:4px 6px;"></td>
             <td style="padding:8px;white-space:nowrap;">
@@ -8463,8 +8482,27 @@ async function openApolloExclusions(type){
           </tr>`;
         }).join('')}</tbody>
       </table>`;
+    }else if(type==='enriched'){
+      bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Clicca sul nome per aprire la scheda azienda.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+          <th style="text-align:left;padding:8px;color:var(--text2);">Completezza</th>
+          <th style="text-align:left;padding:8px;color:var(--text2);">Arricchita il</th>
+        </tr></thead>
+        <tbody>${logs.map(l=>{
+          const c=nameMap.get(l.company_id);
+          const date=l.timestamp?new Date(l.timestamp).toLocaleDateString('it-IT'):'—';
+          return `<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px;">${companyLinkHtml(c)}</td>
+            <td style="padding:8px;color:var(--text2);">${c?.completezza_arricchimento!=null?c.completezza_arricchimento+'%':'—'}</td>
+            <td style="padding:8px;color:var(--text2);">${date}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
     }else{
-      bodyEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
+      bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Clicca sul nome per aprire la scheda azienda.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="border-bottom:1px solid var(--border);">
           <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
           <th style="text-align:left;padding:8px;color:var(--text2);">Sito web</th>
@@ -8472,7 +8510,7 @@ async function openApolloExclusions(type){
         <tbody>${logs.map(l=>{
           const c=nameMap.get(l.company_id);
           return `<tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:8px;">${c?.name||'—'}</td>
+            <td style="padding:8px;">${companyLinkHtml(c)}</td>
             <td style="padding:8px;color:var(--text2);">${c?.website||'—'}</td>
           </tr>`;
         }).join('')}</tbody>
