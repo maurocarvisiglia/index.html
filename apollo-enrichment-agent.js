@@ -9,7 +9,15 @@ const SB_URL = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const APOLLO_KEY = process.env.APOLLO_API_KEY;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-const DAILY_LIMIT = Number(process.env.APOLLO_DAILY_LIMIT || 20);
+// Ridotto da 20: da quando ogni azienda puo' richiedere fino a 3 chiamate in sequenza
+// (organization enrich + people search Italia + traduzione Gemini), 20/giorno faceva
+// scadere sempre in timeout la funzione serverless Vercel (60s) — zero progressi dal
+// 14 agosto nonostante il cron girasse ogni giorno. Il guardrail TIME_BUDGET_MS sotto
+// e' la vera rete di sicurezza; questo numero e' solo un tetto ottimistico di partenza.
+const DAILY_LIMIT = Number(process.env.APOLLO_DAILY_LIMIT || 6);
+// Si ferma da solo ben prima del limite reale della funzione serverless, qualunque
+// esso sia — piu' robusto che indovinare il numero giusto di aziende per invocazione.
+const TIME_BUDGET_MS = 45000;
 
 const supabase = createClient(SB_URL, SB_KEY);
 
@@ -64,7 +72,7 @@ async function enrichDomain(domain) {
   const res = await axios.get('https://api.apollo.io/api/v1/organizations/enrich', {
     params: { domain },
     headers: { 'x-api-key': APOLLO_KEY },
-    timeout: 15000,
+    timeout: 8000,
   });
   return res.data.organization || null;
 }
@@ -81,7 +89,7 @@ async function getItalyEmployeeCount(domain) {
     const res = await axios.post(
       'https://api.apollo.io/api/v1/mixed_people/api_search',
       { q_organization_domains_list: [domain], person_locations: ['Italy'], page: 1, per_page: 1 },
-      { headers: { 'x-api-key': APOLLO_KEY, 'Content-Type': 'application/json' }, timeout: 15000 }
+      { headers: { 'x-api-key': APOLLO_KEY, 'Content-Type': 'application/json' }, timeout: 8000 }
     );
     return Number.isFinite(res.data.total_entries) ? res.data.total_entries : null;
   } catch (e) {
@@ -100,7 +108,7 @@ async function translateDescriptionToItalian(text) {
     const res = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${GEMINI_KEY}`,
       { contents: [{ parts: [{ text: `Traduci in italiano corrente questo testo aziendale, senza aggiungere o omettere informazioni. Rispondi SOLO con la traduzione, niente altro.\n\nTESTO:\n"""${text}"""` }] }] },
-      { timeout: 12000 }
+      { timeout: 8000 }
     );
     const translated = res.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     return translated || text;
@@ -158,9 +166,15 @@ async function runApolloDailyBatch() {
 
   push(`Batch di oggi: ${todo.length} aziende (già processate in precedenza: ${doneIds.size})`);
 
-  let matched = 0, mismatched = 0, notFound = 0, errors = 0, updated = 0, stoppedEarly = false;
+  const startTime = Date.now();
+  let matched = 0, mismatched = 0, notFound = 0, errors = 0, updated = 0, stoppedEarly = false, timeBudgetExceeded = false;
 
   for (const c of todo) {
+    if (Date.now() - startTime > TIME_BUDGET_MS) {
+      timeBudgetExceeded = true;
+      push(`⏱️  Budget di tempo esaurito (${TIME_BUDGET_MS / 1000}s) — mi fermo qui per non far scadere la funzione, riprende al prossimo run.`);
+      break;
+    }
     try {
       const org = await enrichDomain(c.domain);
       if (!org) {
@@ -231,10 +245,10 @@ async function runApolloDailyBatch() {
         break;
       }
     }
-    await new Promise(r => setTimeout(r, 1500));
+    await new Promise(r => setTimeout(r, 500));
   }
 
-  const summary = { attempted: todo.length, matched, updated, mismatched, notFound, errors, stoppedEarly };
+  const summary = { attempted: todo.length, matched, updated, mismatched, notFound, errors, stoppedEarly, timeBudgetExceeded };
   push(`📊 RISULTATO: ${JSON.stringify(summary)}`);
   return { summary, log };
 }
