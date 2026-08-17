@@ -137,6 +137,87 @@ async function upsertDepartmentHeadcount(companyId, departmentalHeadCount) {
   await supabase.from('company_department_headcount').upsert(rows, { onConflict: 'company_id,department' });
 }
 
+// Applica i dati Apollo (org) a una company gia' abbinata — riusata sia dal batch
+// giornaliero sia dalla riprocessazione manuale di un'azienda scartata per mismatch
+// (dopo conferma umana del nome corretto).
+async function applyEnrichmentPatch(c, org) {
+  const revenueRange = revenueToRange(org.annual_revenue);
+  const patch = {};
+  if (!c.dipendenti) {
+    const italyCount = await getItalyEmployeeCount(c.domain);
+    if (italyCount != null) patch.dipendenti = italyCount;
+  }
+  if (!c.fatturato_range && revenueRange) patch.fatturato_range = revenueRange;
+  if (!c.descrizione_aziendale && org.short_description) {
+    patch.descrizione_aziendale = await translateDescriptionToItalian(org.short_description);
+  }
+  if (!c.linkedin_url && org.linkedin_url) patch.linkedin_url = org.linkedin_url;
+  if (c.crescita_dipendenti_12m == null && org.organization_headcount_twelve_month_growth != null) {
+    patch.crescita_dipendenti_12m = org.organization_headcount_twelve_month_growth;
+  }
+  if ((!c.apollo_keywords || !c.apollo_keywords.length) && org.keywords?.length) patch.apollo_keywords = org.keywords;
+  if (!c.apollo_industry && org.industry) patch.apollo_industry = org.industry;
+  if (org.industries?.length) patch.apollo_industries = org.industries;
+
+  const filledCount = ['dipendenti', 'fatturato_range', 'descrizione_aziendale', 'linkedin_url']
+    .filter(f => (patch[f] !== undefined ? true : !!c[f])).length;
+  const completeness = Math.round((filledCount / 4) * 100);
+
+  await supabase.from('companies').update({
+    ...patch,
+    arricchito_il: new Date().toISOString(),
+    completezza_arricchimento: completeness,
+  }).eq('id', c.id);
+
+  await upsertIndustryCatalog(org.industries, org.industry_tag_hash);
+  await upsertDepartmentHeadcount(c.id, org.departmental_head_count);
+
+  await supabase.from('enrichment_log').insert({
+    company_id: c.id,
+    timestamp: new Date().toISOString(),
+    api_usata: 'apollo',
+    parsing_riuscito: true,
+    risultato_grezzo: { domain: c.domain, apollo_org_id: org.id },
+    campi_estratti: patch,
+  });
+
+  return patch;
+}
+
+// Riprocessa una singola azienda gia' scartata per mismatch, dopo che un umano ha
+// confermato/corretto la ragione sociale. Salta volutamente isPlausibleMatch: la
+// conferma umana sostituisce il controllo automatico, non lo aggira alla cieca.
+async function reprocessMismatchedCompany(companyId, confirmedRagioneSociale) {
+  const { data: c } = await supabase
+    .from('companies')
+    .select('id, name, ragione_sociale, website, dipendenti, fatturato_range, descrizione_aziendale, linkedin_url, crescita_dipendenti_12m, apollo_keywords, apollo_industry')
+    .eq('id', companyId)
+    .single();
+  if (!c) throw new Error('Azienda non trovata');
+
+  const domain = extractDomain(c.website);
+  if (!domain) throw new Error('Nessun dominio disponibile per questa azienda');
+
+  if (confirmedRagioneSociale && confirmedRagioneSociale !== c.ragione_sociale) {
+    await supabase.from('companies').update({ ragione_sociale: confirmedRagioneSociale }).eq('id', companyId);
+  }
+
+  const org = await enrichDomain(domain);
+  if (!org) throw new Error('Apollo non ha restituito dati per questo dominio (potrebbe essere cambiato)');
+
+  const patch = await applyEnrichmentPatch({ ...c, domain }, org);
+
+  // Ripulisce il vecchio log di mismatch per questa azienda: ora ne esiste uno
+  // riuscito, il vecchio scarto non deve piu' comparire nel contatore.
+  await supabase.from('enrichment_log')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('api_usata', 'apollo')
+    .eq('parsing_riuscito', false);
+
+  return { companyName: c.name, apolloName: org.name, patch };
+}
+
 async function runApolloDailyBatch() {
   const log = [];
   const push = (msg) => { console.log(msg); log.push(msg); };
@@ -192,46 +273,7 @@ async function runApolloDailyBatch() {
       }
       matched++;
 
-      const revenueRange = revenueToRange(org.annual_revenue);
-      const patch = {};
-      if (!c.dipendenti) {
-        const italyCount = await getItalyEmployeeCount(c.domain);
-        if (italyCount != null) patch.dipendenti = italyCount;
-      }
-      if (!c.fatturato_range && revenueRange) patch.fatturato_range = revenueRange;
-      if (!c.descrizione_aziendale && org.short_description) {
-        patch.descrizione_aziendale = await translateDescriptionToItalian(org.short_description);
-      }
-      if (!c.linkedin_url && org.linkedin_url) patch.linkedin_url = org.linkedin_url;
-      if (c.crescita_dipendenti_12m == null && org.organization_headcount_twelve_month_growth != null) {
-        patch.crescita_dipendenti_12m = org.organization_headcount_twelve_month_growth;
-      }
-      if ((!c.apollo_keywords || !c.apollo_keywords.length) && org.keywords?.length) patch.apollo_keywords = org.keywords;
-      if (!c.apollo_industry && org.industry) patch.apollo_industry = org.industry;
-      if (org.industries?.length) patch.apollo_industries = org.industries;
-
-      const filledCount = ['dipendenti', 'fatturato_range', 'descrizione_aziendale', 'linkedin_url']
-        .filter(f => (patch[f] !== undefined ? true : !!c[f])).length;
-      const completeness = Math.round((filledCount / 4) * 100);
-
-      await supabase.from('companies').update({
-        ...patch,
-        arricchito_il: new Date().toISOString(),
-        completezza_arricchimento: completeness,
-      }).eq('id', c.id);
-
-      await upsertIndustryCatalog(org.industries, org.industry_tag_hash);
-      await upsertDepartmentHeadcount(c.id, org.departmental_head_count);
-
-      await supabase.from('enrichment_log').insert({
-        company_id: c.id,
-        timestamp: new Date().toISOString(),
-        api_usata: 'apollo',
-        parsing_riuscito: true,
-        risultato_grezzo: { domain: c.domain, apollo_org_id: org.id },
-        campi_estratti: patch,
-      });
-
+      await applyEnrichmentPatch(c, org);
       updated++;
       push(`   ✅ "${c.name}" (${c.domain})`);
     } catch (e) {
@@ -253,7 +295,7 @@ async function runApolloDailyBatch() {
   return { summary, log };
 }
 
-export { runApolloDailyBatch };
+export { runApolloDailyBatch, reprocessMismatchedCompany };
 
 const isCLI = process.argv[1] && process.argv[1].includes('apollo-enrichment-agent.js');
 if (isCLI) {

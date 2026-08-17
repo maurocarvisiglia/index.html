@@ -8437,23 +8437,73 @@ async function openApolloExclusions(type){
     const logs=await api(`enrichment_log?select=company_id,campi_estratti,timestamp&api_usata=eq.apollo&campi_estratti->>esito=eq.${type}&order=timestamp.desc`);
     if(!logs.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda in questa categoria</div>';return;}
     const companyIds=logs.map(l=>l.company_id);
-    const companies=await api(`companies?select=id,name,website&id=in.(${companyIds.join(',')})`);
+    const companies=await api(`companies?select=id,name,ragione_sociale,website&id=in.(${companyIds.join(',')})`);
     const nameMap=new Map(companies.map(c=>[c.id,c]));
-    bodyEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
-      <thead><tr style="border-bottom:1px solid var(--border);">
-        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
-        <th style="text-align:left;padding:8px;color:var(--text2);">${type==='mismatch'?'Trovata su Apollo come':'Sito web'}</th>
-      </tr></thead>
-      <tbody>${logs.map(l=>{
-        const c=nameMap.get(l.company_id);
-        return `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:8px;">${c?.name||'—'}</td>
-          <td style="padding:8px;color:var(--text2);">${type==='mismatch'?(l.campi_estratti?.apollo_name||'—'):(c?.website||'—')}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>`;
+
+    if(type==='mismatch'){
+      bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Se il nome trovato da Apollo è la stessa azienda (magari con ragione sociale diversa da quella salvata), correggi il campo e conferma: verrà aggiornata la ragione sociale e l'azienda verrà arricchita.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+          <th style="text-align:left;padding:8px;color:var(--text2);">Trovata su Apollo come</th>
+          <th style="text-align:left;padding:8px;color:var(--text2);">Ragione sociale corretta</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${logs.map(l=>{
+          const c=nameMap.get(l.company_id);
+          const apolloName=l.campi_estratti?.apollo_name||'';
+          const rowId='mm-'+l.company_id;
+          return `<tr style="border-bottom:1px solid var(--border);" id="row-${rowId}">
+            <td style="padding:8px;">${c?.name||'—'}</td>
+            <td style="padding:8px;color:var(--text2);">${apolloName||'—'}</td>
+            <td style="padding:8px;"><input type="text" id="input-${rowId}" value="${(c?.ragione_sociale||apolloName||'').replace(/"/g,'&quot;')}" style="width:100%;font-size:12px;padding:4px 6px;"></td>
+            <td style="padding:8px;white-space:nowrap;">
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="confirmMismatchCorrection('${l.company_id}','${rowId}')">✔ Conferma e arricchisci</button>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }else{
+      bodyEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="border-bottom:1px solid var(--border);">
+          <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+          <th style="text-align:left;padding:8px;color:var(--text2);">Sito web</th>
+        </tr></thead>
+        <tbody>${logs.map(l=>{
+          const c=nameMap.get(l.company_id);
+          return `<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px;">${c?.name||'—'}</td>
+            <td style="padding:8px;color:var(--text2);">${c?.website||'—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }
   }catch(e){
     bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
+  }
+}
+
+async function confirmMismatchCorrection(companyId,rowId){
+  const input=document.getElementById('input-'+rowId);
+  const row=document.getElementById('row-'+rowId);
+  const btn=row.querySelector('button');
+  const confirmedRagioneSociale=input.value.trim();
+  btn.disabled=true;btn.textContent='⏳ Arricchimento...';
+  try{
+    const res=await fetch('/api/apollo-reprocess',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({companyId,confirmedRagioneSociale})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Errore sconosciuto');
+    row.style.opacity='0.5';
+    btn.textContent='✅ Arricchita';
+    toast(`✅ "${data.companyName}" corretta e arricchita`,'success');
+    loadApolloProgress();
+  }catch(e){
+    btn.disabled=false;btn.textContent='✔ Conferma e arricchisci';
+    toast('Errore: '+e.message,'error');
   }
 }
 
