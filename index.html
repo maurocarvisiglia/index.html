@@ -688,6 +688,14 @@ a.job-link:hover{text-decoration:underline;}
         <button class="btn btn-danger" onclick="deleteAllCompanies()">🗑 Elimina tutto</button>
       </div>
     </div>
+
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">🔄 Avanzamento arricchimento Apollo.io</div>
+      <div id="apollo-progress-body">
+        <div class="loading">Caricamento...</div>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
@@ -1678,6 +1686,16 @@ a.job-link:hover{text-decoration:underline;}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-contact')">Annulla</button>
       <button class="btn btn-primary" onclick="saveContact()">Salva decision maker</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-apollo-exclusions">
+  <div class="modal" style="max-width:720px;max-height:80vh;overflow-y:auto;">
+    <div class="modal-title" id="apollo-exclusions-title">Aziende non arricchite</div>
+    <div id="apollo-exclusions-body"><div class="loading">Caricamento...</div></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-apollo-exclusions')">Chiudi</button>
     </div>
   </div>
 </div>
@@ -3789,7 +3807,7 @@ function showView(name,btn){
   if(name==='demand')loadDemandModule();
   if(name==='users')loadUsersView();
   if(name==='listings'){loadListings();refreshPendingBadges();}
-  if(name==='companies')loadCompanies();
+  if(name==='companies'){loadCompanies();loadApolloProgress();}
   if(name==='ruolo')analyzeRuolo();
 }
 
@@ -8370,6 +8388,73 @@ async function loadAllCompanies(){
     offset+=pageSize;
   }
   return all;
+}
+
+/* ── AVANZAMENTO ARRICCHIMENTO APOLLO ── */
+async function loadApolloProgress(){
+  const el=document.getElementById('apollo-progress-body');
+  if(!el)return;
+  try{
+    const [companies,logs]=await Promise.all([
+      api('companies?select=id&website=not.is.null'),
+      api('enrichment_log?select=company_id,parsing_riuscito,campi_estratti&api_usata=eq.apollo')
+    ]);
+    const eligible=companies.length;
+    const attemptedIds=new Set(logs.map(l=>l.company_id));
+    const attempted=attemptedIds.size;
+    const enriched=logs.filter(l=>l.parsing_riuscito).length;
+    const mismatched=logs.filter(l=>l.campi_estratti?.esito==='mismatch').length;
+    const notFound=logs.filter(l=>l.campi_estratti?.esito==='not_found').length;
+    const remaining=eligible-attempted;
+    const pct=eligible?Math.round(attempted/eligible*100):0;
+
+    el.innerHTML=`
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px;">
+        <span>${attempted} / ${eligible} aziende processate</span>
+        <span style="font-weight:700;color:var(--accent2);">${pct}%</span>
+      </div>
+      <div style="background:var(--surface2);height:8px;border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;background:var(--accent2);width:${pct}%;transition:width 0.3s;"></div>
+      </div>
+      <div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div><div class="kpi-mini-label" style="color:var(--success);">Arricchite</div><div class="kpi-mini-value" style="color:var(--success);">${enriched}</div></div>
+        <div><div class="kpi-mini-label">Da processare</div><div class="kpi-mini-value">${remaining}</div></div>
+        <div><div class="kpi-mini-label" style="color:var(--accent);">Scartate (mismatch)</div><div class="kpi-mini-value" style="color:var(--accent);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('mismatch')">${mismatched}</div></div>
+        <div><div class="kpi-mini-label" style="color:var(--danger);">Non trovate</div><div class="kpi-mini-value" style="color:var(--danger);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('not_found')">${notFound}</div></div>
+      </div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento avanzamento: '+e.message+'</div>';
+  }
+}
+
+async function openApolloExclusions(type){
+  const titleEl=document.getElementById('apollo-exclusions-title');
+  const bodyEl=document.getElementById('apollo-exclusions-body');
+  titleEl.textContent=type==='mismatch'?'Aziende scartate per mismatch':'Aziende non trovate su Apollo';
+  bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
+  openModal('modal-apollo-exclusions');
+  try{
+    const logs=await api(`enrichment_log?select=company_id,campi_estratti,timestamp&api_usata=eq.apollo&campi_estratti->>esito=eq.${type}&order=timestamp.desc`);
+    if(!logs.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda in questa categoria</div>';return;}
+    const companyIds=logs.map(l=>l.company_id);
+    const companies=await api(`companies?select=id,name,website&id=in.(${companyIds.join(',')})`);
+    const nameMap=new Map(companies.map(c=>[c.id,c]));
+    bodyEl.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">${type==='mismatch'?'Trovata su Apollo come':'Sito web'}</th>
+      </tr></thead>
+      <tbody>${logs.map(l=>{
+        const c=nameMap.get(l.company_id);
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${c?.name||'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${type==='mismatch'?(l.campi_estratti?.apollo_name||'—'):(c?.website||'—')}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
+  }
 }
 
 async function loadCompanies(offset=0){
