@@ -1,0 +1,25 @@
+name: Extract therapeutic areas daily cron
+
+# Stesso motivo dell'altro workflow: il cron nativo di Vercel (Hobby) non è
+# affidabile, GitHub Actions chiama l'endpoint dall'esterno indipendentemente.
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-extract-ta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chiama l'endpoint di estrazione aree terapeutiche
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST https://ls-job-intelligence.vercel.app/api/extract-ta)
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "$body"
+          if [ "$http_code" != "200" ]; then
+            echo "::error::Extract-TA endpoint returned HTTP $http_code"
+            exit 1
+          fi
