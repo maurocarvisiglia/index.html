@@ -6643,7 +6643,7 @@ function computeRalBenchmarkSection(listings,label){
     const withoutTop=listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==top.company);
     const divTrimmed=trimmedRal(withoutTop).sort((a,b)=>a-b);
     const diversifiedMedian=divTrimmed.length?divTrimmed[Math.floor(divTrimmed.length/2)]:null;
-    if(topMedian&&diversifiedMedian&&Math.abs(topMedian-diversifiedMedian)>=diversifiedMedian*0.1){
+    if(topMedian&&diversifiedMedian&&Math.abs(topMedian-diversifiedMedian)>=diversifiedMedian*0.07){
       concentrationFlag={
         company:top.company,
         share_pct:topSharePct,
