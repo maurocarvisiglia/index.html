@@ -2068,7 +2068,14 @@ async function importVocationsCSV(event){
   // null invece di finire nella falsa categoria "altro" (vedi diagnosi: il 33%
   // del dataset finiva in "altro" solo perche' la fonte diceva N/A).
   const contractMap={permanent:'TI',contract:'TI',temporary:'TD',internship:'altro',apprenticeship:'TI',freelance:'Agenzia'};
-  const sectorMap={'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health'};
+  // Vocations ha cambiato l'export di "Settori" da etichette italiane a codici
+  // inglesi camelCase (rilevato: import dell'8/2026 aveva 0% di sector_v2 popolato
+  // perche' nessuna chiave della mappa vecchia corrispondeva piu'). Teniamo ENTRAMBI
+  // i formati per non rompere l'import se Vocations torna alle etichette italiane.
+  const sectorMap={
+    'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health',
+    'pharmaceutical':'Pharma','medical':'Medical Devices','healthHygiene':'Healthcare Services','consumerGoods':'Consumer Health','biomedical':'Biotech','chemical':'Chimico','technologyScienceData':'Digital Health','manufacturingIndustrial':'Altro','environmentSustainabilityEcology':'EHS/HSE Consulting','consultingITConsulting':'Consulenza','multiservices':'Altro','retail':'Farmacia/Retail','cosmetic':'Cosmetics','nutraceutical':'Nutraceutical','veterinary':'Veterinary'
+  };
   let ok=0,skip=0,errors=0;
   for(let idx=0;idx<rows.length;idx++){
     const row=rows[idx];
