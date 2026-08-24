@@ -3221,6 +3221,25 @@ function computeRalBySeniority(listings){
   return stats;
 }
 
+// Un annuncio per provincia con stesso titolo/RAL non e' una decisione retributiva
+// indipendente, ma la replica geografica di un'unica decisione (es. un roll-out
+// territoriale). Raggruppa per (azienda, titolo normalizzato, RAL) per stimare
+// quante decisioni di prezzo reali esistono dietro N annunci — il numero di annunci
+// pubblicati non e' una proxy affidabile della profondita' del mercato quando poche
+// aziende ripetono lo stesso ruolo su piu' sedi.
+function computePricingDecisions(listings){
+  const groups={};
+  listings.forEach(l=>{
+    const company=l.ragione_sociale||l.company_name||'N/D';
+    const titleNorm=(l.job_title||'').replace(/\([^)]*\)/g,'').replace(/[-–]\s*\S+$/,'').trim();
+    const key=company+'|'+titleNorm+'|'+l.ral_min+'|'+l.ral_max;
+    if(!groups[key])groups[key]={company,title:titleNorm,ral_min:l.ral_min,ral_max:l.ral_max,count:0};
+    groups[key].count++;
+  });
+  const decisions=Object.values(groups).sort((a,b)=>b.count-a.count);
+  return{decisions,totalDecisions:decisions.length,replicatedDecisions:decisions.filter(d=>d.count>1)};
+}
+
 // Istogramma RAL a bucket fissi (per il grafico "Distribuzione RAL") — nessun trimming
 // IQR qui: la forma multi-picco (es. un singolo datore che spinge tanti annunci su un
 // bucket basso) e' esattamente l'informazione che l'istogramma deve mostrare.
@@ -3330,7 +3349,15 @@ async function executeReportPlan(plan){
     const ral_histogram = computeRalHistogram(listings);
     const ral_segments = computeRalSegments(listings);
     const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded});
+    const pricing_decisions = computePricingDecisions(listings);
+    // Se un'azienda concentra una quota elevata, la "RAL per seniority" aggregata
+    // rischia di essere in realta' la sua scala interna — calcola anche quella
+    // depurata, cosi' il lettore vede il differenziale di seniority SENZA la
+    // distorsione del singolo datore dominante.
+    const ral_by_seniority_diversified = benchmark.concentration_flag
+      ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company))
+      : null;
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3354,9 +3381,15 @@ async function narrateReport(plan,entityResults){
     excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
     benchmark:r.benchmark,
     ral_by_seniority:r.ral_by_seniority,
+    ral_by_seniority_senza_azienda_dominante:r.ral_by_seniority_diversified,
     ral_segments:r.ral_segments&&r.ral_segments.length>1?r.ral_segments:null,
     sector_distribution:r.sector_distribution?r.sector_distribution.slice(0,6):null,
     sections:r.sections,
+    decisioni_retributive_indipendenti:r.pricing_decisions?{
+      totale_annunci:r.n_listings,
+      numero_decisioni_stimate:r.pricing_decisions.totalDecisions,
+      decisioni_replicate:r.pricing_decisions.replicatedDecisions.slice(0,6).map(d=>({azienda:d.company,ruolo:d.title,ral_min:d.ral_min,ral_max:d.ral_max,annunci:d.count}))
+    }:null,
     gap_vs_first:r.gap_vs_first||null
   }));
 
@@ -3382,23 +3415,28 @@ REGOLE ASSOLUTE SUI DATI:
 - Usa la distribuzione geografica ("sections.geo_mix") per indicare dove si concentra la domanda e cosa significa operativamente.
 - ANOMALIE DA SCORPORARE — controlla sempre "benchmark.concentration_flag" E "top_employers": se un'azienda rappresenta una quota sproporzionata degli annunci (tipicamente oltre il 30-40% del totale) con una RAL fissa o anomala rispetto al resto del mercato, DEVI nominarla esplicitamente e spiegare come distorce i numeri aggregati, citando sia il dato "inquinato" sia quello "depurato" (concentration_flag.company_median_ral vs concentration_flag.diversified_median) quando disponibili. Non trattarla come una nota a margine: e' un fatto centrale della sintesi esecutiva, perche' altrimenti chi legge il report crede che la mediana rappresenti un mercato omogeneo quando invece e' pilotata da un singolo datore.
 - Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
+- Usa "decisioni_retributive_indipendenti": se "numero_decisioni_stimate" e' significativamente minore di "totale_annunci", il numero di annunci pubblicati NON e' una proxy affidabile della profondita' del mercato — spiega che gran parte del volume osservato deriva da un numero ristretto di scelte organizzative (es. un roll-out territoriale) ripetute su piu' sedi, usando gli esempi in "decisioni_replicate" (stessa azienda, stesso ruolo, stessa RAL, annunci multipli).
+- Se "ral_by_seniority_senza_azienda_dominante" e' presente (non null), confrontalo con "ral_by_seniority" aggregato: se i differenziali di seniority cambiano in modo significativo togliendo l'azienda dominante, spiega che il differenziale "osservato" nell'aggregato riflette in parte la scala salariale interna di quel singolo datore, non l'intero mercato.
 
 REGOLE ASSOLUTE SUL TONO — questo e' il punto piu' importante:
 - VIETATO il linguaggio da pitch commerciale: frasi come "si consiglia di monitorare annunci futuri", "contattateci per approfondire", "rappresenta un'opportunita' per il recruiting" sono BANDITE — non dicono nulla di specifico e vanno sostituite con un ragionamento vero.
 - VIETATO qualunque consiglio di SOURCING o RECRUITING INTERNO: mai suggerire canali di ricerca candidati ("LinkedIn", "referenze interne", "canali diretti"), mai dire dove "concentrare le risorse di ricerca", mai parlare di "strategia di reclutamento". Questo report lo legge un CLIENTE che decide su assunzioni/retribuzioni/organico — non e' un playbook di come MC Pharma troverebbe i candidati per lui. Se il ragionamento naturale porterebbe a "quindi conviene cercare candidati in questo modo/canale", FERMATI e riformula in termini di cosa significa il dato per la LORO decisione (budget, rischio di turnover, competitivita' dell'offerta, organico), mai di COME reclutare.
+- VIETATO presentare la geografia come una mappa di "dove cercare talenti" o "aree prioritarie di ricerca", e VIETATO liquidare le altre aree come "opportunita' residuali": la distribuzione geografica va letta come indicazione di dove si concentra la DOMANDA (quindi la concorrenza retributiva tra datori), non come istruzioni su dove MC Pharma o il cliente dovrebbero cercare candidati.
 - Ogni affermazione in "operational_implication" deve spiegare un MECCANISMO concreto legato ai numeri di QUESTO report (es. concentrazione su pochi datori, differenziale retributivo tra seniority o tra le entita', tipo di contratto prevalente, copertura geografica) — non un consiglio generico che potrebbe applicarsi a qualsiasi ruolo.
 - Esempio del tono corretto: "Il differenziale di 15.000€ tra senior specialist e specialist non e' solo una fascia salariale: chi struttura un'offerta sotto quella soglia competera' solo per profili junior, perche' il mercato ha gia' un'ancora di prezzo precisa per l'esperienza." — nota come la frase spiega IL PERCHE' per una decisione di budget/offerta, non come si cercano candidati.
 - Esempio del tono SBAGLIATO da evitare: "La domanda e' attiva, conviene concentrare le risorse di ricerca sui canali diretti e monitorare i prossimi annunci." — e' un consiglio di sourcing interno, non un'informazione di mercato per il cliente.
+- Altro esempio del tono SBAGLIATO da evitare: "La ricerca di talenti dovrebbe coprire prioritariamente queste aree, mentre le restanti regioni rappresentano opportunita' residuali." — anche questo e' un consiglio di sourcing (dove cercare candidati), solo travestito da osservazione geografica.
 
 Rispondi SOLO con questo JSON:
 {
   "executive_summary": "<4-6 frasi: il messaggio piu' importante emerso dai dati (inclusa qualunque anomalia/concentrazione da scorporare), con il ragionamento dietro il numero, non solo il numero>",
   "entity_notes": [{"label":"<usa ESATTAMENTE uno dei valori di 'label' presenti in factsForAI sopra — es. il nome del ruolo/figura analizzata, MAI il nome di un'azienda anche se la menzioni nel testo>","note":"<3-4 frasi specifiche su questa entita': seniority, geografia, eventuali anomalie — lettura del dato non solo elenco>"}] (un elemento per ogni entita' in factsForAI, stesso ordine),
-  "operational_implication": "<3-4 frasi che spiegano cosa cambia concretamente per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>"
+  "operational_implication": "<3-4 frasi che spiegano cosa cambia concretamente per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>",
+  "market_depth_note": "<2-3 frasi basate su 'decisioni_retributive_indipendenti': se 'numero_decisioni_stimate' e' significativamente minore di 'totale_annunci', spiega quali aziende/ruoli si ripetono su piu' sedi e cosa significa per la profondita' reale del mercato. Se il numero di decisioni e' vicino al totale annunci, di' semplicemente che il campione non presenta repliche significative>"
 }`;
 
   try{
-    const raw=await callAIPowerful(prompt,1100);
+    const raw=await callAIPowerful(prompt,1300);
     const clean=raw.replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(clean);
     if(!parsed.executive_summary)throw new Error('risposta IA incompleta');
@@ -3409,7 +3447,8 @@ Rispondi SOLO con questo JSON:
     return{
       executive_summary:'Report basato su '+entityResults.reduce((a,r)=>a+r.n_listings,0)+' annunci totali. RAL mediana '+(e0.benchmark.median?'€'+Math.round(e0.benchmark.median/1000)+'k':'n.d.')+' su '+e0.benchmark.n_companies+' aziende attive.',
       entity_notes:entityResults.map(r=>({label:r.label,note:r.n_listings+' annunci, RAL mediana '+(r.benchmark.median?'€'+Math.round(r.benchmark.median/1000)+'k':'n.d.')})),
-      operational_implication:''
+      operational_implication:'',
+      market_depth_note:''
     };
   }
 }
@@ -3560,6 +3599,34 @@ function renderReportHTML(plan,entityResults,narration){
       }
     }
 
+    // Se un'azienda domina il campione, la seniority table sopra puo' riflettere in
+    // realta' la sua scala interna — mostra anche la versione senza quel datore.
+    let ralSenDiversifiedTable = '';
+    if (e.ral_by_seniority_diversified && Object.keys(e.ral_by_seniority_diversified).length > 0) {
+      const rows = Object.entries(e.ral_by_seniority_diversified)
+        .filter(([_, data]) => data.count > 0)
+        .map(([sen, data]) => `<tr><td style="text-transform:capitalize;">${sen.replace(/_/g, ' ')}</td><td class="num">${fmt(data.median)}</td><td class="num">${data.count}</td></tr>`)
+        .join('');
+      if (rows) {
+        ralSenDiversifiedTable = `<div class="section-title" style="margin-top:24px;">RAL per Seniority — senza ${b.concentration_flag.company}</div>
+          <table><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Annunci</th></tr>
+            ${rows}
+          </table>`;
+      }
+    }
+
+    // Quante decisioni retributive indipendenti ci sono davvero dietro gli annunci
+    // (un'azienda che ripete lo stesso ruolo/RAL su piu' sedi non e' N decisioni).
+    let pricingDecisionsBlock = '';
+    if (e.pricing_decisions && e.pricing_decisions.replicatedDecisions.length) {
+      const rd = e.pricing_decisions.replicatedDecisions.slice(0,6)
+        .map(d=>`<tr><td>${d.company}</td><td>${d.title}</td><td class="num">${fmt(d.ral_min&&d.ral_max?(d.ral_min+d.ral_max)/2:(d.ral_min||d.ral_max))}</td><td class="num">${d.count}</td></tr>`)
+        .join('');
+      pricingDecisionsBlock = `<div class="section-title" style="margin-top:24px;">Decisioni retributive indipendenti (stimate: ${e.pricing_decisions.totalDecisions} su ${e.n_listings} annunci)</div>
+        <table><tr><th>Azienda</th><th>Ruolo</th><th style="text-align:right;">RAL</th><th style="text-align:right;">Annunci replicati</th></tr>${rd}</table>
+        <div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* Stesso ruolo, stessa azienda e stessa RAL ripetuti su più sedi contano come 1 sola decisione retributiva, non come annunci indipendenti.</div>`;
+    }
+
     bodyContent=`
       <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
         <div class="kpi-cell"><div class="kpi-label">Annunci totali</div><div class="kpi-value">${e.n_listings}</div></div>
@@ -3574,7 +3641,10 @@ function renderReportHTML(plan,entityResults,narration){
         <div class="sal-item"><div class="sal-label">Max RAL</div><div class="sal-value" style="color:#888;">${fmt(b.max)}</div></div>
       </div>
       ${ralSenTable}
+      ${ralSenDiversifiedTable}
       ${b.concentration_flag?`<div class="summary-box" style="border-left-color:${GOLD};"><strong>Nota:</strong> ${b.concentration_flag.company} concentra il ${b.concentration_flag.share_pct}% degli annunci a ${fmt(b.concentration_flag.company_median_ral)} — la mediana depurata da questa concentrazione e' ${fmt(b.concentration_flag.diversified_median)}.</div>`:''}
+      ${pricingDecisionsBlock}
+      ${narration.market_depth_note?`<div class="summary-box">${narration.market_depth_note}</div>`:''}
       ${e.ral_histogram&&e.ral_histogram.buckets&&e.ral_histogram.buckets.length?`
       <div class="section-title" style="margin-top:24px;">Distribuzione RAL (n=${e.ral_histogram.total})</div>
       <div class="chart-box">${histogramChart(e.ral_histogram,b.concentration_flag?b.concentration_flag.company_median_ral:null)}
@@ -6560,20 +6630,26 @@ function computeRalBenchmarkSection(listings,label){
   const top=companies[0];
   const topSharePct=top?Math.round(top.count/listings.length*100):0;
 
-  // Rileva concentrazione: un singolo datore con quota elevata E RAL sotto la mediana
-  // generale trascina la mediana verso il basso — calcola anche quella "depurata".
+  // Rileva concentrazione: un singolo datore con quota elevata la cui RAL diverge
+  // (sopra O sotto, non solo sotto) da quella del resto del mercato distorce
+  // l'aggregato — calcola anche la mediana "depurata" per lo scorporo. Il confronto
+  // va fatto contro la mediana DEPURATA (senza il datore dominante), non contro la
+  // mediana aggregata: se il datore ha quota >50%, la mediana aggregata coincide
+  // quasi con la sua, quindi confrontarla con se' stessa non rileverebbe mai nulla.
   let concentrationFlag=null;
   if(top&&topSharePct>=30){
     const topTrimmed=trimmedRal(top.listings).sort((a,b)=>a-b);
     const topMedian=topTrimmed.length?topTrimmed[Math.floor(topTrimmed.length/2)]:null;
-    if(topMedian&&median&&topMedian<median*0.9){
-      const withoutTop=listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==top.company);
-      const divTrimmed=trimmedRal(withoutTop).sort((a,b)=>a-b);
+    const withoutTop=listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==top.company);
+    const divTrimmed=trimmedRal(withoutTop).sort((a,b)=>a-b);
+    const diversifiedMedian=divTrimmed.length?divTrimmed[Math.floor(divTrimmed.length/2)]:null;
+    if(topMedian&&diversifiedMedian&&Math.abs(topMedian-diversifiedMedian)>=diversifiedMedian*0.1){
       concentrationFlag={
         company:top.company,
         share_pct:topSharePct,
         company_median_ral:topMedian,
-        diversified_median:divTrimmed.length?divTrimmed[Math.floor(divTrimmed.length/2)]:null
+        diversified_median:diversifiedMedian,
+        direction:topMedian>diversifiedMedian?'above':'below'
       };
     }
   }
