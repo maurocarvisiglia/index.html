@@ -2832,6 +2832,17 @@ function classifySeniorityFromText(t){
   if(/head of|responsabile nazionale/i.test(t))return 'head_of';
   if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
   if(/senior manager/i.test(t))return 'senior_manager';
+  // "Key Account Manager" e varianti sono ruoli individuali (specialist/senior_specialist
+  // in base all'esperienza), non di people management, nonostante il titolo contenga
+  // "Manager" — eccezione: se il titolo indica esplicitamente la guida di altri key
+  // account (es. "Key Account Lead") resta "lead". Va controllato PRIMA del check
+  // generico su "manager" qui sotto, altrimenti "manager" vince sempre per la parola
+  // nel titolo (46 annunci scoperti classificati cosi' erroneamente).
+  if(/key account/i.test(t)){
+    if(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t))return 'lead';
+    if(/\bsenior\b/i.test(t))return 'senior_specialist';
+    return 'specialist';
+  }
   if(/\bmanager\b|\bresponsabile\b|\bcapo\b/i.test(t))return 'manager';
   // "lead" da solo intercetta anche l'uso verbale generico ("prepared to lead",
   // "ability to lead" nei requisiti soft-skill) che non indica alcun livello di
