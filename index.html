@@ -4595,7 +4595,16 @@ async function runPostImportEnrichment(newCount){
     }
 
     // ── STEP 2: Classifica con AI (solo sector/area/seniority/TA/company_type/location, NON il ruolo) — loop paginato ──
+    // Limitato all'ULTIMA importazione, non a tutto lo storico Vocations: senza questo
+    // filtro la query "manca un campo qualsiasi" intercetta anche le migliaia di annunci
+    // storici con therapeutic_area mai popolata, e il rate limit di 2.5s/5 record rende
+    // il completamento di un solo nuovo import di ore, perche' prova a rifare anche
+    // tutto l'arretrato ogni volta che si preme il tasto.
     showEnrichmentProgress('Step 2/4 — Classificazione AI...', 32);
+    const [lastImportRow] = await api('job_listings?select=created_at&source=eq.Vocations&order=created_at.desc&limit=1');
+    const lastImportThreshold = lastImportRow
+      ? new Date(new Date(lastImportRow.created_at).getTime() - 2*3600*1000).toISOString()
+      : null;
     const PAGE_SIZE = 100;
     let classPage = 0, classified = 0, totalToClassify = 0;
     while(true){
@@ -4603,6 +4612,7 @@ async function runPostImportEnrichment(newCount){
         'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id' +
         '&source=eq.Vocations' +
         '&or=(sector_v2.is.null,functional_area_v2.is.null,therapeutic_area.is.null)' +
+        (lastImportThreshold?`&created_at=gte.${encodeURIComponent(lastImportThreshold)}`:'') +
         `&order=published_date.desc&limit=${PAGE_SIZE}&offset=${classPage*PAGE_SIZE}`
       );
       if(!toClassify.length)break;
