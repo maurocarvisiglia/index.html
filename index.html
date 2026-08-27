@@ -3257,6 +3257,12 @@ async function fetchListingsForReportFilters(filters){
 
 const REPORT_SECTIONS_ENUM=['seniority_mix','therapeutic_area_mix','geo_mix','contract_type_mix'];
 
+// Espressioni che indicano un riferimento temporale nella richiesta dell'utente.
+// Usata come guardia: se non ne compare nessuna, i filtri data proposti dall'IA
+// vengono scartati (vedi planReportFromPrompt). Include mesi, anni, e le forme
+// relative piu' comuni in italiano e inglese.
+const TEMPORAL_HINT_RE=/\b(ultim\w+|scors\w+|passat\w+|recent\w+|precedent\w+|prossim\w+|mes\w+|settiman\w+|anno|anni|annuale|trimestr\w+|semestr\w+|giorn\w+|oggi|ieri|da\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)|gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|20\d\d|q[1-4]\b|year|month|week|last|recent)\b/i;
+
 // ── REPORT BUILDER — Step 1: l'IA interpreta il prompt descrittivo in un piano
 // strutturato. Solo interpretazione: non calcola numeri, non scrive testo. Il piano
 // viene validato contro tassonomia/enum reali prima di essere eseguito. ──
@@ -3291,7 +3297,7 @@ che lo hanno nel database: sono gli UNICI valori esistenti, non usarne altri.
 - contract_type: uno tra ${fmtVals('contract_type')}
 - company: nome azienda (testo libero, null se non specificato)
 - region: nome regione italiana (testo libero, null se non specificato)
-- date_from / date_to: date in formato YYYY-MM-DD per limitare il periodo degli annunci (null se la richiesta non parla di tempo). Traduci le espressioni relative usando la DATA DI OGGI sopra: "ultimi 3 mesi" -> date_from = oggi meno 3 mesi, "da giugno" -> date_from = primo giugno dell'anno corrente, "nel 2026" -> date_from=2026-01-01 e date_to=2026-12-31.
+- date_from / date_to: date in formato YYYY-MM-DD per limitare il periodo degli annunci. Traduci le espressioni relative usando la DATA DI OGGI sopra: "ultimi 3 mesi" -> date_from = oggi meno 3 mesi, "da giugno" -> date_from = primo giugno dell'anno corrente, "nel 2026" -> date_from=2026-01-01 e date_to=2026-12-31. ATTENZIONE: lascia ENTRAMBI a null a meno che la richiesta contenga un riferimento temporale ESPLICITO (una data, un mese, un anno, o espressioni come "ultimi N mesi", "recenti", "quest'anno"). Non dedurre un periodo dal fatto che i dati siano recenti e non usare mai la data di oggi come date_from di default: un filtro temporale non richiesto riduce il campione senza che l'utente lo sappia.
 
 SEZIONI DISPONIBILI (scegli tra queste; il benchmark RAL e la scarsita' di talenti sono SEMPRE incluse automaticamente, non serve richiederle):
 - seniority_mix: distribuzione per livello di seniority
@@ -3418,6 +3424,16 @@ Rispondi SOLO con questo JSON, nessun altro testo:
         e.filters[f]=null;
       }
     });
+    // Guardia deterministica sulle date: appena il campo e' stato reso disponibile,
+    // l'IA ha iniziato a riempirlo anche su richieste senza alcun riferimento
+    // temporale (misurato: "report sugli annunci con contratto di agenzia" ->
+    // date_from = oggi, che ridurrebbe il campione a un solo giorno). Se nel testo
+    // dell'utente non compare NESSUNA espressione di tempo, le date vanno tolte:
+    // un filtro temporale mai chiesto e' peggio di nessun filtro temporale.
+    if((e.filters.date_from||e.filters.date_to)&&!TEMPORAL_HINT_RE.test(userPrompt)){
+      e.filters.date_from=null;e.filters.date_to=null;
+      console.warn('planReportFromPrompt: filtro data rimosso, la richiesta non contiene riferimenti temporali');
+    }
     if(e.filters.date_from&&e.filters.date_to&&e.filters.date_from>e.filters.date_to){
       droppedFilters.push(`intervallo date invertito (${e.filters.date_from} → ${e.filters.date_to}), ignorato`);
       e.filters.date_from=null;e.filters.date_to=null;
