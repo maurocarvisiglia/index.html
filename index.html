@@ -3052,33 +3052,53 @@ function normalizeCompanyName(name){
   return n;
 }
 
-let _companyIndexCache=null; // Map: chiave normalizzata (nome o ragione_sociale) -> record azienda
+// Il nome puo' essere scritto in troppi modi diversi per essere l'unico modo di
+// riconoscere un'azienda gia' presente (es. "Chiesi" vs "CHIESI FARMACEUTICI
+// S.P.A." vs "Chiesi Italia S.p.A." non condividono nessun normalizeCompanyName
+// in comune: la normalizzazione toglie solo suffissi legali/paese, non parole
+// aggiuntive come "Farmaceutici"). La Partita IVA e il dominio del sito sono
+// identificatori univoci indipendenti dalla grafia del nome — molto piu' affidabili
+// quando disponibili. Diagnosticato il 27/08: 84 aziende duplicate nel database,
+// tutte per questo motivo, fuse con scripts/merge-duplicate-companies.mjs.
+function normalizeWebsite(w){
+  if(!w)return '';
+  return w.replace(/^https?:\/\/(www\.)?/i,'').replace(/\/$/,'').toLowerCase();
+}
+
+let _companyIndexCache=null; // Map: chiave normalizzata (nome, ragione_sociale, iva o sito) -> record azienda
 async function loadCompanyIndex(forceRefresh){
   if(_companyIndexCache&&!forceRefresh)return;
-  const rows=await api('companies?select=id,name,ragione_sociale');
+  // merged_into=is.null: le aziende gia' fuse in un'altra non devono mai essere
+  // ritrovate come "esistenti" — altrimenti si riaprirebbe un record scartato
+  // invece di usare quello canonico in cui e' stato fuso.
+  const rows=await api('companies?select=id,name,ragione_sociale,iva,website&merged_into=is.null');
   _companyIndexCache=new Map();
   rows.forEach(c=>{
     const key1=normalizeCompanyName(c.name);
     if(key1&&!_companyIndexCache.has(key1))_companyIndexCache.set(key1,c);
     const key2=normalizeCompanyName(c.ragione_sociale);
     if(key2&&!_companyIndexCache.has(key2))_companyIndexCache.set(key2,c);
+    if(c.iva){const k3='iva:'+String(c.iva).trim();if(!_companyIndexCache.has(k3))_companyIndexCache.set(k3,c);}
+    if(c.website){const k4='web:'+normalizeWebsite(c.website);if(!_companyIndexCache.has(k4))_companyIndexCache.set(k4,c);}
   });
 }
 
-// Trova un'azienda esistente (per nome O ragione sociale normalizzati) o ne crea una
-// nuova. Default: extraFields riempie SOLO i campi mancanti dell'esistente — non
-// sovrascrive mai un dato gia' presente (cautela usata ovunque in questa sessione).
-// opts.overwrite:true forza l'aggiornamento anche dei campi gia' valorizzati — da
-// usare solo per sync periodici pensati per rinfrescare dati volatili (es. import
-// CSV Vocations: dipendenti/posizioni_aperte cambiano ad ogni esportazione), MAI
-// per dati di ricerca/arricchimento verificati manualmente.
+// Trova un'azienda esistente (per nome, ragione sociale, IVA o dominio sito) o ne
+// crea una nuova. Default: extraFields riempie SOLO i campi mancanti dell'esistente
+// — non sovrascrive mai un dato gia' presente (cautela usata ovunque in questa
+// sessione). opts.overwrite:true forza l'aggiornamento anche dei campi gia'
+// valorizzati — da usare solo per sync periodici pensati per rinfrescare dati
+// volatili (es. import CSV Vocations: dipendenti/posizioni_aperte cambiano ad ogni
+// esportazione), MAI per dati di ricerca/arricchimento verificati manualmente.
 async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
   extraFields=extraFields||{};
   opts=opts||{};
   await loadCompanyIndex();
   const key1=normalizeCompanyName(name);
   const key2=normalizeCompanyName(ragioneSociale);
-  const existing=(key1&&_companyIndexCache.get(key1))||(key2&&_companyIndexCache.get(key2));
+  const key3=extraFields.iva?'iva:'+String(extraFields.iva).trim():null;
+  const key4=extraFields.website?'web:'+normalizeWebsite(extraFields.website):null;
+  const existing=(key1&&_companyIndexCache.get(key1))||(key2&&_companyIndexCache.get(key2))||(key3&&_companyIndexCache.get(key3))||(key4&&_companyIndexCache.get(key4));
 
   if(existing){
     const patch={};
@@ -3092,6 +3112,10 @@ async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
       await api('companies?id=eq.'+existing.id,'PATCH',patch);
       Object.assign(existing,patch);
     }
+    if(key1&&!_companyIndexCache.has(key1))_companyIndexCache.set(key1,existing);
+    if(key2&&!_companyIndexCache.has(key2))_companyIndexCache.set(key2,existing);
+    if(key3&&!_companyIndexCache.has(key3))_companyIndexCache.set(key3,existing);
+    if(key4&&!_companyIndexCache.has(key4))_companyIndexCache.set(key4,existing);
     return existing.id;
   }
 
@@ -3099,8 +3123,11 @@ async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
   const inserted=await api('companies','POST',body);
   const row=Array.isArray(inserted)?inserted[0]:inserted;
   const id=row?.id;
-  if(id&&key1)_companyIndexCache.set(key1,{id,name:body.name,ragione_sociale:body.ragione_sociale});
-  if(id&&key2)_companyIndexCache.set(key2,{id,name:body.name,ragione_sociale:body.ragione_sociale});
+  const record={id,name:body.name,ragione_sociale:body.ragione_sociale,iva:body.iva||null,website:body.website||null};
+  if(id&&key1)_companyIndexCache.set(key1,record);
+  if(id&&key2)_companyIndexCache.set(key2,record);
+  if(id&&key3)_companyIndexCache.set(key3,record);
+  if(id&&key4)_companyIndexCache.set(key4,record);
   return id;
 }
 
@@ -8539,7 +8566,7 @@ async function loadApolloProgress(){
   if(!el)return;
   try{
     const [companies,logs]=await Promise.all([
-      api('companies?select=id&website=not.is.null'),
+      api('companies?select=id&website=not.is.null&merged_into=is.null'),
       api('enrichment_log?select=company_id,parsing_riuscito,campi_estratti&api_usata=eq.apollo')
     ]);
     const eligible=companies.length;
@@ -8582,7 +8609,7 @@ async function loadCoreProgress(){
   if(!el)return;
   try{
     const [totalCompanies,facts,areas]=await Promise.all([
-      api('companies?select=id'),
+      api('companies?select=id&merged_into=is.null'),
       api('company_facts?select=company_id'),
       api('company_therapeutic_areas?select=company_id,fonte&fonte=in.(sito_ufficiale,modello_testo)')
     ]);
@@ -8787,7 +8814,9 @@ async function loadCompanies(offset=0){
     const status=document.getElementById('co-status')?.value||'';
 
     // Build query
-    let q=`companies?select=*&limit=${pageSize}&offset=${offset}`;
+    // merged_into=is.null: nasconde i record fusi in un duplicato canonico (restano
+    // nel database per storico/audit, ma non devono comparire nella lista normale).
+    let q=`companies?select=*&merged_into=is.null&limit=${pageSize}&offset=${offset}`;
 
     // Filtri
     if(type)q+=`&entity_type=eq.${type}`;
@@ -8819,7 +8848,7 @@ async function loadCompanies(offset=0){
     });
 
     // Totale con filtri
-    let countQ=`companies?select=id`;
+    let countQ=`companies?select=id&merged_into=is.null`;
     if(type)countQ+=`&entity_type=eq.${type}`;
     if(status!=='')countQ+=`&is_active=eq.${status}`;
     if(search)countQ+=`&name=ilike.*${encodeURIComponent(search)}*`;
