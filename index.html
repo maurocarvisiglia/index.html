@@ -2621,14 +2621,20 @@ async function _aiFetch(url,init){
   }
 }
 
-async function callGroq(prompt, maxTokens=800){
+// La temperatura e' un parametro, non una costante: le chiamate che devono produrre
+// STRUTTURA o ESTRARRE dati (JSON, classificazioni, filtri) vanno tenute basse perche'
+// li' la creativita' e' solo rumore che rompe il parsing o inventa valori; le chiamate
+// che devono SCRIVERE prosa descrittiva su numeri gia' calcolati possono salire, perche'
+// la variabilita' li' produce testo meno meccanico senza toccare i dati (che l'IA non
+// calcola mai). Default 0.1: tutti i chiamanti storici restano invariati.
+async function callGroq(prompt, maxTokens=800, temperature=0.1){
   const waitMs=_groqRateLimitUntil-Date.now();
   // Se in rate limit, lancia subito errore per passare al provider successivo
   if(waitMs>0)throw new Error('Groq in rate limit, skip');
   const resp=await _aiFetch(GROQ_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_API_KEY},
-    body:JSON.stringify({model:GROQ_MODEL,max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature:0.1})
+    body:JSON.stringify({model:GROQ_MODEL,max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature})
   });
   if(!resp.ok){
     if(resp.status===429||resp.status===503){_groqRateLimitUntil=Date.now()+120000;throw new Error('Groq '+resp.status);}
@@ -2638,13 +2644,13 @@ async function callGroq(prompt, maxTokens=800){
   return data.choices[0].message.content.trim();
 }
 
-async function callMistral(prompt, maxTokens=800){
+async function callMistral(prompt, maxTokens=800, temperature=0.1){
   const waitMs=_mistralRateLimitUntil-Date.now();
   if(waitMs>0)throw new Error('Mistral in rate limit, skip');
   const resp=await _aiFetch(MISTRAL_URL,{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+MISTRAL_API_KEY},
-    body:JSON.stringify({model:'mistral-small-latest',max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature:0.1})
+    body:JSON.stringify({model:'mistral-small-latest',max_tokens:maxTokens,messages:[{role:'user',content:prompt}],temperature})
   });
   if(!resp.ok){
     if(resp.status===429||resp.status===503){_mistralRateLimitUntil=Date.now()+120000;throw new Error('Mistral '+resp.status);}
@@ -2654,7 +2660,7 @@ async function callMistral(prompt, maxTokens=800){
   return data.choices[0].message.content.trim();
 }
 
-async function callGemini(prompt, maxTokens=800){
+async function callGemini(prompt, maxTokens=800, temperature=0.1){
   const waitMs=_geminiRateLimitUntil-Date.now();
   if(waitMs>0)throw new Error('Gemini in rate limit, skip');
   const resp=await _aiFetch(GEMINI_URL+'?key='+GEMINI_API_KEY,{
@@ -2662,7 +2668,7 @@ async function callGemini(prompt, maxTokens=800){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       contents:[{parts:[{text:prompt}]}],
-      generationConfig:{maxOutputTokens:maxTokens,temperature:0.1}
+      generationConfig:{maxOutputTokens:maxTokens,temperature}
     })
   });
   if(!resp.ok){
@@ -2674,11 +2680,11 @@ async function callGemini(prompt, maxTokens=800){
 }
 
 // ── MOTORE CASCADE: Groq → Mistral → Gemini ──
-async function callAI(prompt, maxTokens=800){
+async function callAI(prompt, maxTokens=800, temperature=0.1){
   const providers=[
-    {name:'Groq',  fn:()=>callGroq(prompt, maxTokens)},
-    {name:'Mistral',fn:()=>callMistral(prompt, maxTokens)},
-    {name:'Gemini', fn:()=>callGemini(prompt, maxTokens)},
+    {name:'Groq',  fn:()=>callGroq(prompt, maxTokens, temperature)},
+    {name:'Mistral',fn:()=>callMistral(prompt, maxTokens, temperature)},
+    {name:'Gemini', fn:()=>callGemini(prompt, maxTokens, temperature)},
   ];
   let lastError=null;
   for(const p of providers){
@@ -2695,7 +2701,7 @@ async function callAI(prompt, maxTokens=800){
 }
 
 // ── CHIAMATA AI POTENTE: tutti in parallelo → Gemini sintetizza ──
-async function callAIPowerful(prompt, maxTokens=1200){
+async function callAIPowerful(prompt, maxTokens=1200, temperature=0.1){
   // ORDINE CAMBIATO il 2026-08-17, su misura e non a intuito.
   // Sui prompt reali dell'app (compresa la narrativa di report da 9.117
   // caratteri con ~15 vincoli rigidi): Mistral small ha superato 15/15 vincoli
@@ -2704,13 +2710,13 @@ async function callAIPowerful(prompt, maxTokens=1200){
   // Prima si prova quello che risponde; Gemini resta come seconda scelta
   // perche' quando e' disponibile e' ottimo.
   try{
-    return await callMistral(prompt, maxTokens);
+    return await callMistral(prompt, maxTokens, temperature);
   }catch(e){
     console.warn('Mistral fallito, provo Gemini:',e.message);
-    try{return await callGemini(prompt, maxTokens);}
+    try{return await callGemini(prompt, maxTokens, temperature);}
     catch(e2){
       console.warn('Gemini fallito, provo Groq:',e2.message);
-      return await callGroq(prompt, maxTokens);
+      return await callGroq(prompt, maxTokens, temperature);
     }
   }
 }
@@ -2844,6 +2850,35 @@ async function loadTaxonomy(){
   _taxonomyCache=taxonomy;
   _aliasCache={};
   aliases.forEach(a=>{_aliasCache[a.alias.toLowerCase()]=a;});
+}
+
+// Valori realmente presenti nei dati per i campi filtrabili dai report.
+//
+// Prima erano scritti a mano nel prompt del pianificatore, e si erano disallineati
+// dal database senza che nulla lo segnalasse (misurato il 27/08/2026):
+//   - functional_area_v2 'healthcare_services' (343 annunci, 3a area piu' grande
+//     del database) MANCAVA dalla lista -> un report su quei ruoli non filtrava nulla;
+//   - contract_type offriva 'Freelance' e 'Stage' (ZERO annunci ciascuno) e ometteva
+//     'Agenzia' (30) e 'altro' (10) -> peggio: il filtro veniva applicato e tornava
+//     vuoto, e la narrazione inventava una spiegazione di mercato per il vuoto;
+//   - therapeutic_area ometteva 'ta_consumer_health' e tutti i codici nuovi
+//     (nephrology, hepatology, endocrinology, ...) gia' accettati dal classificatore.
+// Leggendoli dai dati il disallineamento non puo' piu' ripresentarsi: quando il
+// classificatore inizia a popolare un codice nuovo, il pianificatore lo vede subito.
+let _filterValuesCache=null;
+const REPORT_FILTER_FIELDS=['functional_area_v2','sector_v2','therapeutic_area','seniority_v2','contract_type'];
+async function loadReportFilterValues(forceRefresh){
+  if(_filterValuesCache&&!forceRefresh)return _filterValuesCache;
+  const rows=await api('job_listings?select='+REPORT_FILTER_FIELDS.join(','));
+  const out={};
+  REPORT_FILTER_FIELDS.forEach(f=>{
+    const counts={};
+    rows.forEach(r=>{const v=r[f];if(v&&v!=='not_applicable')counts[v]=(counts[v]||0)+1;});
+    // Ordinati per frequenza: il pianificatore legge prima i valori piu' rappresentati.
+    out[f]=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({value:k,count:c}));
+  });
+  _filterValuesCache=out;
+  return out;
 }
 
 // Risolve i termini di ricerca ruolo in condizioni PostgREST — usata da Analisi Ruolo,
@@ -3174,13 +3209,41 @@ async function fetchListingsForReportFilters(filters){
   // richiesta puo' escludere piu' di un livello (es. "escludi Manager e Director").
   if(filters.seniority_v2_exclude&&filters.seniority_v2_exclude.length)parts.push('seniority_v2=not.in.('+filters.seniority_v2_exclude.map(encodeURIComponent).join(',')+')');
   if(filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(filters.contract_type));
-  if(filters.company)parts.push('ragione_sociale=ilike.*'+encodeURIComponent(filters.company)+'*');
+  // Il nome commerciale e la ragione sociale non coincidono sempre (es. "Chiesi" vs
+  // "CHIESI FARMACEUTICI S.P.A."): cercare in un solo campo perde annunci a seconda
+  // di quale dei due la fonte ha compilato.
+  if(filters.company){
+    const c=encodeURIComponent(filters.company);
+    parts.push(`or=(ragione_sociale.ilike.*${c}*,company_name.ilike.*${c}*)`);
+  }
   if(filters.date_from)parts.push('published_date=gte.'+encodeURIComponent(filters.date_from));
   if(filters.date_to)parts.push('published_date=lte.'+encodeURIComponent(filters.date_to));
-  const query='job_listings?select=*'+(parts.length?'&'+parts.join('&'):'')+'&order=published_date.desc.nullslast&limit=2000';
-  let listings=await api(query);
+  const base='job_listings?select=*'+(parts.length?'&'+parts.join('&'):'')+'&order=published_date.desc.nullslast';
+
+  // Paginazione invece di un limite fisso a 2000.
+  //
+  // Il limite fisso troncava in silenzio: su un database da 2.513 annunci una query
+  // ampia perdeva 513 righe presentandole come campione completo (e' cosi' che un
+  // report ha dichiarato "2000 annunci" per due entita' diverse — era il limite,
+  // non il dato). Peggio, il filtro regione qui sotto e' lato client e girava DOPO
+  // il troncamento: gli annunci di una regione finiti oltre la soglia sparivano.
+  // Con la paginazione il campione e' completo, e se davvero si superasse il tetto
+  // di sicurezza la cosa viene detta (_truncated) invece di essere nascosta.
+  const PAGE=1000,MAX_ROWS=20000;
+  let listings=[],offset=0,truncated=false;
+  while(true){
+    const page=await api(`${base}&limit=${PAGE}&offset=${offset}`);
+    listings=listings.concat(page);
+    if(page.length<PAGE)break;
+    offset+=PAGE;
+    if(offset>=MAX_ROWS){truncated=true;break;}
+  }
+
   // Filtro regione lato client: la colonna region e' spesso vuota, si usa lo stesso
   // fallback (province/location) della sezione geografica per non perdere annunci.
+  // Resta lato client perche' risolvere provincia->regione in SQL richiederebbe di
+  // duplicare la mappa PROVINCE_TO_REGION nel database; ora e' innocuo perche'
+  // lavora sul campione completo, non su una fetta troncata.
   if(filters.region){
     const target=filters.region.toLowerCase();
     listings=listings.filter(l=>{
@@ -3188,6 +3251,7 @@ async function fetchListingsForReportFilters(filters){
       return r.toLowerCase().includes(target);
     });
   }
+  if(truncated)listings._truncated=MAX_ROWS;
   return listings;
 }
 
@@ -3199,24 +3263,35 @@ const REPORT_SECTIONS_ENUM=['seniority_mix','therapeutic_area_mix','geo_mix','co
 async function planReportFromPrompt(userPrompt){
   await loadTaxonomy();
   const roleNames=_taxonomyCache.map(t=>t.canonical_role);
+  // Liste dai DATI, non scritte a mano: vedi loadReportFilterValues().
+  const fv=await loadReportFilterValues();
+  // Il conteggio accanto a ogni valore serve al pianificatore per capire cosa e'
+  // rappresentato davvero nel campione (es. non scegliere un valore da 1 annuncio
+  // quando la richiesta e' generica).
+  const fmtVals=f=>(fv[f]||[]).map(x=>`${x.value} (${x.count})`).join(', ')||'nessun valore presente nei dati';
+  const today=new Date().toISOString().slice(0,10);
   const planPrompt=`Sei un pianificatore di report per LS Job Intelligence, piattaforma di market intelligence Life Sciences italiana.
 Il tuo compito e' SOLO interpretare la richiesta e tradurla in un piano JSON strutturato. NON calcoli numeri, NON scrivi testo — solo struttura.
 
 RICHIESTA DELL'UTENTE: "${userPrompt}"
+DATA DI OGGI: ${today}
 
 RUOLI CANONICI VALIDI (usa uno di questi ESATTI se la richiesta menziona un ruolo, altrimenti null):
 ${roleNames.join(', ')}
 
-FILTRI DISPONIBILI per ogni entita' (tutti opzionali, null se non specificati dalla richiesta):
+FILTRI DISPONIBILI per ogni entita' (tutti opzionali, null se non specificati dalla richiesta).
+Per i campi sotto, ogni valore ammesso e' elencato con tra parentesi il numero di annunci
+che lo hanno nel database: sono gli UNICI valori esistenti, non usarne altri.
 - canonical_role: uno dei ruoli validi sopra elencati
-- functional_area: uno tra medical_affairs, commercial, marketing, market_access, regulatory_affairs, quality, clinical_operations, drug_safety, rd, manufacturing, supply_chain, finance, hr, it, business_development, general_management
-- sector_v2: uno tra Big Pharma, Mid Pharma, Specialty Pharma, Pharma (produttore farmaceutico generico, tier non determinato — una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma), Biotech, Medical Devices, Diagnostics, CRO, CDMO, Chimico, Consumer Health, Nutraceutical, Cosmetics, Veterinary, Digital Health, Healthcare Services, Farmacia/Retail, EHS/HSE Consulting, Altro — IMPORTANTE: "Life Sciences" NON e' un sinonimo di "Pharma", e' l'insieme di TUTTI questi settori. Non impostare mai sector_v2 se la richiesta usa termini generici come "Life Sciences", "il settore", "il mercato" senza nominare un settore specifico tra quelli elencati.
-- therapeutic_area: uno tra oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, multiple
-- seniority_v2: uno tra internship, entry_level, associate, specialist, senior_specialist, expert, lead, manager, senior_manager, head_of, director, vp, c_level
+- functional_area: uno tra ${fmtVals('functional_area_v2')}
+- sector_v2: uno tra ${fmtVals('sector_v2')} — "Pharma" e' il produttore farmaceutico generico con tier non determinato, e una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma. IMPORTANTE: "Life Sciences" NON e' un sinonimo di "Pharma", e' l'insieme di TUTTI questi settori. Non impostare mai sector_v2 se la richiesta usa termini generici come "Life Sciences", "il settore", "il mercato" senza nominare un settore specifico tra quelli elencati.
+- therapeutic_area: uno tra ${fmtVals('therapeutic_area')}
+- seniority_v2: uno tra ${fmtVals('seniority_v2')}
 - seniority_v2_exclude: array di zero o piu' valori dalla stessa lista di seniority_v2, da ESCLUDERE dal campione — usa questo campo (mai seniority_v2) quando la richiesta dice "escludi/senza/tranne/tutti tranne X" riferito alla seniority (es. "escludi i Manager" -> seniority_v2_exclude:["manager"]). seniority_v2 e seniority_v2_exclude sono alternativi: non impostarli entrambi sulla stessa entita' a meno che la richiesta non lo richieda esplicitamente (es. "solo senior, escludi i director" e' un caso limite raro).
-- contract_type: uno tra TI, TD, Freelance, Stage
+- contract_type: uno tra ${fmtVals('contract_type')}
 - company: nome azienda (testo libero, null se non specificato)
 - region: nome regione italiana (testo libero, null se non specificato)
+- date_from / date_to: date in formato YYYY-MM-DD per limitare il periodo degli annunci (null se la richiesta non parla di tempo). Traduci le espressioni relative usando la DATA DI OGGI sopra: "ultimi 3 mesi" -> date_from = oggi meno 3 mesi, "da giugno" -> date_from = primo giugno dell'anno corrente, "nel 2026" -> date_from=2026-01-01 e date_to=2026-12-31.
 
 SEZIONI DISPONIBILI (scegli tra queste; il benchmark RAL e la scarsita' di talenti sono SEMPRE incluse automaticamente, non serve richiederle):
 - seniority_mix: distribuzione per livello di seniority
@@ -3237,11 +3312,12 @@ Rispondi SOLO con questo JSON, nessun altro testo:
 {
   "title": "<titolo breve e descrittivo del report>",
   "mode": "single oppure comparison",
-  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"seniority_v2_exclude":[],"contract_type":null,"company":null,"region":null}}],
+  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"seniority_v2_exclude":[],"contract_type":null,"company":null,"region":null,"date_from":null,"date_to":null}}],
   "sections": ["<sottoinsieme di: seniority_mix, therapeutic_area_mix, geo_mix, contract_type_mix>"],
   "primary_focus": "<una delle sezioni sopra se la richiesta ha un focus esplicito, altrimenti null>"
 }`;
 
+  // Temperatura bassa (default 0.1): qui serve STRUTTURA esatta, non creativita'.
   const raw=await callAIPowerful(planPrompt,700);
   const clean=raw.replace(/```json|```/g,'').trim();
   let plan;
@@ -3250,10 +3326,29 @@ Rispondi SOLO con questo JSON, nessun altro testo:
 
   if(!plan.entities||!plan.entities.length)throw new Error('Nessuna entità identificata nella richiesta.');
 
-  // Validazione: filtri e sezioni devono essere reali, non inventati dall'IA
+  // Validazione: filtri e sezioni devono essere reali, non inventati dall'IA.
+  //
+  // Prima veniva validato SOLO canonical_role: gli altri cinque filtri passavano
+  // non controllati dentro la query. Un valore inesistente non da' errore —
+  // PostgREST risponde 200 con lista vuota (verificato) — quindi il report usciva
+  // su un campione vuoto, e la narrazione (che ha la regola "non scusarti per i
+  // dati mancanti, formula un'ipotesi") inventava una spiegazione di mercato per
+  // un vuoto che era in realta' un filtro sbagliato. Ora ogni filtro e' validato
+  // contro i valori realmente presenti nei dati, e quelli scartati vengono
+  // riportati all'utente invece di scomparire.
   const validRoles=new Set(roleNames);
-  const validSeniority=new Set(['internship','entry_level','associate','specialist','senior_specialist','expert','lead','manager','senior_manager','head_of','director','vp','c_level']);
   const validSections=new Set(REPORT_SECTIONS_ENUM);
+  const valueSets={
+    functional_area:new Set((fv.functional_area_v2||[]).map(x=>x.value)),
+    sector_v2:new Set((fv.sector_v2||[]).map(x=>x.value)),
+    therapeutic_area:new Set((fv.therapeutic_area||[]).map(x=>x.value)),
+    seniority_v2:new Set((fv.seniority_v2||[]).map(x=>x.value)),
+    contract_type:new Set((fv.contract_type||[]).map(x=>x.value)),
+  };
+  // "Pharma" nel prompt significa esplicitamente anche Big/Mid/Specialty: il valore
+  // e' legittimo anche se fetchListingsForReportFilters lo espande in un IN(...).
+  const droppedFilters=[];
+  const isIsoDate=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&!isNaN(Date.parse(s));
   // Rete di sicurezza deterministica: l'IA a volte lascia canonical_role null anche
   // quando la richiesta nomina chiaramente un ruolo reale ma con parole leggermente
   // diverse (es. "Tender specialist" vs "Tender Office Specialist") — verificato che
@@ -3297,11 +3392,46 @@ Rispondi SOLO con questo JSON, nessun altro testo:
         console.warn('planReportFromPrompt: ruolo recuperato per match deterministico:',recovered);
       }
     }
+    // Filtri a valore singolo: scartati se non esistono nei dati, e segnalati.
+    Object.entries(valueSets).forEach(([field,allowed])=>{
+      const v=e.filters[field];
+      if(v==null||v==='')return;
+      if(field==='sector_v2'&&v==='Pharma')return; // espanso a valle in IN(Big/Mid/Specialty/Pharma)
+      if(!allowed.has(v)){
+        droppedFilters.push(`${field}="${v}" (nessun annuncio con questo valore)`);
+        console.warn('planReportFromPrompt: filtro scartato, valore inesistente nei dati:',field,v);
+        e.filters[field]=null;
+      }
+    });
+    // Esclusioni: stessa validazione, ma su un elenco.
     if(!Array.isArray(e.filters.seniority_v2_exclude))e.filters.seniority_v2_exclude=[];
-    e.filters.seniority_v2_exclude=e.filters.seniority_v2_exclude.filter(s=>validSeniority.has(s));
+    e.filters.seniority_v2_exclude=e.filters.seniority_v2_exclude.filter(s=>{
+      if(valueSets.seniority_v2.has(s))return true;
+      droppedFilters.push(`seniority_v2_exclude="${s}" (livello inesistente nei dati)`);
+      return false;
+    });
+    // Date: solo formato ISO valido, altrimenti PostgREST riceve una stringa
+    // arbitraria e l'esito e' imprevedibile.
+    ['date_from','date_to'].forEach(f=>{
+      if(e.filters[f]&&!isIsoDate(e.filters[f])){
+        droppedFilters.push(`${f}="${e.filters[f]}" (data non valida)`);
+        e.filters[f]=null;
+      }
+    });
+    if(e.filters.date_from&&e.filters.date_to&&e.filters.date_from>e.filters.date_to){
+      droppedFilters.push(`intervallo date invertito (${e.filters.date_from} → ${e.filters.date_to}), ignorato`);
+      e.filters.date_from=null;e.filters.date_to=null;
+    }
   });
   plan.sections=(plan.sections||[]).filter(s=>validSections.has(s));
+  // Nessuna sezione valida: il prompt chiede di includerne 4 quando la richiesta non
+  // ha un focus, ma se l'IA restituisce una lista vuota o tutta invalida il report
+  // uscirebbe con il solo benchmark. Meglio ricadere sulla copertura completa.
+  if(!plan.sections.length)plan.sections=REPORT_SECTIONS_ENUM.slice();
+  if(plan.primary_focus&&!validSections.has(plan.primary_focus))plan.primary_focus=null;
   if(!plan.mode||!['single','comparison'].includes(plan.mode))plan.mode=plan.entities.length>1?'comparison':'single';
+  // Portato con il piano fino alla UI: i filtri scartati vanno detti, non nascosti.
+  plan._dropped_filters=droppedFilters;
 
   return plan;
 }
@@ -3323,16 +3453,24 @@ function computeSectorDistribution(listings){
 // Calcola gap analysis tra due entità (RAL, volume, scarcity)
 function calculateGapAnalysis(results){
   if(results.length<2)return null;
+  // Le differenze percentuali sono rapporti: con il denominatore a zero davano
+  // Infinity, che JSON.stringify converte in null — l'IA riceveva un confronto
+  // matematicamente impossibile travestito da "dato non disponibile". Ora la
+  // condizione e' esplicita: senza base di confronto il campo e' null E il motivo
+  // e' scritto, cosi' la narrazione puo' dirlo invece di ignorarlo.
+  const pctDiff=(comp,base)=>(base&&base>0&&comp!=null)?Math.round((comp/base-1)*100):null;
   const gaps=[];
   for(let i=1;i<results.length;i++){
     const base=results[0];
     const comp=results[i];
+    const noBase=!base.n_listings;
     gaps.push({
       label1:base.label,
       label2:comp.label,
-      volume_diff:Math.round((comp.n_listings/base.n_listings-1)*100),
-      ral_diff:comp.benchmark.median&&base.benchmark.median?Math.round((comp.benchmark.median/base.benchmark.median-1)*100):null,
-      companies_diff:Math.round((comp.benchmark.n_companies/base.benchmark.n_companies-1)*100)
+      volume_diff:pctDiff(comp.n_listings,base.n_listings),
+      ral_diff:pctDiff(comp.benchmark.median,base.benchmark.median),
+      companies_diff:pctDiff(comp.benchmark.n_companies,base.benchmark.n_companies),
+      confronto_non_calcolabile:noBase?`"${base.label}" non ha annunci nel campione: le differenze percentuali rispetto a questa entita' non sono calcolabili`:null
     });
   }
   return gaps;
@@ -3481,6 +3619,9 @@ async function executeReportPlan(plan){
   const results=[];
   for(const entity of plan.entities){
     const fetched=await fetchListingsForReportFilters(entity.filters||{});
+    // _truncated si perde nel filtro sotto (nuovo array): letto prima, cosi' se il
+    // tetto di sicurezza scattasse il report puo' dirlo invece di tacere.
+    const truncatedAt=fetched._truncated||null;
     // Mercato Italia: gli annunci esteri vengono tolti da TUTTA l'analisi (RAL,
     // seniority, TA, ecc.), non solo dalla sezione geografica — ma segnalati sempre.
     const{kept:listings,excluded:excludedForeign}=filterOutForeignListings(fetched);
@@ -3505,7 +3646,7 @@ async function executeReportPlan(plan){
     const ral_by_seniority_diversified = benchmark.concentration_flag
       ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company))
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions});
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3517,13 +3658,22 @@ async function executeReportPlan(plan){
   return results;
 }
 
-// ── REPORT BUILDER — Step 3: narrazione DETERMINISTICA (NO IA). Solo fatti meccanicistici
-// estratti direttamente dai dati calcolati. ──
+// ── REPORT BUILDER — Step 3: narrazione. I NUMERI sono tutti gia' calcolati dallo
+// Step 2 in modo deterministico; qui l'IA li mette in prosa e ne spiega il senso,
+// senza mai ricalcolarli. (Il commento precedente diceva "DETERMINISTICA (NO IA)":
+// era rimasto da una versione anteriore all'introduzione di callAIPowerful qui.) ──
 async function narrateReport(plan,entityResults){
   const n=entityResults.length;
 
   const factsForAI=entityResults.map(r=>({
     label:r.label,n_listings:r.n_listings,
+    // I filtri effettivamente applicati viaggiano insieme ai numeri: senza questo
+    // contesto un campione vuoto e' indistinguibile da "il mercato non assume", e
+    // la narrazione finiva per spiegare come fenomeno di mercato cio' che era il
+    // risultato di un filtro.
+    filtri_applicati:Object.fromEntries(Object.entries(r.filters||{}).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&!v.length))),
+    campione_vuoto:r.n_listings===0,
+    campione_troncato_a:r.truncatedAt||null,
     date_range:r.benchmark.date_range,
     excluded_foreign_count:r.excludedForeign.length,
     excluded_foreign_examples:r.excludedForeign.slice(0,5).map(x=>x.location),
@@ -3562,7 +3712,9 @@ REGOLE ASSOLUTE SUI DATI:
 - Se "ral_segments" e' presente (non null), il mercato si divide in fasce retributive nette individuate matematicamente dai salti nella distribuzione — descrivi OGNI fascia con il suo range (min-max), quante posizioni contiene, e le aziende che la compongono ("top_companies"). Non inventare nomi per le fasce (es. "entry", "generalista", "specialty") a meno che le aziende/RAL della fascia lo suggeriscano chiaramente — altrimenti descrivile semplicemente per range di RAL. Se "ral_segments" e' null o assente, il mercato e' omogeneo: NON inventare fasce che non esistono.
 - Usa la distribuzione geografica ("sections.geo_mix") per indicare dove si concentra la domanda e cosa significa operativamente.
 - ANOMALIE DA SCORPORARE — controlla sempre "benchmark.concentration_flag" E "top_employers": se un'azienda rappresenta una quota sproporzionata degli annunci (tipicamente oltre il 30-40% del totale) con una RAL fissa o anomala rispetto al resto del mercato, DEVI nominarla esplicitamente e spiegare come distorce i numeri aggregati, citando sia il dato "inquinato" sia quello "depurato" (concentration_flag.company_median_ral vs concentration_flag.diversified_median) quando disponibili. Non trattarla come una nota a margine: e' un fatto centrale della sintesi esecutiva, perche' altrimenti chi legge il report crede che la mediana rappresenti un mercato omogeneo quando invece e' pilotata da un singolo datore.
-- Se un'entita' ha pochissimi o zero annunci, NON scusarti per la mancanza di dati e NON dire genericamente "servirebbe approfondire" — formula invece un'ipotesi concreta sul perche' (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]" oppure "il campione e' troppo piccolo per essere rappresentativo, l'unico dato utilizzabile e' [x]").
+- CAMPIONE VUOTO — regola prioritaria su tutte le altre: se "campione_vuoto" e' true (zero annunci), NON formulare NESSUNA ipotesi sul mercato, sul ruolo o sul perche' non ci siano annunci. Un campione vuoto NON e' un'informazione di mercato: e' l'esito di una combinazione di filtri che non trova corrispondenze. Dichiaralo apertamente elencando i "filtri_applicati" che hanno prodotto il vuoto (es. "La combinazione di filtri richiesta — ruolo X, settore Y, periodo Z — non trova alcun annuncio nel database: il campione e' vuoto e non e' possibile produrre alcun benchmark. Verificare se i criteri sono troppo restrittivi.") e fermati li'. Non riempire il resto del report con congetture: meglio un report che dice "nessun dato per questi criteri" che uno che sembra un'analisi ma non poggia su niente.
+- Se un'entita' ha POCHI annunci (ma non zero), dillo esplicitamente indicando il numero e trattandolo come limite di rappresentativita': con pochi annunci mediane e percentuali sono instabili e non vanno presentate come solide. Puoi formulare un'ipotesi sul perche' il volume e' basso (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]"), ma solo dopo aver dichiarato la numerosita' reale.
+- Se "gap_vs_first.confronto_non_calcolabile" e' presente (non null), riportalo: significa che l'entita' di riferimento del confronto non ha annunci, quindi le differenze percentuali non esistono — non presentarle come zero o come dato mancante generico.
 - Usa "decisioni_retributive_indipendenti": se "numero_decisioni_stimate" e' significativamente minore di "totale_annunci", il numero di annunci pubblicati NON e' una proxy affidabile della profondita' del mercato — spiega che gran parte del volume osservato deriva da un numero ristretto di scelte organizzative (es. un roll-out territoriale) ripetute su piu' sedi, usando gli esempi in "decisioni_replicate" (stessa azienda, stesso ruolo, stessa RAL, annunci multipli).
 - Se "ral_by_seniority_senza_azienda_dominante" e' presente (non null), confrontalo con "ral_by_seniority" aggregato: se i differenziali di seniority cambiano in modo significativo togliendo l'azienda dominante, spiega che il differenziale "osservato" nell'aggregato riflette in parte la scala salariale interna di quel singolo datore, non l'intero mercato.
 
@@ -3584,7 +3736,12 @@ Rispondi SOLO con questo JSON:
 }`;
 
   try{
-    const raw=await callAIPowerful(prompt,1300);
+    // Temperatura piu' alta del resto dell'app: qui l'IA non estrae ne' calcola
+    // nulla — tutti i numeri arrivano gia' fatti dallo Step 2 e le regole sopra le
+    // vietano di produrne altri. Il suo compito e' scrivere prosa che spieghi quei
+    // numeri, e a 0.1 il testo risultava meccanico e ripetitivo tra report diversi.
+    // 0.55 e' un compromesso: varia la forma, non i fatti.
+    const raw=await callAIPowerful(prompt,1300,0.55);
     const clean=raw.replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(clean);
     if(!parsed.executive_summary)throw new Error('risposta IA incompleta');
@@ -3984,13 +4141,26 @@ async function generateCustomReport(){
     if(statusEl)statusEl.textContent='⏳ Interpreto la richiesta...';
     const plan=await planReportFromPrompt(userPrompt);
 
+    // Filtri richiesti ma inapplicabili (valore inesistente nei dati): l'utente deve
+    // sapere che il report NON rispetta un criterio che aveva chiesto, altrimenti
+    // legge un campione piu' ampio del previsto credendolo filtrato.
+    if(plan._dropped_filters&&plan._dropped_filters.length){
+      toast('⚠️ Filtri ignorati perché senza corrispondenza nei dati: '+plan._dropped_filters.join('; '),'warning');
+    }
+
     if(statusEl)statusEl.textContent='⏳ Calcolo i dati ('+plan.entities.map(e=>e.label).join(', ')+')...';
     const entityResults=await executeReportPlan(plan);
 
     if(entityResults.every(e=>e.n_listings===0)){
       if(statusEl)statusEl.textContent='';
       if(win&&!win.closed)win.close();
-      toast('⚠️ Nessun annuncio trovato per questi filtri. Provo a riformulare la richiesta.','warning');
+      // Elenca i filtri che hanno prodotto il vuoto: "nessun annuncio trovato" da
+      // solo non dice DOVE stringere per ottenere un risultato.
+      const applied=plan.entities.map(e=>{
+        const f=Object.entries(e.filters||{}).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&!v.length));
+        return f.length?`${e.label}: ${f.map(([k,v])=>k+'='+(Array.isArray(v)?v.join('/'):v)).join(', ')}`:e.label;
+      }).join(' | ');
+      toast('⚠️ Nessun annuncio corrisponde a questi criteri, quindi non c\'è nulla da analizzare. Filtri applicati → '+applied,'warning');
       btn.disabled=false;
       return;
     }
