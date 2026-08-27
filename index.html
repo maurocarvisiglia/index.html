@@ -2143,36 +2143,14 @@ async function importVocationsCSV(event){
     else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
     else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
     else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
-    // ── CLASSIFICAZIONE SENIORITY — sistema a priorità ──
-    // Regola: valuta prima i livelli più alti, poi scendi
-    // "Senior Manager" → senior_manager (non solo "senior")
-    let seniority_v2='specialist'; // default
-    if(/\bceo\b|\bcfo\b|\bcmo\b|\bcso\b|\bcoo\b|general manager|managing director|amministratore delegato/.test(tl)){
-      seniority_v2='c_level';
-    } else if(/\bvp\b|vice president|vice-president/.test(tl)){
-      seniority_v2='head_of';
-    } else if(/\bhead of\b|head of\b/.test(tl)){
-      seniority_v2='head_of';
-    } else if(/senior.*director|sr.*director|director.*senior/.test(tl)){
-      seniority_v2='director';
-    } else if(/\bdirector\b|direttore|direttrice/.test(tl)){
-      seniority_v2='director';
-    } else if(/senior.*manager|sr.*manager|manager.*senior|principal manager|group manager/.test(tl)){
-      seniority_v2='senior_manager';
-    } else if(/\bmanager\b|responsabile|\bhead\b/.test(tl)){
-      seniority_v2='manager';
-    } else if(/\blead\b(?!.*specialist)|team lead|leading/.test(tl)&&!/\bsenior\b/.test(tl)){
-      seniority_v2='manager';
-    } else if(/\bsenior\b|\bsr\.\b|\bsr \b|\bexpert\b|esperto|principal(?!.*consultant)|senior specialist/.test(tl)){
-      seniority_v2='senior_specialist';
-    } else if(/\bstage\b|\bintern\b|tirocinio|apprendist/.test(tl)){
-      seniority_v2='internship';
-    } else if(/\bjunior\b|\bjr\.\b|\bjr \b|\bentry\b|neolaure|graduate|neo.?laure/.test(tl)){
-      seniority_v2='entry_level';
-    } else if(/\bassociate\b|coordinat/.test(tl)){
-      seniority_v2='associate';
-    }
-    // default rimane 'specialist'
+    // Seniority: UNICA funzione condivisa con la riclassificazione (classifySeniorityFromText,
+    // vedi sopra) — prima questo import aveva una copia propria della logica, che dava
+    // risultato diverso dalla riclassificazione su 233 annunci su 2513 e non conosceva
+    // l'eccezione Key Account: ogni nuovo import la reintroduceva da capo. Il canonical_role
+    // non e' ancora noto a questo punto dell'import (viene risolto dopo, in
+    // runPostImportEnrichment Step 1, che ririclassifica con lo stesso criterio quando
+    // il ruolo diventa disponibile) — qui si usa solo il testo del titolo.
+    const seniority_v2=classifySeniorityFromText(title)||'specialist';
     // ── CLASSIFICAZIONE AREA TERAPEUTICA (2 livelli) ──
     let therapeutic_area=null;
     let therapeutic_area_sub=null;
@@ -2912,37 +2890,73 @@ async function buildRoleSearchOr(rawSearch){
    (Junior/Senior/Director/VP/C-level) vincono sempre sul nome del ruolo. Ritorna null se
    non trova nessun segnale — MAI un default forzato, altrimenti si sbilancia tutto su
    un valore "neutro" (visto con classifySeniorityFromText solo sul titolo: 68% specialist). ═══ */
-function classifySeniorityFromText(t){
+// UNICA funzione di classificazione seniority in tutto il codice — prima ne
+// esistevano due (questa + una copia inline in importVocationsCSV), che davano
+// risultato diverso su 233 annunci su 2513 (9%) a seconda di quale percorso
+// avesse toccato l'annuncio, e la copia dell'import non conosceva l'eccezione
+// Key Account: ogni nuovo import la reintroduceva. Diagnosticato il 27/08/2026.
+//
+// Regole di seniority confermate dall'utente (27/08/2026):
+// - Direttore/Direttrice di farmacia: sempre 'manager' (dirige la farmacia).
+// - Coordinator/Coordinatore: sempre 'manager'.
+// - CEO/CFO/CTO/COO/CMO/CSO, General Manager, Country Manager, Senior Director,
+//   Managing Director, Amministratore Delegato, Head of / Capo funzione: tutti
+//   'lead' — bucket unico per i vertici invece dei valori fuori-enum
+//   general_manager/country_manager/senior_director/c_level, che nel dataset
+//   reale avevano 0-2 annunci ciascuno e non sono selezionabili nei filtri.
+const SENIORITY_ROLE_OVERRIDE={
+  // Il canonical_role e' un dato piu' affidabile del testo grezzo del titolo:
+  // varianti come "Account Manager - Medication Delivery Solutions" non
+  // contengono la stringa "key account" ma SONO Key Account Manager confermati.
+  // Applicato ovunque il canonical_role e' gia' noto (vedi runPostImportEnrichment
+  // Step 1); il fallback testuale sotto resta per quando non lo e' ancora.
+  'Key Account Manager':t=>{
+    if(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t))return 'lead';
+    if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
+    return 'specialist';
+  }
+};
+function classifySeniorityFromText(t,canonicalRole){
   if(!t)return null;
+  if(canonicalRole&&SENIORITY_ROLE_OVERRIDE[canonicalRole])return SENIORITY_ROLE_OVERRIDE[canonicalRole](t);
   if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'internship';
-  if(/\b(ceo|cfo|cto|coo|cmo|cso)\b|chief\s+\w+\s+officer/i.test(t))return 'c_level';
+  // Direttore/Direttrice di farmacia: PRIMA del check generico "direttore" sotto,
+  // altrimenti verrebbe scambiato per un director generico.
+  if(/farmacist\w*\s+direttric|farmacist\w*\s+direttor|direttor\w*\s*\/?\s*direttric\w*\s+di\s+farmacia|direttric\w*\s+di\s+farmacia|direttor\w*\s+di\s+farmacia/i.test(t))return 'manager';
+  // Vertici e capifunzione -> bucket unico 'lead'. Prima dei check generici su
+  // "manager"/"director" sotto, che altrimenti vincerebbero sulla sottostringa
+  // (es. "General Manager" contiene "manager").
+  if(/\b(ceo|cfo|cto|coo|cmo|cso)\b|chief\s+\w+\s+officer|general manager|country manager|country head|senior director|managing director|direttore generale|direttore\s+paese|direttore\s+senior|amministratore delegato/i.test(t))return 'lead';
   if(/\bvp\b|vice president/i.test(t))return 'vp';
-  if(/general manager|direttore generale/i.test(t))return 'general_manager';
-  if(/country manager|country head|direttore paese/i.test(t))return 'country_manager';
-  if(/senior director|direttore senior/i.test(t))return 'senior_director';
   if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'director';
-  if(/head of|responsabile nazionale/i.test(t))return 'head_of';
+  if(/head of|responsabile nazionale|capo\s+funzione/i.test(t))return 'lead';
   if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
   if(/senior manager/i.test(t))return 'senior_manager';
   // "Key Account Manager" e varianti sono ruoli individuali (specialist/senior_specialist
   // in base all'esperienza), non di people management, nonostante il titolo contenga
-  // "Manager" — eccezione: se il titolo indica esplicitamente la guida di altri key
-  // account (es. "Key Account Lead") resta "lead". Va controllato PRIMA del check
-  // generico su "manager" qui sotto, altrimenti "manager" vince sempre per la parola
-  // nel titolo (46 annunci scoperti classificati cosi' erroneamente).
+  // "Manager" — eccezione testuale di riserva quando il canonical_role non e' ancora
+  // noto (vedi SENIORITY_ROLE_OVERRIDE sopra per il caso normale). Se il titolo indica
+  // esplicitamente la guida di altri key account (es. "Key Account Lead") resta "lead".
+  // Va controllato PRIMA del check generico su "manager" qui sotto, altrimenti "manager"
+  // vince sempre per la parola nel titolo (46 annunci scoperti classificati cosi').
   if(/key account/i.test(t)){
     if(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t))return 'lead';
-    if(/\bsenior\b/i.test(t))return 'senior_specialist';
+    if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
     return 'specialist';
   }
+  // Coordinator/Coordinatore: sempre manager (gestisce persone/processi).
+  if(/coordinat/i.test(t))return 'manager';
   if(/\bmanager\b|\bresponsabile\b|\bcapo\b/i.test(t))return 'manager';
   // "lead" da solo intercetta anche l'uso verbale generico ("prepared to lead",
   // "ability to lead" nei requisiti soft-skill) che non indica alcun livello di
-  // seniority — escluso esplicitamente. "coordinat" resta invariato (raro come verbo).
-  if(/coordinat/i.test(t)||(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t)))return 'lead';
-  if(/\bprincipal\b|distinguished/i.test(t))return 'principal';
+  // seniority — escluso esplicitamente.
+  if(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t))return 'lead';
+  // "principal"/"distinguished" (IC senior track fuori dall'enum ufficiale, 12
+  // annunci isolati) consolidato sul bucket esistente 'expert' invece di un
+  // valore fuori-enum invisibile ai filtri.
+  if(/\bprincipal\b|distinguished/i.test(t))return 'expert';
   if(/\bexpert\b/i.test(t))return 'expert';
-  if(/\bsenior\b/i.test(t))return 'senior_specialist';
+  if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
   if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'associate';
   if(/\bspecialist\b|\bspecialista\b/i.test(t))return 'specialist';
   if(/\b0-1\s*ann|entry[\s-]?level/i.test(t))return 'entry_level';
@@ -2952,10 +2966,24 @@ function classifySeniorityFromText(t){
   if(/\b10\+?\s*anni/i.test(t))return 'expert';
   return null;
 }
-// Titolo prima (segnale piu' affidabile), poi descrizione come fallback. null se nessun
-// segnale in nessuno dei due: chi chiama NON deve sovrascrivere il valore esistente.
-function classifySeniorityDeterministic(title,description){
-  return classifySeniorityFromText(title)||classifySeniorityFromText(description)||null;
+// Titolo prima (segnale piu' affidabile), poi descrizione come fallback — MA solo se
+// il segnale nella descrizione non e' in un contesto che ne inverte il senso (es. "capacita'
+// di formare e supervisionare il personale junior" descrive un ruolo SENIOR che forma i
+// junior, non un ruolo junior: prima di questo controllo, "Sr CRA II - FSP Team" veniva
+// classificato entry_level per la parola "junior" comparsa li'). null se nessun segnale
+// affidabile in nessuno dei due: chi chiama NON deve sovrascrivere il valore esistente.
+const SENIORITY_INVERTING_CONTEXT_RE=/(supervision\w*|formare|coordinar\w*|gestir\w*|guidar\w*|affianca\w*|mentor\w*)[^.]{0,60}\b(junior|neolaureat\w*)\b/i;
+function classifySeniorityDeterministic(title,description,canonicalRole){
+  const fromTitle=classifySeniorityFromText(title,canonicalRole);
+  if(fromTitle)return fromTitle;
+  if(description&&SENIORITY_INVERTING_CONTEXT_RE.test(description)){
+    // Il segnale "junior" e' in un contesto che parla di TERZI (personale da formare),
+    // non del ruolo stesso: tolto dalla descrizione prima di classificarla, cosi' il
+    // resto della descrizione (se contiene altri segnali) puo' ancora essere usato.
+    const cleaned=description.replace(SENIORITY_INVERTING_CONTEXT_RE,' ');
+    return classifySeniorityFromText(cleaned,canonicalRole)||null;
+  }
+  return classifySeniorityFromText(description,canonicalRole)||null;
 }
 
 // Il settore di un annuncio e' quello verificato a livello di azienda (companies.sector_v2),
@@ -4883,7 +4911,12 @@ async function runMassReclassify(){
     try{
       const result=await normalizeJobTitle(l.job_title);
       if(result.canonical_role){
-        await api('job_listings?id=eq.'+l.id,'PATCH',{canonical_role:result.canonical_role,role_family:result.role_family||null});
+        const patch={canonical_role:result.canonical_role,role_family:result.role_family||null};
+        // Il ruolo appena risolto puo' avere una regola di seniority dedicata (es. Key
+        // Account Manager) non deducibile dal solo testo — la si applica ora che il
+        // canonical_role e' noto, altrimenti resterebbe il valore calcolato alla cieca.
+        if(SENIORITY_ROLE_OVERRIDE[result.canonical_role])patch.seniority_v2=classifySeniorityFromText(l.job_title,result.canonical_role);
+        await api('job_listings?id=eq.'+l.id,'PATCH',patch);
         matched++;
       } else {
         unmapped++;
@@ -4913,7 +4946,11 @@ async function runPostImportEnrichment(newCount){
         try{
           const result=await normalizeJobTitle(l.job_title);
           if(result.canonical_role){
-            await api(`job_listings?id=eq.${l.id}`,'PATCH',{canonical_role:result.canonical_role,role_family:result.role_family||null});
+            const patch={canonical_role:result.canonical_role,role_family:result.role_family||null};
+            // Vedi runMassReclassify per la stessa logica: il ruolo appena risolto puo'
+            // avere una regola di seniority dedicata non deducibile dal solo testo.
+            if(SENIORITY_ROLE_OVERRIDE[result.canonical_role])patch.seniority_v2=classifySeniorityFromText(l.job_title,result.canonical_role);
+            await api(`job_listings?id=eq.${l.id}`,'PATCH',patch);
             normalized++;
           }
         }catch(e){}
@@ -7468,7 +7505,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.sub_area)patch.sub_area=result.sub_area;
       // Seniority — motore deterministico, non IA. Se non trova nessun segnale
       // (titolo/descrizione), NON sovrascrive il valore esistente.
-      const deterministicSeniority=classifySeniorityDeterministic(listing.job_title,listing.job_description);
+      const deterministicSeniority=classifySeniorityDeterministic(listing.job_title,listing.job_description,listing.canonical_role);
       if(deterministicSeniority)patch.seniority_v2=deterministicSeniority;
       if(result.field_hq)patch.field_hq=result.field_hq;
       if(result.therapeutic_area&&_vta.includes(result.therapeutic_area))patch.therapeutic_area=result.therapeutic_area;
@@ -7654,6 +7691,9 @@ async function normalizeAllRoles(){
         if(result.canonical_role){
           const patch={canonical_role:result.canonical_role,role_family:result.role_family};
           if(result.functional_area)patch.functional_area=result.functional_area;
+          // Vedi runMassReclassify: il ruolo appena risolto puo' avere una regola di
+          // seniority dedicata (es. Key Account Manager) non deducibile dal solo testo.
+          if(SENIORITY_ROLE_OVERRIDE[result.canonical_role])patch.seniority_v2=classifySeniorityFromText(listing.job_title,result.canonical_role);
           await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
           ok++;
         }else{failed++;}
@@ -7694,6 +7734,9 @@ async function normalizeAllRoles(){
         if(result.canonical_role){
           const patch={canonical_role:result.canonical_role,role_family:result.role_family};
           if(result.functional_area)patch.functional_area=result.functional_area;
+          // Vedi runMassReclassify: il ruolo appena risolto puo' avere una regola di
+          // seniority dedicata (es. Key Account Manager) non deducibile dal solo testo.
+          if(SENIORITY_ROLE_OVERRIDE[result.canonical_role])patch.seniority_v2=classifySeniorityFromText(listing.job_title,result.canonical_role);
           await api(`job_listings?id=eq.${listing.id}`,'PATCH',patch);
           ok++;
         }else{failed++;}
@@ -7979,7 +8022,10 @@ JSON:
     if(result.job_description)patch.job_description=result.job_description;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
     if(result.sub_area)patch.sub_area=result.sub_area;
-    const detSen2=classifySeniorityDeterministic(title,text);
+    // canonical_role gia' risolto in precedenza per questo annuncio (se presente):
+    // stessa eccezione di seniority dedicata al ruolo usata ovunque nel codice.
+    const[{canonical_role:cr2}={}]=await api(`job_listings?select=canonical_role&id=eq.${id}`).catch(()=>[{}]);
+    const detSen2=classifySeniorityDeterministic(title,text,cr2);
     if(detSen2)patch.seniority_v2=detSen2;
     const companySector2=await getCompanySectorForListingId(id);
     if(companySector2)patch.sector_v2=companySector2;
@@ -8093,7 +8139,8 @@ Rispondi SOLO con JSON:
     }
     if(result.job_description)patch.job_description=result.job_description;
     if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
-    const detSen3=classifySeniorityDeterministic(title,pageText);
+    const[{canonical_role:cr3}={}]=await api(`job_listings?select=canonical_role&id=eq.${id}`).catch(()=>[{}]);
+    const detSen3=classifySeniorityDeterministic(title,pageText,cr3);
     if(detSen3)patch.seniority_v2=detSen3;
     const companySector3=await getCompanySectorForListingId(id);
     if(companySector3)patch.sector_v2=companySector3;
@@ -9403,7 +9450,11 @@ const CORE_TIPO_LABEL={
   modello_commerciale:'Modello commerciale',
   studio_clinico_italia:'Studi clinici in Italia (Fase 3)',
 };
-const CORE_TIPO_ORDINE=['gruppo','prodotto','pipeline_regolatoria','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia'];
+// 'prodotto' NON e' piu' qui: dal 27/08 i prodotti vengono da company_products
+// (tabella dedicata, con molecole e indice di ricerca), non da company_facts.
+// Le righe tipo='prodotto' restano in company_facts come backup passivo — la
+// card non le legge piu' da li', per non mostrare due volte lo stesso prodotto.
+const CORE_TIPO_ORDINE=['gruppo','pipeline_regolatoria','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia'];
 const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale'};
 
 // Il testo di questa card viene da pagine web esterne e titoli di studi clinici —
@@ -9430,9 +9481,10 @@ async function loadCoreCard(companyId){
   const body=document.getElementById('cd-core-body');
   if(!card||!body)return;
   try{
-    const [facts,company]=await Promise.all([
+    const [facts,company,prodotti]=await Promise.all([
       api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`),
-      api(`companies?select=market_radar&id=eq.${companyId}`)
+      api(`companies?select=market_radar&id=eq.${companyId}`),
+      api(`company_products?select=brand_name,active_ingredients,category,fonte,source_proof,source_url&company_id=eq.${companyId}&order=created_at.desc`)
     ]);
     const mr=company[0]?.market_radar||null;
 
@@ -9440,7 +9492,7 @@ async function loadCoreCard(companyId){
     // nulla da mostrare, ma questo la rendeva indistinguibile da "non ho controllato"
     // per l'utente — ora mostra sempre uno stato, vuoto o pieno.
     card.style.display='';
-    if(!facts.length&&!mr){
+    if(!facts.length&&!mr&&!prodotti.length){
       body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora arricchita da CORE.</div>';
       return;
     }
@@ -9466,6 +9518,22 @@ async function loadCoreCard(companyId){
       </div>`;
     }).join('');
 
+    // Prodotti da company_products (tabella dedicata dal 27/08, non piu' company_facts):
+    // stesso rendering di coreFattoHtml (valore + fonte cliccabile), con le molecole
+    // in coda quando note. category non e' mostrata: tipo='prodotto' significava gia'
+    // "commercializzato in Italia" per costruzione del prompt di estrazione.
+    let prodottiHtml='';
+    if(prodotti.length){
+      const righe=prodotti.map(p=>coreFattoHtml({
+        valore:p.brand_name+(p.active_ingredients&&p.active_ingredients.length?` (${p.active_ingredients.join(', ')})`:''),
+        url:p.source_url, prova:p.source_proof, fonte:p.fonte
+      })).join('');
+      prodottiHtml=`<div style="margin-bottom:14px;">
+        <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">Prodotti in Italia</label>
+        <div style="margin-top:6px;">${righe}</div>
+      </div>`;
+    }
+
     let mrHtml='';
     if(mr){
       const voci=(mr.voci||[]).slice(0,6);
@@ -9482,7 +9550,7 @@ async function loadCoreCard(companyId){
       </div>`;
     }
 
-    body.innerHTML=blocchi+mrHtml;
+    body.innerHTML=blocchi+prodottiHtml+mrHtml;
   }catch(e){
     card.style.display='';
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento dati CORE: ${e.message}</div>`;
