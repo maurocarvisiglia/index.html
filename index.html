@@ -696,6 +696,13 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">🧠 Avanzamento arricchimento CORE (ricerca sul sito ufficiale)</div>
+      <div id="core-progress-body">
+        <div class="loading">Caricamento...</div>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
@@ -3927,7 +3934,7 @@ function showView(name,btn){
   if(name==='demand')loadDemandModule();
   if(name==='users')loadUsersView();
   if(name==='listings'){loadListings();refreshPendingBadges();}
-  if(name==='companies'){loadCompanies();loadApolloProgress();}
+  if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();}
   if(name==='ruolo')analyzeRuolo();
 }
 
@@ -7127,7 +7134,7 @@ FIELD_HQ:
 
 THERAPEUTIC_AREA — solo se menzionata esplicitamente nel titolo o descrizione:
 THERAPEUTIC_AREA (livello 1) — solo se menzionata esplicitamente:
-oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, neuroscience, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, ta_consumer_health, multiple, not_applicable
+oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, neuroscience, dermatology, ophthalmology, vaccines, infectious_diseases, gastroenterology, womens_health, urology, pain, ta_consumer_health, endocrinology, hepatology, nephrology, oncohematology, pathology, pediatrics, rheumatology, multiple, not_applicable
 
 THERAPEUTIC_AREA_SUB (livello 2, più specifica) — usa se riconosci:
 leukemia, lymphoma, myeloma, prostate_cancer, breast_cancer, lung_cancer (sotto oncology)
@@ -7167,7 +7174,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       // ufficiale (evita che un'allucinazione dell'IA scriva un codice inventato,
       // il tipo esatto di errore che ha corrotto questi campi in passato).
       const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management','healthcare_services','legal','customer_service'];
-      const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
+      const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','endocrinology','hepatology','nephrology','oncohematology','pathology','pediatrics','rheumatology','multiple','not_applicable'];
       if(result.functional_area_v2&&_va2.includes(result.functional_area_v2))patch.functional_area_v2=result.functional_area_v2;
       if(result.sub_area)patch.sub_area=result.sub_area;
       // Seniority — motore deterministico, non IA. Se non trova nessun segnale
@@ -7652,7 +7659,7 @@ JSON:
   "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
   "sub_area": "<msl|medical_advisor|kam|area_manager|isf|product_manager|regulatory_specialist|qa_specialist|cra|pv_specialist|scientist|ecc>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
-  "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|multiple|not_applicable>",
+  "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|neuroscience|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|endocrinology|hepatology|nephrology|oncohematology|pathology|pediatrics|rheumatology|multiple|not_applicable>",
   "location": "<città italiana>",
   "contract_type": "<TI|TD|Freelance|Stage|altro>",
   "job_description": "<riassunto ruolo max 400 caratteri>"
@@ -7663,7 +7670,7 @@ JSON:
     const result=JSON.parse(clean);
 
     const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
-    const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','multiple','not_applicable'];
+    const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','endocrinology','hepatology','nephrology','oncohematology','pathology','pediatrics','rheumatology','multiple','not_applicable'];
 
     // RAL: null di default, assegna SOLO se salary_text presente e valori plausibili
     const patch={ai_analyzed:true,classified_at:new Date().toISOString(),classification_source:'groq_v2'};
@@ -8560,6 +8567,96 @@ async function loadApolloProgress(){
       </div>`;
   }catch(e){
     el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento avanzamento: '+e.message+'</div>';
+  }
+}
+
+// CORE arricchisce le aziende scrivendo fatti verificati (con citazione+URL) su
+// due tabelle dedicate, separate dai campi Apollo su companies: company_facts
+// (gruppo/prodotti/pipeline/siti/fase mercato/modello commerciale) e
+// company_therapeutic_areas per le aree terapeutiche. Qui contiamo solo le righe
+// con fonte "sito_ufficiale"/"modello_testo" — le altre fonti su
+// company_therapeutic_areas (aggregato_annunci, parola_chiave) vengono da
+// classificazioni deterministiche pre-esistenti, non da CORE.
+async function loadCoreProgress(){
+  const el=document.getElementById('core-progress-body');
+  if(!el)return;
+  try{
+    const [totalCompanies,facts,areas]=await Promise.all([
+      api('companies?select=id'),
+      api('company_facts?select=company_id'),
+      api('company_therapeutic_areas?select=company_id,fonte&fonte=in.(sito_ufficiale,modello_testo)')
+    ]);
+    const total=totalCompanies.length;
+    const idsFacts=new Set(facts.map(f=>f.company_id));
+    const idsAreas=new Set(areas.map(f=>f.company_id));
+    const enrichedIds=new Set([...idsFacts,...idsAreas]);
+    const enriched=enrichedIds.size;
+    const remaining=total-enriched;
+    const pct=total?Math.round(enriched/total*100):0;
+
+    el.innerHTML=`
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px;">
+        <span>${enriched} / ${total} aziende arricchite</span>
+        <span style="font-weight:700;color:#a78bfa;">${pct}%</span>
+      </div>
+      <div style="background:var(--surface2);height:8px;border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;background:#a78bfa;width:${pct}%;transition:width 0.3s;"></div>
+      </div>
+      <div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div><div class="kpi-mini-label" style="color:var(--success);">Arricchite</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="openCoreEnriched()">${enriched}</div></div>
+        <div><div class="kpi-mini-label">Da arricchire</div><div class="kpi-mini-value">${remaining}</div></div>
+        <div><div class="kpi-mini-label">Fatti verificati</div><div class="kpi-mini-value">${facts.length}</div></div>
+        <div><div class="kpi-mini-label">Aree terapeutiche</div><div class="kpi-mini-value">${areas.length}</div></div>
+      </div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento avanzamento: '+e.message+'</div>';
+  }
+}
+
+async function openCoreEnriched(){
+  const titleEl=document.getElementById('apollo-exclusions-title');
+  const bodyEl=document.getElementById('apollo-exclusions-body');
+  titleEl.textContent='Aziende arricchite via CORE';
+  bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
+  openModal('modal-apollo-exclusions');
+  try{
+    const [facts,areas]=await Promise.all([
+      api('company_facts?select=company_id,tipo,valore,url,created_at&order=created_at.desc'),
+      api('company_therapeutic_areas?select=company_id,code,url,created_at&fonte=in.(sito_ufficiale,modello_testo)&order=created_at.desc')
+    ]);
+    const byCompany=new Map();
+    facts.forEach(f=>{
+      if(!byCompany.has(f.company_id))byCompany.set(f.company_id,{facts:[],areas:[],lastDate:f.created_at});
+      byCompany.get(f.company_id).facts.push(f);
+    });
+    areas.forEach(a=>{
+      if(!byCompany.has(a.company_id))byCompany.set(a.company_id,{facts:[],areas:[],lastDate:a.created_at});
+      byCompany.get(a.company_id).areas.push(a);
+    });
+    const companyIds=[...byCompany.keys()];
+    if(!companyIds.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda arricchita via CORE</div>';return;}
+    const companies=await api(`companies?select=*&id=in.(${companyIds.join(',')})`);
+    const nameMap=new Map(companies.map(c=>[c.id,c]));
+    const rows=[...byCompany.entries()].sort((a,b)=>new Date(b[1].lastDate)-new Date(a[1].lastDate));
+
+    bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Clicca sul nome per aprire la scheda azienda.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Fatti</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Aree terapeutiche</th>
+      </tr></thead>
+      <tbody>${rows.map(([id,d])=>{
+        const c=nameMap.get(id);
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${companyLinkHtml(c)}</td>
+          <td style="padding:8px;color:var(--text2);">${d.facts.length?d.facts.map(f=>f.tipo).join(', '):'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${d.areas.length?d.areas.map(a=>a.code).join(', '):'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
   }
 }
 
