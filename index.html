@@ -8621,16 +8621,16 @@ async function openCoreEnriched(){
   openModal('modal-apollo-exclusions');
   try{
     const [facts,areas]=await Promise.all([
-      api('company_facts?select=company_id,tipo,valore,url,created_at&order=created_at.desc'),
-      api('company_therapeutic_areas?select=company_id,code,url,created_at&fonte=in.(sito_ufficiale,modello_testo)&order=created_at.desc')
+      api('company_facts?select=company_id,tipo,valore,url,rilevato_il&order=rilevato_il.desc'),
+      api('company_therapeutic_areas?select=company_id,code,url,rilevato_il&fonte=in.(sito_ufficiale,modello_testo)&order=rilevato_il.desc')
     ]);
     const byCompany=new Map();
     facts.forEach(f=>{
-      if(!byCompany.has(f.company_id))byCompany.set(f.company_id,{facts:[],areas:[],lastDate:f.created_at});
+      if(!byCompany.has(f.company_id))byCompany.set(f.company_id,{facts:[],areas:[],lastDate:f.rilevato_il});
       byCompany.get(f.company_id).facts.push(f);
     });
     areas.forEach(a=>{
-      if(!byCompany.has(a.company_id))byCompany.set(a.company_id,{facts:[],areas:[],lastDate:a.created_at});
+      if(!byCompany.has(a.company_id))byCompany.set(a.company_id,{facts:[],areas:[],lastDate:a.rilevato_il});
       byCompany.get(a.company_id).areas.push(a);
     });
     const companyIds=[...byCompany.keys()];
