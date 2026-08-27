@@ -3037,6 +3037,23 @@ async function api(path,method,body){
   const t=await r.text();return t?JSON.parse(t):[];
 }
 
+// `id=in.(uuid1,uuid2,...)` con centinaia di id genera una URL troppo lunga per
+// il gateway (misurato: 759 aziende -> ~28.000 caratteri -> 400 Bad Request sul
+// pannello "Aziende arricchite via CORE"). Non era un problema quando le aziende
+// arricchite erano poche; lo e' diventato crescendo, e ricapitera' su qualunque
+// altro pannello che filtri per una lista di id man mano che i dati aumentano.
+// Si spezza in lotti da 150 id (URL ~5.700 caratteri, ampio margine) e si
+// riassembla: stesso risultato di una singola chiamata, nessun limite di scala.
+async function apiPerIdList(resource,selectFields,ids){
+  const risultati=[];
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const r=await api(`${resource}?select=${selectFields}&id=in.(${lotto.join(',')})`);
+    risultati.push(...r);
+  }
+  return risultati;
+}
+
 /* ═══ SISTEMA ANTI-DUPLICATI AZIENDE ═══
    Stessa formattazione diversa (es. "Pfizer" / "Pfizer Italia S.r.l." / "PFIZER S.R.L.")
    creava aziende separate per la stessa azienda reale (40 gruppi trovati e uniti
@@ -8667,7 +8684,7 @@ async function openCoreEnriched(){
     });
     const companyIds=[...byCompany.keys()];
     if(!companyIds.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda arricchita via CORE</div>';return;}
-    const companies=await api(`companies?select=*&id=in.(${companyIds.join(',')})`);
+    const companies=await apiPerIdList('companies','*',companyIds);
     const nameMap=new Map(companies.map(c=>[c.id,c]));
     const rows=[...byCompany.entries()].sort((a,b)=>new Date(b[1].lastDate)-new Date(a[1].lastDate));
 
@@ -8721,7 +8738,7 @@ async function openApolloExclusions(type){
     }
     if(!logs.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda in questa categoria</div>';return;}
     const companyIds=logs.map(l=>l.company_id);
-    const companies=await api(`companies?select=*&id=in.(${companyIds.join(',')})`);
+    const companies=await apiPerIdList('companies','*',companyIds);
     const nameMap=new Map(companies.map(c=>[c.id,c]));
 
     if(type==='mismatch'){
