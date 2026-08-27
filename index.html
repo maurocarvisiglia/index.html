@@ -8608,8 +8608,13 @@ async function loadCoreProgress(){
   const el=document.getElementById('core-progress-body');
   if(!el)return;
   try{
+    // Stesso universo di partenza del contatore Apollo (website=not.is.null): CORE
+    // arricchisce a partire dal sito ufficiale (vedi core-recupero-gratuito.mjs),
+    // quindi un'azienda senza sito non e' arricchibile da nessuno dei due — usare
+    // basi diverse (totale aziende vs aziende con sito) rendeva i due contatori
+    // inconfrontabili anche se corretti ciascuno per conto suo.
     const [totalCompanies,facts,areas]=await Promise.all([
-      api('companies?select=id&merged_into=is.null'),
+      api('companies?select=id&website=not.is.null&merged_into=is.null'),
       api('company_facts?select=company_id'),
       api('company_therapeutic_areas?select=company_id,fonte&fonte=in.(sito_ufficiale,modello_testo)')
     ]);
