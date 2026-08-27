@@ -891,6 +891,16 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- CORE: gruppo/prodotti/pipeline/siti/fase mercato/modello commerciale (company_facts) +
+         segnali Market Radar (companies.market_radar). Ogni fatto porta la sua fonte: sito
+         ufficiale, ricerca web o studio clinico. Non e' un dato dichiarato "di gruppo" come la
+         card Apollo sopra — ognuno ha la citazione e l'URL da cui viene, verificabili cliccando
+         "fonte". Nascosta quando non c'e' nulla da mostrare: una card vuota non e' informazione. -->
+    <div class="chart-card" id="cd-core-card" style="margin-bottom:24px; border: 2px solid #a78bfa; display:none;">
+      <div class="chart-card-title">🧠 Dati CORE (ricerca sul sito ufficiale + Market Radar)</div>
+      <div id="cd-core-body" style="margin-top:12px;"></div>
+    </div>
+
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
         <div class="chart-card-title">Aree funzionali</div>
@@ -9106,6 +9116,98 @@ async function loadCompanyDetail(company){
   // Carica dati arricchiti
   if(company.id){
     loadEnrichedData(company.id);
+    loadCoreCard(company.id);
+  }
+}
+
+// Etichette e ordine di visualizzazione dei tipi di fatto CORE. L'ordine non e'
+// alfabetico: gruppo e prodotti prima (sono i piu' letti), gli operativi dopo.
+const CORE_TIPO_LABEL={
+  gruppo:'Gruppo',
+  prodotto:'Prodotti in Italia',
+  pipeline_regolatoria:'Pipeline regolatoria',
+  sito_italiano:'Sedi / stabilimenti in Italia',
+  fase_mercato:'Fase di mercato',
+  modello_commerciale:'Modello commerciale',
+  studio_clinico_italia:'Studi clinici in Italia (Fase 3)',
+};
+const CORE_TIPO_ORDINE=['gruppo','prodotto','pipeline_regolatoria','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia'];
+const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale'};
+
+// Il testo di questa card viene da pagine web esterne e titoli di studi clinici —
+// fonti non fidate, a differenza dei campi che lo staff scrive a mano altrove
+// nell'app. Le pipeline di raccolta gia' tolgono i tag HTML prima di salvare
+// (soloTesto() in core-recupero-gratuito.mjs), ma questa card e' l'unico punto
+// dove quel testo entra in innerHTML: si neutralizza anche qui, per non dipendere
+// da una garanzia fatta altrove.
+function escHtml(s){
+  return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Un valore di company_facts, con la citazione e l'URL come tooltip e link — la
+// stessa regola della prova usata in tutta la raccolta: ogni fatto e' verificabile,
+// non solo dichiarato. Il testo si vede subito, la fonte e' a un click di distanza.
+function coreFattoHtml(f){
+  const fonte=CORE_FONTE_LABEL[f.fonte]||f.fonte||'';
+  const link=f.url?`<a href="${escHtml(f.url)}" target="_blank" title="${escHtml(f.prova||'')}" style="font-size:10px;color:var(--text2);text-decoration:none;margin-left:6px;white-space:nowrap;">↗ ${fonte}</a>`:'';
+  return `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
+}
+
+async function loadCoreCard(companyId){
+  const card=document.getElementById('cd-core-card');
+  const body=document.getElementById('cd-core-body');
+  if(!card||!body)return;
+  try{
+    const [facts,company]=await Promise.all([
+      api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`),
+      api(`companies?select=market_radar&id=eq.${companyId}`)
+    ]);
+    const mr=company[0]?.market_radar||null;
+
+    if(!facts.length&&!mr){card.style.display='none';return;}
+    card.style.display='';
+
+    const byTipo=new Map();
+    facts.forEach(f=>{
+      if(!byTipo.has(f.tipo))byTipo.set(f.tipo,[]);
+      byTipo.get(f.tipo).push(f);
+    });
+
+    const blocchi=CORE_TIPO_ORDINE.filter(t=>byTipo.has(t)).map(t=>{
+      const voci=byTipo.get(t);
+      // Duplicati di valore (stesso fatto da due ricerche) mostrati una sola volta.
+      const viste=new Set();
+      const uniche=voci.filter(f=>{
+        const k=f.valore.toLowerCase().trim();
+        if(viste.has(k))return false;
+        viste.add(k);return true;
+      });
+      return `<div style="margin-bottom:14px;">
+        <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">${CORE_TIPO_LABEL[t]||t}</label>
+        <div style="margin-top:6px;">${uniche.map(coreFattoHtml).join('')}</div>
+      </div>`;
+    }).join('');
+
+    let mrHtml='';
+    if(mr){
+      const voci=(mr.voci||[]).slice(0,6);
+      const tipiLabel={phase3_italy:'Studio Fase 3 IT',ema_chmp:'Parere CHMP',other:'Notizia'};
+      mrHtml=`<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <label style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;display:block;margin-bottom:8px;">
+          📡 Market Radar — ${mr.segnali||0} segnali${mr.ultimo_segnale?', ultimo '+mr.ultimo_segnale:''}
+        </label>
+        ${voci.map(v=>`<div style="font-size:11px;color:var(--text2);margin-bottom:4px;">
+          <span style="color:var(--text2);">[${escHtml(tipiLabel[v.tipo]||v.tipo)}]</span>
+          ${v.url?`<a href="${escHtml(v.url)}" target="_blank" style="color:var(--text);text-decoration:none;">${escHtml((v.titolo||'').slice(0,90))}</a>`:escHtml((v.titolo||'').slice(0,90))}
+        </div>`).join('')}
+        ${(mr.voci||[]).length>6?`<div style="font-size:10px;color:var(--text2);margin-top:4px;">+ altri ${(mr.voci||[]).length-6} segnali</div>`:''}
+      </div>`;
+    }
+
+    body.innerHTML=blocchi+mrHtml;
+  }catch(e){
+    card.style.display='';
+    body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento dati CORE: ${e.message}</div>`;
   }
 }
 
