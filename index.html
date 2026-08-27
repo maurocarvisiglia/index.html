@@ -3169,6 +3169,10 @@ async function fetchListingsForReportFilters(filters){
   else if(filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(filters.sector_v2));
   if(filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(filters.therapeutic_area));
   if(filters.seniority_v2)parts.push('seniority_v2=eq.'+encodeURIComponent(filters.seniority_v2));
+  // Esclusione (es. "escludi i Manager") — a differenza degli altri filtri sopra,
+  // che sono tutti "uguale a", questo e' l'unico "diverso da". Elenco perche' una
+  // richiesta puo' escludere piu' di un livello (es. "escludi Manager e Director").
+  if(filters.seniority_v2_exclude&&filters.seniority_v2_exclude.length)parts.push('seniority_v2=not.in.('+filters.seniority_v2_exclude.map(encodeURIComponent).join(',')+')');
   if(filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(filters.contract_type));
   if(filters.company)parts.push('ragione_sociale=ilike.*'+encodeURIComponent(filters.company)+'*');
   if(filters.date_from)parts.push('published_date=gte.'+encodeURIComponent(filters.date_from));
@@ -3209,6 +3213,7 @@ FILTRI DISPONIBILI per ogni entita' (tutti opzionali, null se non specificati da
 - sector_v2: uno tra Big Pharma, Mid Pharma, Specialty Pharma, Pharma (produttore farmaceutico generico, tier non determinato — una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma), Biotech, Medical Devices, Diagnostics, CRO, CDMO, Chimico, Consumer Health, Nutraceutical, Cosmetics, Veterinary, Digital Health, Healthcare Services, Farmacia/Retail, EHS/HSE Consulting, Altro — IMPORTANTE: "Life Sciences" NON e' un sinonimo di "Pharma", e' l'insieme di TUTTI questi settori. Non impostare mai sector_v2 se la richiesta usa termini generici come "Life Sciences", "il settore", "il mercato" senza nominare un settore specifico tra quelli elencati.
 - therapeutic_area: uno tra oncology, hematology, rare_diseases, immunology, cardiovascular, diabetes, respiratory, neurology, dermatology, ophthalmology, gastroenterology, vaccines, infectious_diseases, womens_health, urology, pain, multiple
 - seniority_v2: uno tra internship, entry_level, associate, specialist, senior_specialist, expert, lead, manager, senior_manager, head_of, director, vp, c_level
+- seniority_v2_exclude: array di zero o piu' valori dalla stessa lista di seniority_v2, da ESCLUDERE dal campione — usa questo campo (mai seniority_v2) quando la richiesta dice "escludi/senza/tranne/tutti tranne X" riferito alla seniority (es. "escludi i Manager" -> seniority_v2_exclude:["manager"]). seniority_v2 e seniority_v2_exclude sono alternativi: non impostarli entrambi sulla stessa entita' a meno che la richiesta non lo richieda esplicitamente (es. "solo senior, escludi i director" e' un caso limite raro).
 - contract_type: uno tra TI, TD, Freelance, Stage
 - company: nome azienda (testo libero, null se non specificato)
 - region: nome regione italiana (testo libero, null se non specificato)
@@ -3225,12 +3230,14 @@ REGOLE:
 - Se la richiesta non specifica un focus preciso, includi tutte le 4 sezioni disponibili.
 - Non inventare ruoli o valori non presenti nelle liste sopra: se non sei sicuro, usa null per quel filtro.
 - Non restringere MAI il campione a un settore specifico (sector_v2) sulla base di una menzione generica di "Life Sciences" o del nome della piattaforma: questo escluderebbe silenziosamente la maggior parte del mercato reale senza che l'utente lo sappia. Applica sector_v2 SOLO quando l'utente nomina esplicitamente un settore preciso.
+- Se la richiesta nomina un ruolo che assomiglia a uno della lista ma non e' identico (es. "Tender specialist" quando la lista ha "Tender Office Specialist"), scegli il ruolo della lista piu' vicino per significato invece di lasciare null — null va usato solo quando NESSUN ruolo della lista e' plausibilmente lo stesso concetto, non quando la formulazione e' semplicemente diversa. Un canonical_role null su una richiesta che nomina chiaramente un ruolo produce un report senza filtro (mostra quasi tutto il database), che e' peggio di una scelta ragionevole.
+- Mai usare mode="comparison" per confrontare un ruolo con un suo livello di seniority (es. "Tender Specialist" e "Senior Specialist" NON sono due entita' diverse da confrontare — "Senior Specialist" e' un LIVELLO, non un ruolo. Se la richiesta menziona un livello di seniority insieme a un ruolo, quel livello va nel filtro seniority_v2 della STESSA entita', mai come entita' separata).
 
 Rispondi SOLO con questo JSON, nessun altro testo:
 {
   "title": "<titolo breve e descrittivo del report>",
   "mode": "single oppure comparison",
-  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"contract_type":null,"company":null,"region":null}}],
+  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"seniority_v2_exclude":[],"contract_type":null,"company":null,"region":null}}],
   "sections": ["<sottoinsieme di: seniority_mix, therapeutic_area_mix, geo_mix, contract_type_mix>"],
   "primary_focus": "<una delle sezioni sopra se la richiesta ha un focus esplicito, altrimenti null>"
 }`;
@@ -3245,13 +3252,53 @@ Rispondi SOLO con questo JSON, nessun altro testo:
 
   // Validazione: filtri e sezioni devono essere reali, non inventati dall'IA
   const validRoles=new Set(roleNames);
+  const validSeniority=new Set(['internship','entry_level','associate','specialist','senior_specialist','expert','lead','manager','senior_manager','head_of','director','vp','c_level']);
   const validSections=new Set(REPORT_SECTIONS_ENUM);
+  // Rete di sicurezza deterministica: l'IA a volte lascia canonical_role null anche
+  // quando la richiesta nomina chiaramente un ruolo reale ma con parole leggermente
+  // diverse (es. "Tender specialist" vs "Tender Office Specialist") — verificato che
+  // succede in modo incostante sullo stesso identico prompt. Senza filtro, il report
+  // include quasi tutto il database (fino al limite di 2000) spacciandolo per un
+  // benchmark su un ruolo specifico. Prima di arrendersi al null, prova un match
+  // deterministico per parola intera tra il testo dell'utente e i nomi reali,
+  // piu' lunghi (piu' specifici) per primi — stessa tecnica di normalizeJobTitle().
+  const rolesByLengthDesc=roleNames.slice().sort((a,b)=>b.length-a.length);
   plan.entities.forEach(e=>{
     if(!e.filters)e.filters={};
     if(e.filters.canonical_role&&!validRoles.has(e.filters.canonical_role)){
       console.warn('planReportFromPrompt: ruolo non valido scartato:',e.filters.canonical_role);
       e.filters.canonical_role=null;
     }
+    if(!e.filters.canonical_role){
+      // Match esatto (word-boundary) prima — cattura il caso in cui il nome
+      // canonico intero compare cosi' com'e' nel prompt.
+      let recovered=null;
+      for(const role of rolesByLengthDesc){
+        if(role.length<4)continue;
+        const escaped=role.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        if(new RegExp(`\\b${escaped}\\b`,'i').test(userPrompt)){recovered=role;break;}
+      }
+      // Match parziale: la richiesta puo' omettere una parola centrale del nome
+      // canonico (es. "Tender specialist" senza "Office" -> "Tender Office
+      // Specialist"). Se prima e ultima parola del ruolo compaiono ENTRAMBE nel
+      // prompt come parole intere, e il ruolo ha 2-4 parole (abbastanza specifico
+      // da escludere falsi positivi), e' un match sufficientemente sicuro.
+      if(!recovered){
+        for(const role of rolesByLengthDesc){
+          const words=role.split(/\s+/);
+          if(words.length<2||words.length>4)continue;
+          const first=words[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+          const last=words[words.length-1].replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+          if(new RegExp(`\\b${first}\\b`,'i').test(userPrompt)&&new RegExp(`\\b${last}\\b`,'i').test(userPrompt)){recovered=role;break;}
+        }
+      }
+      if(recovered){
+        e.filters.canonical_role=recovered;
+        console.warn('planReportFromPrompt: ruolo recuperato per match deterministico:',recovered);
+      }
+    }
+    if(!Array.isArray(e.filters.seniority_v2_exclude))e.filters.seniority_v2_exclude=[];
+    e.filters.seniority_v2_exclude=e.filters.seniority_v2_exclude.filter(s=>validSeniority.has(s));
   });
   plan.sections=(plan.sections||[]).filter(s=>validSections.has(s));
   if(!plan.mode||!['single','comparison'].includes(plan.mode))plan.mode=plan.entities.length>1?'comparison':'single';
