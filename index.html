@@ -725,6 +725,7 @@ a.job-link:hover{text-decoration:underline;}
               <span class="badge badge-active" id="cd-status-badge">—</span>
             </div>
             <div class="company-hero-links" id="cd-links"></div>
+            <div style="font-size:12px;color:var(--text2);margin-top:6px;" id="cd-hero-meta"></div>
           </div>
         </div>
       </div>
@@ -763,6 +764,15 @@ a.job-link:hover{text-decoration:underline;}
           <div style="grid-column:1/-1;"><div class="kpi-mini-label">Opportunity score</div><div class="kpi-mini-value" style="color:var(--success);" id="cd-kpi-opp">—</div></div>
         </div>
       </div>
+    </div>
+
+    <!-- DATI ANAGRAFICI — campi gia' scritti da import Vocations/CSV ma prima mai
+         mostrati in pagina (ragione sociale/IVA in cd-hero-meta sopra, questi sono
+         gli altri: contratto, provincia/regione da Vocations, posizioni aperte
+         dichiarate dall'azienda). Nascosta se non c'e' nessun dato da mostrare. -->
+    <div class="chart-card" id="cd-anagrafica-card" style="margin-bottom:24px;display:none;">
+      <div class="chart-card-title">🪪 Dati anagrafici (import Vocations)</div>
+      <div class="kpi-mini-grid" style="margin-top:12px;" id="cd-anagrafica-body"></div>
     </div>
 
     <!-- PROFILO AZIENDA — editabile + ricerca web -->
@@ -821,6 +831,7 @@ a.job-link:hover{text-decoration:underline;}
           <span id="cd-research-status" style="font-size:12px;color:var(--text2);"></span>
         </div>
         <div style="font-size:10px;color:var(--text2);margin-top:6px;">L'estrazione usa esclusivamente il testo incollato qui sopra — nessun dato viene generato a memoria. Controlla e correggi i campi prima di salvare.</div>
+        <div id="cd-research-notes" style="font-size:11px;color:var(--text2);margin-top:8px;font-style:italic;"></div>
       </div>
 
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
@@ -8956,15 +8967,48 @@ async function loadCompanyDetail(company){
   const links=[];
   if(company.website)links.push(`<a class="hero-link-btn" href="${company.website}" target="_blank">🌐 Sito web</a>`);
   if(company.linkedin_url)links.push(`<a class="hero-link-btn" href="${company.linkedin_url}" target="_blank">in LinkedIn</a>`);
+  if(company.indeed_url)links.push(`<a class="hero-link-btn" href="${company.indeed_url}" target="_blank">Indeed</a>`);
+  if(company.glassdoor_url)links.push(`<a class="hero-link-btn" href="${company.glassdoor_url}" target="_blank">Glassdoor</a>`);
   document.getElementById('cd-links').innerHTML=links.join('');
+
+  // Anagrafica legale — scritta da import Vocations/CSV/arricchimento ma prima mai
+  // mostrata: ragione sociale (spesso diversa dal nome breve), P.IVA, provincia/regione.
+  const metaParts=[];
+  if(company.ragione_sociale&&company.ragione_sociale!==company.name)metaParts.push(company.ragione_sociale);
+  if(company.iva)metaParts.push('P.IVA '+company.iva);
+  if(company.province||company.region)metaParts.push([company.province,company.region].filter(Boolean).join(', '));
+  document.getElementById('cd-hero-meta').textContent=metaParts.join(' · ');
 
   // Profilo azienda — dai campi propri di companies (fonte primaria, non da job_listings)
   document.getElementById('cd-edit-dipendenti').value=company.dipendenti||'';
   document.getElementById('cd-edit-ateco').value=company.codice_ateco||'';
   document.getElementById('cd-edit-sector').value=company.sector_v2||'';
   document.getElementById('cd-edit-description').value=company.activity_description||'';
-  document.getElementById('cd-research-text').value='';
-  document.getElementById('cd-research-status').textContent='';
+  // Il testo di ricerca incollato/generato va ricaricato da research_raw_text — prima
+  // veniva sempre azzerato al caricamento pagina, quindi spariva alla vista pur
+  // restando salvato nel database (write-only di fatto).
+  document.getElementById('cd-research-text').value=company.research_raw_text||'';
+  document.getElementById('cd-research-status').textContent=company.last_researched_at?
+    'Ultima ricerca: '+new Date(company.last_researched_at).toLocaleDateString('it-IT'):'';
+  // research_notes: scritto dalla pipeline di ricerca web ma mai mostrato finora.
+  document.getElementById('cd-research-notes').textContent=company.research_notes||'';
+
+  // Dati anagrafici da import Vocations — mai mostrati prima nonostante popolati.
+  const anagraficaCard=document.getElementById('cd-anagrafica-card');
+  const anagraficaRows=[];
+  if(company.collar)anagraficaRows.push(['Contratto',company.collar]);
+  if(company.orario)anagraficaRows.push(['Orario',company.orario]);
+  if(company.categorie_protette)anagraficaRows.push(['Categorie protette',company.categorie_protette]);
+  if(company.posizioni_aperte!=null)anagraficaRows.push(['Posizioni aperte dichiarate',company.posizioni_aperte]);
+  if(company.last_updated_vocations)anagraficaRows.push(['Ultimo aggiornamento Vocations',new Date(company.last_updated_vocations).toLocaleDateString('it-IT')]);
+  if(anagraficaRows.length){
+    anagraficaCard.style.display='';
+    document.getElementById('cd-anagrafica-body').innerHTML=anagraficaRows.map(([label,val])=>
+      `<div><div class="kpi-mini-label">${label}</div><div class="kpi-mini-value" style="font-size:14px;">${val}</div></div>`
+    ).join('');
+  }else{
+    anagraficaCard.style.display='none';
+  }
 
   try{
     // Query per company_id se disponibile, altrimenti fallback su company_name
