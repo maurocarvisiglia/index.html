@@ -9122,27 +9122,31 @@ async function loadCompanyDetail(company){
     if(oppKpiEl)oppKpiEl.textContent=oppScore+' — '+opportunityLabel(oppScore);
 
     // ── TABELLA ANNUNCI ──
+    // Il "return" qui dentro usciva dall'INTERA loadCompanyDetail (non solo dalla
+    // tabella annunci) per ogni azienda con zero annunci collegati — saltando
+    // anche loadEnrichedData/loadCoreCard subito dopo il try/catch. Aziende come
+    // Erregierre (0 annunci, 67 fatti CORE) restavano quindi senza mai mostrare i
+    // dati CORE/Apollo gia' raccolti. Convertito in if/else per non uscire dalla funzione.
     document.getElementById('cd-listings-count').textContent=listings.length+' annunci';
     const body=document.getElementById('cd-listings-body');
     if(!listings.length){
       body.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">Nessun annuncio</div></div>';
-      return;
+    }else{
+      body.innerHTML=`<table><thead><tr>
+        <th>Ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th><th></th>
+      </tr></thead><tbody>${listings.map(l=>{
+        return `<tr>
+          <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
+          <td style="font-size:11px;color:var(--accent2)">${l.functional_area_v2||l.functional_area||l.sub_area||'—'}</td>
+          <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
+          <td id="ral-cell-${l.id}">${ralCell(l)}</td>
+          <td style="font-size:11px">${l.contract_type||'—'}</td>
+          <td style="font-size:11px">${l.location||'—'}</td>
+          <td style="font-size:11px">${l.published_date||'—'}</td>
+          <td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
     }
-
-    body.innerHTML=`<table><thead><tr>
-      <th>Ruolo</th><th>Area</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th><th></th>
-    </tr></thead><tbody>${listings.map(l=>{
-      return `<tr>
-        <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
-        <td style="font-size:11px;color:var(--accent2)">${l.functional_area_v2||l.functional_area||l.sub_area||'—'}</td>
-        <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
-        <td id="ral-cell-${l.id}">${ralCell(l)}</td>
-        <td style="font-size:11px">${l.contract_type||'—'}</td>
-        <td style="font-size:11px">${l.location||'—'}</td>
-        <td style="font-size:11px">${l.published_date||'—'}</td>
-        <td><button onclick="delListing('${l.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button></td>
-      </tr>`;
-    }).join('')}</tbody></table>`;
 
   }catch(e){
     document.getElementById('cd-listings-body').innerHTML=`<div class="empty"><div class="empty-sub">Errore: ${e.message}</div></div>`;
@@ -9199,8 +9203,14 @@ async function loadCoreCard(companyId){
     ]);
     const mr=company[0]?.market_radar||null;
 
-    if(!facts.length&&!mr){card.style.display='none';return;}
+    // Sempre visibile su richiesta esplicita: prima la card spariva se non c'era
+    // nulla da mostrare, ma questo la rendeva indistinguibile da "non ho controllato"
+    // per l'utente — ora mostra sempre uno stato, vuoto o pieno.
     card.style.display='';
+    if(!facts.length&&!mr){
+      body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora arricchita da CORE.</div>';
+      return;
+    }
 
     const byTipo=new Map();
     facts.forEach(f=>{
