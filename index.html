@@ -903,6 +903,17 @@ a.job-link:hover{text-decoration:underline;}
       <div id="cd-core-body" style="margin-top:12px;"></div>
     </div>
 
+    <!-- Composizione organizzativa per funzione, via Apollo people search (company_workforce,
+         27/08). Una riga per persona nel database, ma qui si mostra SOLO l'aggregato per
+         funzione — mai un nome, Apollo li oscura di default e non chiamiamo mai reveal.
+         L'ambito (locale/EMEA/globale) resta etichettato invece che filtrato: un'azienda che
+         ospita funzioni regionali in Italia e' un segnale, non rumore da togliere.
+         Nascosta se l'azienda non e' ancora stata catalogata (oggi solo Biogen). -->
+    <div class="chart-card" id="cd-workforce-card" style="margin-bottom:24px; border: 2px solid #34d399; display:none;">
+      <div class="chart-card-title">👥 Composizione organizzativa (Apollo)</div>
+      <div id="cd-workforce-body" style="margin-top:12px;"></div>
+    </div>
+
     <div class="chart-grid" style="margin-bottom:24px;">
       <div class="chart-card">
         <div class="chart-card-title">Aree funzionali</div>
@@ -9436,6 +9447,7 @@ async function loadCompanyDetail(company){
   if(company.id){
     loadEnrichedData(company.id);
     loadCoreCard(company.id);
+    loadWorkforceCard(company.id);
   }
 }
 
@@ -9554,6 +9566,67 @@ async function loadCoreCard(companyId){
   }catch(e){
     card.style.display='';
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento dati CORE: ${e.message}</div>`;
+  }
+}
+
+// Etichette leggibili per i codici funzione della tassonomia (27/08). Elenco
+// piatto perche' la vista v_company_workforce_funzioni gia' filtra per azienda:
+// qui serve solo tradurre il codice, non ricostruire la gerarchia livello/archetipo.
+const WORKFORCE_FUNZIONE_LABEL={
+  general_management:'General Management', hr:'HR', finance_admin:'Finance / Admin',
+  legal_compliance:'Legal / Compliance', it_digital:'IT / Digital', procurement:'Procurement',
+  logistics_supply_chain:'Logistics / Supply Chain', marketing_communications:'Marketing / Comunicazione',
+  sales_commercial:'Sales / Commerciale', business_development:'Business Development',
+  facilities_maintenance:'Facilities / Manutenzione',
+  medical_affairs_msl:'Medical Affairs / MSL', market_access:'Market Access',
+  regulatory_affairs_prodotto:'Regulatory Affairs', pharmacovigilance:'Pharmacovigilance',
+  clinical_operations_locali:'Clinical Operations', patient_support:'Patient Support',
+  produzione_site_operations:'Produzione / Site Operations', process_engineering:'Process Engineering',
+  rd_formulazione:'R&D / Formulazione', quality_control:'Quality Control', quality_assurance:'Quality Assurance',
+  ehs_sustainability:'EHS / Sustainability', registrazione_conformita:'Registrazione / Conformità',
+  business_development_conto_terzi:'Business Development (conto terzi)',
+  field_service:'Field Service', clinical_affairs_device:'Clinical Affairs', product_management_device:'Product Management',
+  regulatory_mdr_ivdr:'Regulatory MDR/IVDR', training_clinico:'Training Clinico',
+  clinical_operations_cro:'Clinical Operations', data_management_biostat:'Data Management / Biostatistica',
+  project_management_clinico:'Project Management Clinico', business_development_proposal:'Business Development',
+  trade_marketing_retail:'Trade Marketing / Retail', ecommerce:'E-commerce', rd_formulazione_consumer:'R&D / Formulazione',
+  product_management_software:'Product Management', software_engineering:'Software Engineering',
+  data_science_ai:'Data Science / AI', ux_ui:'UX/UI', regulatory_samd:'Regulatory (SaMD)', customer_success:'Customer Success',
+  operations_punto_vendita:'Operations Punto Vendita', farmacista:'Farmacista', customer_service:'Customer Service',
+  erogazione_consulenza:'Consulenza',
+};
+const WORKFORCE_AMBITO_LABEL={locale:'',emea:'EMEA',globale:'Globale'};
+
+async function loadWorkforceCard(companyId){
+  const card=document.getElementById('cd-workforce-card');
+  const body=document.getElementById('cd-workforce-body');
+  if(!card||!body)return;
+  try{
+    const righe=await api(`v_company_workforce_funzioni?select=funzione,ambito,conteggio,sedi&company_id=eq.${companyId}&order=conteggio.desc`);
+    if(!righe.length){card.style.display='none';return;}
+    card.style.display='';
+
+    const totale=righe.reduce((s,r)=>s+r.conteggio,0);
+    const righeHtml=righe.map(r=>{
+      const label=WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione;
+      const ambitoTag=WORKFORCE_AMBITO_LABEL[r.ambito]
+        ?`<span style="font-size:9px;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;">${escHtml(WORKFORCE_AMBITO_LABEL[r.ambito])}</span>`
+        :'';
+      const sedi=(r.sedi&&r.sedi.length)?` <span style="color:var(--text2);font-size:10px;">(${r.sedi.map(escHtml).join(', ')})</span>`:'';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px;">
+        <span>${escHtml(label)}${ambitoTag}${sedi}</span>
+        <span style="color:var(--text2);">${r.conteggio}</span>
+      </div>`;
+    }).join('');
+
+    body.innerHTML=`
+      <div style="font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:10px;">
+        ${totale} persone catalogate · fonte Apollo people search, nessun nome salvato
+      </div>
+      ${righeHtml}`;
+  }catch(e){
+    card.style.display='';
+    body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento organico: ${e.message}</div>`;
   }
 }
 
