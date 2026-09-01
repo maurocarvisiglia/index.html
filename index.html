@@ -703,6 +703,13 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">👥 Avanzamento catalogazione organico per funzione (Apollo)</div>
+      <div id="workforce-progress-body">
+        <div class="loading">Caricamento...</div>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
@@ -4262,7 +4269,7 @@ function showView(name,btn){
   if(name==='demand')loadDemandModule();
   if(name==='users')loadUsersView();
   if(name==='listings'){loadListings();refreshPendingBadges();}
-  if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();}
+  if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();loadWorkforceProgress();}
   if(name==='ruolo')analyzeRuolo();
 }
 
@@ -7999,7 +8006,7 @@ JSON:
   "ral_min": null,
   "ral_max": null,
   "salary_text": null,
-  "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>",
+  "functional_area_v2": "<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management|healthcare_services|legal|customer_service>",
   "sub_area": "<msl|medical_advisor|kam|area_manager|isf|product_manager|regulatory_specialist|qa_specialist|cra|pv_specialist|scientist|ecc>",
   "field_hq": "<Field Based|Hybrid|Headquarters>",
   "therapeutic_area": "<oncology|hematology|rare_diseases|immunology|cardiovascular|diabetes|respiratory|neurology|neuroscience|dermatology|ophthalmology|vaccines|infectious_diseases|gastroenterology|womens_health|urology|pain|ta_consumer_health|endocrinology|hepatology|nephrology|oncohematology|pathology|pediatrics|rheumatology|multiple|not_applicable>",
@@ -8012,7 +8019,7 @@ JSON:
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
-    const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
+    const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management','healthcare_services','legal','customer_service'];
     const _vta=['oncology','hematology','rare_diseases','immunology','cardiovascular','diabetes','respiratory','neurology','neuroscience','dermatology','ophthalmology','vaccines','infectious_diseases','gastroenterology','womens_health','urology','pain','ta_consumer_health','endocrinology','hepatology','nephrology','oncohematology','pathology','pediatrics','rheumatology','multiple','not_applicable'];
 
     // RAL: null di default, assegna SOLO se salary_text presente e valori plausibili
@@ -8122,7 +8129,7 @@ CONVERSIONI (solo se il numero è nel testo):
 "57-95K" → min:57000 max:95000 | "fino a 60K" → min:null max:60000 | "da 57K" → min:57000 max:null
 
 Rispondi SOLO con questo JSON:
-{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
+{"ral_min":null,"ral_max":null,"salary_text":"<testo originale esatto, null se assente>","job_description":"<riassunto ruolo max 200 caratteri>","functional_area_v2":"<medical_affairs|commercial|marketing|market_access|regulatory_affairs|quality|clinical_operations|drug_safety|rd|manufacturing|supply_chain|finance|hr|it|business_development|general_management|healthcare_services|legal|customer_service>","location":"<città>","contract_type":"<TI|TD|Freelance|Stage|altro>","page_read":true}`
 :
 `Classifica questo annuncio Life Sciences solo dal titolo.
 Titolo: ${title}
@@ -8133,7 +8140,7 @@ Rispondi SOLO con JSON:
     const clean=rawText.replace(/```json|```/g,'').trim();
     const result=JSON.parse(clean);
 
-    const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management'];
+    const _va2=['medical_affairs','commercial','marketing','market_access','regulatory_affairs','quality','clinical_operations','drug_safety','rd','manufacturing','supply_chain','finance','hr','it','business_development','general_management','healthcare_services','legal','customer_service'];
 
     const patch={ai_analyzed:true};
     // RAL: azzera sempre, poi assegna solo se trovata nel testo
@@ -8965,6 +8972,84 @@ async function loadCoreProgress(){
   }
 }
 
+// company_workforce cataloga per funzione via Apollo people search (vedi
+// scripts/organico-automatico-giornaliero.mjs, ~12 aziende/giorno). Stessa base
+// di partenza degli altri due contatori (website=not.is.null) per restare
+// confrontabili, anche se qui l'universo raggiungibile e' piu' piccolo: solo le
+// aziende il cui sector_v2 e' mappato su uno degli 8 archetipi (vedi
+// SETTORE_ARCHETIPO nello script) possono essere scelte automaticamente.
+async function loadWorkforceProgress(){
+  const el=document.getElementById('workforce-progress-body');
+  if(!el)return;
+  try{
+    const [totalCompanies,righe]=await Promise.all([
+      api('companies?select=id&website=not.is.null&merged_into=is.null'),
+      api('company_workforce?select=company_id')
+    ]);
+    const total=totalCompanies.length;
+    const enrichedIds=new Set(righe.map(r=>r.company_id));
+    const enriched=enrichedIds.size;
+    const remaining=total-enriched;
+    const pct=total?Math.round(enriched/total*100):0;
+
+    el.innerHTML=`
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px;">
+        <span>${enriched} / ${total} aziende catalogate</span>
+        <span style="font-weight:700;color:#34d399;">${pct}%</span>
+      </div>
+      <div style="background:var(--surface2);height:8px;border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;background:#34d399;width:${pct}%;transition:width 0.3s;"></div>
+      </div>
+      <div class="kpi-mini-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div><div class="kpi-mini-label" style="color:var(--success);">Catalogate</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="openWorkforceEnriched()">${enriched}</div></div>
+        <div><div class="kpi-mini-label">Da catalogare</div><div class="kpi-mini-value">${remaining}</div></div>
+        <div><div class="kpi-mini-label">Persone classificate</div><div class="kpi-mini-value">${righe.length}</div></div>
+      </div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento avanzamento: '+e.message+'</div>';
+  }
+}
+
+async function openWorkforceEnriched(){
+  const titleEl=document.getElementById('apollo-exclusions-title');
+  const bodyEl=document.getElementById('apollo-exclusions-body');
+  titleEl.textContent='Aziende con organico catalogato per funzione';
+  bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
+  openModal('modal-apollo-exclusions');
+  try{
+    const righe=await api('company_workforce?select=company_id,rilevato_il&order=rilevato_il.desc');
+    const byCompany=new Map();
+    righe.forEach(r=>{
+      if(!byCompany.has(r.company_id))byCompany.set(r.company_id,{n:0,lastDate:r.rilevato_il});
+      byCompany.get(r.company_id).n++;
+    });
+    const companyIds=[...byCompany.keys()];
+    if(!companyIds.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda catalogata</div>';return;}
+    const companies=await apiPerIdList('companies','*',companyIds);
+    const nameMap=new Map(companies.map(c=>[c.id,c]));
+    const rows=[...byCompany.entries()].sort((a,b)=>new Date(b[1].lastDate)-new Date(a[1].lastDate));
+
+    bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Clicca sul nome per aprire la scheda azienda.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Persone catalogate</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Ultimo aggiornamento</th>
+      </tr></thead>
+      <tbody>${rows.map(([id,d])=>{
+        const c=nameMap.get(id);
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${companyLinkHtml(c)}</td>
+          <td style="padding:8px;color:var(--text2);">${d.n}</td>
+          <td style="padding:8px;color:var(--text2);">${new Date(d.lastDate).toLocaleDateString('it-IT')}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
+  }
+}
+
 async function openCoreEnriched(){
   const titleEl=document.getElementById('apollo-exclusions-title');
   const bodyEl=document.getElementById('apollo-exclusions-body');
@@ -9607,15 +9692,18 @@ async function loadWorkforceCard(companyId){
     card.style.display='';
 
     const totale=righe.reduce((s,r)=>s+r.conteggio,0);
+    const max=Math.max(...righe.map(r=>r.conteggio));
     const righeHtml=righe.map(r=>{
       const label=WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione;
       const ambitoTag=WORKFORCE_AMBITO_LABEL[r.ambito]
         ?`<span style="font-size:9px;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;">${escHtml(WORKFORCE_AMBITO_LABEL[r.ambito])}</span>`
         :'';
       const sedi=(r.sedi&&r.sedi.length)?` <span style="color:var(--text2);font-size:10px;">(${r.sedi.map(escHtml).join(', ')})</span>`:'';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px;">
-        <span>${escHtml(label)}${ambitoTag}${sedi}</span>
-        <span style="color:var(--text2);">${r.conteggio}</span>
+      const pct=Math.round(r.conteggio/max*100);
+      return `<div class="bar-row">
+        <div class="bar-label" style="width:170px;text-align:left;">${escHtml(label)}${ambitoTag}${sedi}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;"></div></div>
+        <div class="bar-count" style="width:28px;text-align:right;font-size:14px;font-weight:700;color:var(--accent);">${r.conteggio}</div>
       </div>`;
     }).join('');
 
