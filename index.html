@@ -5030,10 +5030,16 @@ async function updateSalaryBenchmarks(){
       const avg=Math.round(vals.reduce((a,b)=>a+b)/vals.length);
       const counts=countByRole[role]||{total:vals.length,d30:0,d90:0};
       const companies=new Set(data.listings.map(l=>l.company_name).filter(Boolean)).size;
-      const benchmarkData={canonical_role:role,role_family:data.role_family||null,functional_area_v2:data.functional_area_v2||null,therapeutic_area:'not_applicable',region:'N/D',company_type:'N/D',sector_v2:'N/D',sample_size:vals.length,sample_with_ral:vals.length,total_listings:counts.total,p25:p(25)||null,median:p(50)||null,p75:p(75)||null,p90:p(90)||null,avg_ral:avg,min_ral:vals[0]||null,max_ral:vals[vals.length-1]||null,listings_30d:counts.d30,listings_90d:counts.d90,listings_365d:counts.total,companies_count:companies,updated_at:new Date().toISOString()};
-      try{await api('salary_benchmarks','POST',benchmarkData);}catch(e){
-        try{await api(`salary_benchmarks?canonical_role=eq.${encodeURIComponent(role)}&therapeutic_area=eq.not_applicable&region=eq.N%2FD&company_type=eq.N%2FD&sector_v2=eq.N%2FD`,'PATCH',benchmarkData);}catch(e2){}
-      }
+      const benchmarkData={canonical_role:role,role_family:data.role_family||null,functional_area_v2:data.functional_area_v2||null,therapeutic_area:'not_applicable',region:'N/D',company_type:'N/D',sector_v2:'N/D',sample_size:vals.length,sample_with_ral:vals.length,total_listings:counts.total,p25:p(25)||null,median:p(50)||null,p75:p(75)||null,p90:p(90)||null,avg_ral:avg,min_ral:vals[0]||null,max_ral:vals[vals.length-1]||null,listings_30d:counts.d30,listings_90d:counts.d90,listings_365d:counts.total,companies_count:companies};
+      // La tabella ha RLS che blocca la scrittura diretta per l'utente anon del
+      // browser (diagnosticato il 02/09/2026: il POST/PATCH diretto falliva
+      // sempre con 401 in silenzio, nessun benchmark si aggiornava da mesi).
+      // upsert_salary_benchmark e' una funzione SECURITY DEFINER (PARTE_10) che
+      // fa l'upsert vero sul vincolo UNIQUE(canonical_role) bypassando RLS in
+      // modo controllato — il client continua a fare tutto il calcolo, cambia
+      // solo come lo scrive. Errore ora loggato, non piu' ingoiato.
+      try{await api('rpc/upsert_salary_benchmark','POST',{payload:benchmarkData});}
+      catch(e){console.error('upsert_salary_benchmark fallito per',role,':',e.message);}
     }
   }catch(e){console.warn('updateSalaryBenchmarks error:',e.message);}
 }
@@ -6057,23 +6063,21 @@ async function saveMarketSignalsToSupabase(data){
     const signals=detectMarketSignals(data,data);
     if(!signals.length)return;
 
-    // Elimina segnali vecchi (>7 giorni)
-    const cutoff=new Date(Date.now()-7*864e5).toISOString();
-    await api(`market_signals?created_at=lt.${cutoff}`,'DELETE');
-
-    // Inserisce nuovi segnali
-    for(const signal of signals.slice(0,20)){
-      try{
-        await api('market_signals','POST',{
-          signal_type:signal.type,
-          company_name:signal.company,
-          severity:signal.badge==='expansion'?'high':signal.badge==='growth'?'medium':'low',
-          title:signal.title,
-          description:signal.desc,
-        });
-      }catch(e){/* ignora duplicati */}
-    }
-  }catch(e){console.warn('saveMarketSignals error:',e.message);}
+    // market_signals ha RLS che blocca la scrittura diretta per l'utente anon
+    // del browser (stesso problema di salary_benchmarks, diagnosticato il
+    // 02/09/2026 — la tabella risultava vuota da sempre). refresh_market_signals
+    // e' una funzione SECURITY DEFINER (PARTE_10) che fa pulizia >7 giorni +
+    // inserimento del nuovo lotto in una sola chiamata, bypassando RLS in modo
+    // controllato.
+    const payload=signals.slice(0,20).map(signal=>({
+      signal_type:signal.type,
+      company_name:signal.company,
+      severity:signal.badge==='expansion'?'high':signal.badge==='growth'?'medium':'low',
+      title:signal.title,
+      description:signal.desc,
+    }));
+    await api('rpc/refresh_market_signals','POST',{signals:payload});
+  }catch(e){console.error('saveMarketSignals error:',e.message);}
 }
 
 /* ══════════════════════════════════════════════
