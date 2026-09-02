@@ -558,7 +558,7 @@ a.job-link:hover{text-decoration:underline;}
         <input type="file" id="vocations-csv-import" accept=".csv" style="display:none;" onchange="importVocationsCSV(event)">
         <div id="admin-only-actions" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
           <button class="btn btn-secondary" onclick="document.getElementById('vocations-csv-import').click()" style="border-color:#7C3AED;color:#7C3AED;" title="Step 1">📥 1. Import CSV</button>
-          <button class="btn btn-secondary" onclick="runPostImportEnrichment(999)" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Normalizza ruoli da alias/tassonomia (no IA), poi completa gli altri campi">🔮 2. Completa dati</button>
+          <button class="btn btn-secondary" onclick="refreshBenchmarksAndSignals()" style="border-color:#a78bfa;color:#a78bfa;" title="Step 2 — Ricalcola salary_benchmarks e rileva market signals (nessuna riclassificazione: ruolo/area/seniority sono gia' corretti dall'import)">📊 2. Aggiorna benchmark</button>
           <button class="btn btn-secondary" onclick="runMassReclassify()" style="border-color:#f59e0b;color:#f59e0b;" title="Riclassifica tutti gli annunci con canonical_role mancante o fuori vocabolario, solo alias/tassonomia">🔄 Riclassifica tutto</button>
           <button class="btn btn-secondary" onclick="exportUnmappedTitlesCSV()" style="border-color:#22d3ee;color:#22d3ee;" title="Esporta i titoli senza alias/tassonomia corrispondente, per creare gli alias manualmente su Supabase">📄 Esporta non mappati</button>
           <button class="btn btn-secondary" onclick="openCompanyFilter()" style="border-color:#ef4444;color:#ef4444;" title="Step 4 — Rimuovi aziende non pertinenti">🏭 4. Filtra aziende</button>
@@ -2121,11 +2121,19 @@ async function importVocationsCSV(event){
     'pharmaceutical':'Pharma','medical':'Medical Devices','healthHygiene':'Healthcare Services','consumerGoods':'Consumer Health','biomedical':'Biotech','chemical':'Chimico','technologyScienceData':'Digital Health','manufacturingIndustrial':'Altro','environmentSustainabilityEcology':'EHS/HSE Consulting','consultingITConsulting':'Consulenza','multiservices':'Altro','retail':'Farmacia/Retail','cosmetic':'Cosmetics','nutraceutical':'Nutraceutical','veterinary':'Veterinary'
   };
   let ok=0,skip=0,errors=0;
+  await loadTaxonomy(); // dizionario alias/tassonomia — una sola volta, poi solo regex in memoria
   for(let idx=0;idx<rows.length;idx++){
     const row=rows[idx];
     const title=(row['Nome posizione']||'').trim();
     const company=(row['Nome azienda']||'').trim();
     if(!title||title.length<3||!company)continue;
+    // Ruolo risolto SUBITO in import, non in un passaggio manuale successivo:
+    // stesso identico motore deterministico (alias/tassonomia, zero IA) usato da
+    // runMassReclassify. Diagnosticato il 01/09/2026: canonical_role restava
+    // sempre null fino al click su un tasto di completamento manuale (rimosso),
+    // e nel frattempo functional_area_v2 veniva deciso da una copia di regex
+    // piu' povera (sotto) che nessun passaggio successivo correggeva piu'.
+    const roleInfo=await normalizeJobTitle(title);
     const ragione_sociale=(row['Ragione sociale']||'').trim()||null;
     const url=(row['URL']||'').trim()||null;
     const city=(row['Città']||'').trim();
@@ -2142,33 +2150,36 @@ async function importVocationsCSV(event){
     const contract_type=contractMap[contractRaw]||null;
     const isAgenzia=contract_type==='Agenzia';
     const tl=title.toLowerCase();
-    let functional_area_v2=null;
-    // Healthcare PRIMA degli altri per evitare conflitti
-    if(/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|direttore.*farmacia|direttric.*farmacia/.test(tl))functional_area_v2='healthcare_services';
-    else if(/\bisf\b|informatore scientifico|informatore medico|sales rep|key account|\bkam\b|territory|district manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|addett.*vendite|field.*reimbursement/.test(tl))functional_area_v2='commercial';
-    else if(/medical advisor|\bmsl\b|medical science liaison|medical manager|medical affairs|field.*medical/.test(tl))functional_area_v2='medical_affairs';
-    else if(/regulatory|registrazione|global.*labeling|trade compliance/.test(tl))functional_area_v2='regulatory_affairs';
-    else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b|serialization|instrumentation.*calibration/.test(tl))functional_area_v2='quality';
-    else if(/market access|pricing|tender/.test(tl))functional_area_v2='market_access';
-    else if(/pharmacovigilance|drug safety|farmacovigilanza|patient safety/.test(tl))functional_area_v2='drug_safety';
-    else if(/clinical research|\bcra\b|clinical operations|clinical.*project|clinical.*science|clinical.*quality/.test(tl))functional_area_v2='clinical_operations';
-    else if(/marketing|brand manager|product manager|new product commercialization/.test(tl))functional_area_v2='marketing';
-    else if(/production planning|plant manager|manufacturing.*manager|confezionamento|pesate|opex|lean|\brspp\b/.test(tl))functional_area_v2='manufacturing';
-    else if(/supply chain|logistic|warehouse|magazzino|procurement|approvvigionament|material buyer/.test(tl))functional_area_v2='supply_chain';
-    else if(/\br&d\b|ricerca.*sviluppo|analytical.*development|post.?doc|medicinal chemistry/.test(tl))functional_area_v2='rd';
-    else if(/\bhr\b|human resource|talent.*acquisition|recruiter|selezione.*recruiting|talent.*development/.test(tl))functional_area_v2='hr';
-    else if(/finance|controller|budget|accounting|\bsso\b/.test(tl))functional_area_v2='finance';
-    else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
-    else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
-    else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
-    // Seniority: UNICA funzione condivisa con la riclassificazione (classifySeniorityFromText,
-    // vedi sopra) — prima questo import aveva una copia propria della logica, che dava
-    // risultato diverso dalla riclassificazione su 233 annunci su 2513 e non conosceva
-    // l'eccezione Key Account: ogni nuovo import la reintroduceva da capo. Il canonical_role
-    // non e' ancora noto a questo punto dell'import (viene risolto dopo, in
-    // runPostImportEnrichment Step 1, che ririclassifica con lo stesso criterio quando
-    // il ruolo diventa disponibile) — qui si usa solo il testo del titolo.
-    const seniority_v2=classifySeniorityFromText(title)||'specialist';
+    // functional_area_v2: PRIMA il dizionario alias/tassonomia (roleInfo, deterministico
+    // e coerente con canonical_role appena risolto), poi — solo se il titolo non e'
+    // ancora in dizionario — il regex sotto come ripiego. Nessun passaggio successivo
+    // rivede piu' questo valore: deve essere corretto qui, una volta sola.
+    let functional_area_v2=roleInfo.functional_area||null;
+    if(!functional_area_v2){
+      // Healthcare PRIMA degli altri per evitare conflitti
+      if(/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|direttore.*farmacia|direttric.*farmacia/.test(tl))functional_area_v2='healthcare_services';
+      else if(/\bisf\b|informatore scientifico|informatore medico|sales rep|key account|\bkam\b|territory|district manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|addett.*vendite|field.*reimbursement/.test(tl))functional_area_v2='commercial';
+      else if(/medical advisor|\bmsl\b|medical science liaison|medical manager|medical affairs|field.*medical/.test(tl))functional_area_v2='medical_affairs';
+      else if(/regulatory|registrazione|global.*labeling|trade compliance/.test(tl))functional_area_v2='regulatory_affairs';
+      else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b|serialization|instrumentation.*calibration/.test(tl))functional_area_v2='quality';
+      else if(/market access|pricing|tender/.test(tl))functional_area_v2='market_access';
+      else if(/pharmacovigilance|drug safety|farmacovigilanza|patient safety/.test(tl))functional_area_v2='drug_safety';
+      else if(/clinical research|\bcra\b|clinical operations|clinical.*project|clinical.*science|clinical.*quality/.test(tl))functional_area_v2='clinical_operations';
+      else if(/marketing|brand manager|product manager|new product commercialization/.test(tl))functional_area_v2='marketing';
+      else if(/production planning|plant manager|manufacturing.*manager|confezionamento|pesate|opex|lean|\brspp\b/.test(tl))functional_area_v2='manufacturing';
+      else if(/supply chain|logistic|warehouse|magazzino|procurement|approvvigionament|material buyer/.test(tl))functional_area_v2='supply_chain';
+      else if(/\br&d\b|ricerca.*sviluppo|analytical.*development|post.?doc|medicinal chemistry/.test(tl))functional_area_v2='rd';
+      else if(/\bhr\b|human resource|talent.*acquisition|recruiter|selezione.*recruiting|talent.*development/.test(tl))functional_area_v2='hr';
+      else if(/finance|controller|budget|accounting|\bsso\b/.test(tl))functional_area_v2='finance';
+      else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
+      else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
+      else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
+    }
+    // Seniority: UNICA funzione condivisa con la riclassificazione (classifySeniorityFromText).
+    // Il canonical_role e' gia' noto qui (roleInfo, risolto sopra prima di questo import
+    // stesso) quindi le eccezioni per ruolo (es. Key Account Manager mai manager) si
+    // applicano subito, non solo in un secondo passaggio.
+    const seniority_v2=classifySeniorityFromText(title,roleInfo.canonical_role)||'specialist';
     // ── CLASSIFICAZIONE AREA TERAPEUTICA (2 livelli) ──
     let therapeutic_area=null;
     let therapeutic_area_sub=null;
@@ -2259,7 +2270,7 @@ async function importVocationsCSV(event){
       ral_max=round500(ral*coeff.hi);
       ral_estimated=true;
     }
-    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min,ral_max,fixed_monthly:isAgenzia?ral:null,ral_estimated,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
+    const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,canonical_role:roleInfo.canonical_role,role_family:roleInfo.role_family,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min,ral_max,fixed_monthly:isAgenzia?ral:null,ral_estimated,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
     try{
       const r=await fetch(SB_URL+'/rest/v1/job_listings',{method:'POST',headers:{...H,'Prefer':'resolution=ignore-duplicates,return=minimal'},body:JSON.stringify(record)});
       if(r.status===201||r.status===200)ok++;
@@ -2280,8 +2291,9 @@ async function importVocationsCSV(event){
   const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
   loadListings();refreshPendingBadges();
-  // Enrichment automatico disabilitato — usa il tasto '🔮 4. Completa dati' manualmente
-  // if(ok>0){setTimeout(async()=>{toast('✅ Avvio completamento...');await runPostImportEnrichment(ok);},1000);}
+  // Ruolo/area/seniority sono gia' corretti a questo punto (vedi sopra): nessun
+  // passaggio di riclassificazione da lanciare dopo l'import. Se serve, il tasto
+  // "📊 2. Aggiorna benchmark" ricalcola solo salary_benchmarks e market signals.
 }
 
 async function syncCompaniesFromVocations(rows){
@@ -2926,8 +2938,8 @@ const SENIORITY_ROLE_OVERRIDE={
   // Il canonical_role e' un dato piu' affidabile del testo grezzo del titolo:
   // varianti come "Account Manager - Medication Delivery Solutions" non
   // contengono la stringa "key account" ma SONO Key Account Manager confermati.
-  // Applicato ovunque il canonical_role e' gia' noto (vedi runPostImportEnrichment
-  // Step 1); il fallback testuale sotto resta per quando non lo e' ancora.
+  // Applicato ovunque il canonical_role e' gia' noto (import CSV, runMassReclassify);
+  // il fallback testuale sotto resta per quando non lo e' ancora.
   'Key Account Manager':t=>{
     if(/\blead\b/i.test(t)&&!/\bto\s+lead\b/i.test(t))return 'lead';
     if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
@@ -3024,40 +3036,44 @@ async function getCompanySectorForCompanyId(companyId){
 
 async function normalizeJobTitle(jobTitle){
   await loadTaxonomy();
-  
+
   const title=jobTitle.trim();
   const titleLower=title.toLowerCase();
-  
-  // Step 1: match esatto negli alias
+
+  // Step 1: match esatto — alias o, se manca, nome canonico stesso (case-insensitive)
   if(_aliasCache[titleLower]){
     const a=_aliasCache[titleLower];
     return{canonical_role:a.canonical_role,role_family:a.role_family,functional_area:a.functional_area};
   }
-  
-  // Step 2: match con word boundary — evita falsi positivi
-  // "Manager" non matcha "Area Manager" per errore
-  // Ordina per lunghezza alias decrescente: un alias piu' specifico ("National Key Account Manager")
-  // deve vincere su uno generico ("Key Account Manager") anche se quest'ultimo viene prima nella cache.
-  const aliasEntriesByLength=Object.entries(_aliasCache).sort((a,b)=>b[0].length-a[0].length);
-  for(const[alias,data] of aliasEntriesByLength){
-    if(alias.length<4)continue; // skip alias troppo corti
-    // Crea regex con word boundary
-    const escaped=alias.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const exactTax=_taxonomyCache.find(t=>t.canonical_role.toLowerCase()===titleLower);
+  if(exactTax)return{canonical_role:exactTax.canonical_role,role_family:exactTax.role_family,functional_area:exactTax.functional_area};
+
+  // Step 2: match con word boundary — alias E tassonomia in UN'UNICA lista ordinata
+  // per lunghezza del testo decrescente, non piu' due liste separate controllate in
+  // sequenza (prima tutti gli alias, poi tutta la tassonomia). Con le due liste
+  // separate, un alias generico ("Quality Assurance") oscurava per sempre un
+  // canonical_role piu' specifico della tassonomia ("Quality Assurance Manager")
+  // solo perche' veniva controllato per categoria (e' un alias) invece che per
+  // specificita' (quanto testo copre) — bug trovato il 01/09/2026 sulla stessa
+  // famiglia di "HR Manager"/"HR Specialist" oscurati da un alias su "HR Business
+  // Partner". Ora vince sempre il testo piu' lungo, alias o tassonomia che sia; a
+  // parita' di lunghezza vince l'alias (scelta umana esplicita sul dato).
+  // minLen=4 solo per gli alias (soglia storica anti falsi-positivi su stringhe
+  // corte): i nomi di ruolo della tassonomia non l'avevano mai avuta (es. "OSS",
+  // 3 caratteri, deve restare intercettabile).
+  const candidates=[
+    ...Object.entries(_aliasCache).map(([alias,data])=>({text:alias,minLen:4,canonical_role:data.canonical_role,role_family:data.role_family,functional_area:data.functional_area})),
+    ..._taxonomyCache.map(t=>({text:t.canonical_role,minLen:1,canonical_role:t.canonical_role,role_family:t.role_family,functional_area:t.functional_area}))
+  ].sort((a,b)=>b.text.length-a.text.length);
+  for(const c of candidates){
+    if(c.text.length<c.minLen)continue;
+    const escaped=c.text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     const regex=new RegExp(`\\b${escaped}\\b`,'i');
     if(regex.test(title)){
-      return{canonical_role:data.canonical_role,role_family:data.role_family,functional_area:data.functional_area};
+      return{canonical_role:c.canonical_role,role_family:c.role_family,functional_area:c.functional_area};
     }
   }
 
-  // Step 3: match per canonical_role nella tassonomia con word boundary
-  for(const t of _taxonomyCache){
-    const escaped=t.canonical_role.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const regex=new RegExp(`\\b${escaped}\\b`,'i');
-    if(regex.test(title)){
-      return{canonical_role:t.canonical_role,role_family:t.role_family,functional_area:t.functional_area};
-    }
-  }
-  
   // Nessun match deterministico (alias esatto, alias per parola intera, nome
   // canonico per parola intera): NON si usa più l'IA per indovinare il ruolo,
   // troppo incline a scegliere un ruolo esistente ma semanticamente sbagliato
@@ -4949,94 +4965,39 @@ async function runMassReclassify(){
   if(unmapped>0)await exportUnmappedTitlesCSV();
 }
 
-async function runPostImportEnrichment(newCount){
-  // Mostra progress bar
-  showEnrichmentProgress('Avvio pipeline di completamento dati...', 0);
-
+// Sostituisce il vecchio runPostImportEnrichment (rimosso il 01/09/2026): quella
+// pipeline riclassificava ruolo/area/seniority con alias+tassonomia e poi con IA
+// DOPO l'import, ma canonical_role/functional_area_v2/seniority_v2 sono ormai
+// risolti GIA' durante importVocationsCSV (stesso motore normalizeJobTitle,
+// nessuna IA) — tenerla in vita avrebbe rieseguito una riclassificazione
+// ridondante, con il rischio di ripristinare gli stessi bug di catalogazione
+// gia' corretti (vedi fix-hr-classification.js, fix-catchall-aliases.js) se un
+// futuro alias sbagliato venisse introdotto. Restano solo i due passaggi che
+// NON sono classificazione per-annuncio: benchmark salariali e market signals.
+async function refreshBenchmarksAndSignals(){
+  showEnrichmentProgress('Avvio aggiornamento benchmark e segnali...', 0);
   try{
-    // ── STEP 1: Normalizza ruoli — solo alias/tassonomia, nessuna IA ──
-    showEnrichmentProgress('Step 1/4 — Normalizzazione ruoli (alias/tassonomia)...', 10);
-    const unnormalized = await api('job_listings?select=id,job_title,company_name,canonical_role,role_family&canonical_role=is.null&source=eq.Vocations&order=published_date.desc&limit=5000');
-    let normalized = 0;
-    if(unnormalized.length){
-      await loadTaxonomy();
-      for(const l of unnormalized){
-        try{
-          const result=await normalizeJobTitle(l.job_title);
-          if(result.canonical_role){
-            const patch={canonical_role:result.canonical_role,role_family:result.role_family||null};
-            // Vedi runMassReclassify per la stessa logica: il ruolo appena risolto puo'
-            // avere una regola di seniority dedicata non deducibile dal solo testo.
-            if(SENIORITY_ROLE_OVERRIDE[result.canonical_role])patch.seniority_v2=classifySeniorityFromText(l.job_title,result.canonical_role);
-            await api(`job_listings?id=eq.${l.id}`,'PATCH',patch);
-            normalized++;
-          }
-        }catch(e){}
-      }
-      console.log(`Step 1: ${normalized}/${unnormalized.length} ruoli normalizzati da alias/tassonomia`);
-    }
-
-    // ── STEP 2: Classifica con AI (solo sector/area/seniority/TA/company_type/location, NON il ruolo) — loop paginato ──
-    // Limitato all'ULTIMA importazione, non a tutto lo storico Vocations: senza questo
-    // filtro la query "manca un campo qualsiasi" intercetta anche le migliaia di annunci
-    // storici con therapeutic_area mai popolata, e il rate limit di 2.5s/5 record rende
-    // il completamento di un solo nuovo import di ore, perche' prova a rifare anche
-    // tutto l'arretrato ogni volta che si preme il tasto.
-    showEnrichmentProgress('Step 2/4 — Classificazione AI...', 32);
-    const [lastImportRow] = await api('job_listings?select=created_at&source=eq.Vocations&order=created_at.desc&limit=1');
-    const lastImportThreshold = lastImportRow
-      ? new Date(new Date(lastImportRow.created_at).getTime() - 2*3600*1000).toISOString()
-      : null;
-    const PAGE_SIZE = 100;
-    let classPage = 0, classified = 0, totalToClassify = 0;
-    while(true){
-      const toClassify = await api(
-        'job_listings?select=id,job_title,company_name,location,job_description,ral_min,ral_max,canonical_role,company_id' +
-        '&source=eq.Vocations' +
-        '&or=(sector_v2.is.null,functional_area_v2.is.null,therapeutic_area.is.null)' +
-        (lastImportThreshold?`&created_at=gte.${encodeURIComponent(lastImportThreshold)}`:'') +
-        `&order=published_date.desc&limit=${PAGE_SIZE}&offset=${classPage*PAGE_SIZE}`
-      );
-      if(!toClassify.length)break;
-      totalToClassify+=toClassify.length;
-      for(const listing of toClassify){
-        try{await classifyOneListing(listing);classified++;}catch(e){}
-        if(classified%5===0){
-          showEnrichmentProgress(`Step 2/4 — AI: ${classified}...`,32+Math.min(35,Math.round(classified/Math.max(totalToClassify,1)*35)));
-          await new Promise(r=>setTimeout(r,2500)); // rate limit Groq
-        }
-      }
-      if(toClassify.length<PAGE_SIZE)break;
-      classPage++;
-    }
-    console.log(`Step 2: ${classified} annunci classificati`);
-
-    // ── STEP 3: Aggiorna salary_benchmarks ──
-    showEnrichmentProgress('Step 3/4 — Ricalcolo benchmark salariali...', 70);
-    // Calcola benchmark aggiornati per i ruoli appena importati
+    showEnrichmentProgress('Step 1/2 — Ricalcolo benchmark salariali...', 30);
     await updateSalaryBenchmarks();
 
-    // ── STEP 4: Genera market signals ──
-    showEnrichmentProgress('Step 4/4 — Rilevazione segnali di mercato...', 88);
+    showEnrichmentProgress('Step 2/2 — Rilevazione segnali di mercato...', 65);
     const allData = await api('job_listings?select=*&order=published_date.desc&limit=2000');
     await saveMarketSignalsToSupabase(allData);
 
-    showEnrichmentProgress('✅ Completamento automatico terminato', 100);
-    await new Promise(r=>setTimeout(r,2000));
+    showEnrichmentProgress('✅ Aggiornamento terminato', 100);
+    await new Promise(r=>setTimeout(r,1500));
     hideEnrichmentProgress();
 
-    toast('🎯 Pipeline completata: ruoli normalizzati, classificazione AI, benchmark aggiornati, segnali rilevati', 'success');
-    loadListings();
-    refreshPendingBadges();
+    toast('📊 Benchmark salariali e segnali di mercato aggiornati', 'success');
     loadDashboard();
 
-    // Titoli senza alias/tassonomia: report CSV per creazione manuale su Supabase
+    // Titoli senza alias/tassonomia (mai classificati nemmeno all'import): report
+    // CSV per creazione manuale dell'alias su Supabase.
     await exportUnmappedTitlesCSV();
-
   }catch(e){
-    console.error('Enrichment pipeline error:', e);
+    console.error('refreshBenchmarksAndSignals error:', e);
     hideEnrichmentProgress();
-    toast('Enrichment parziale: '+e.message, 'warning');
+    toast('Aggiornamento parziale: '+e.message, 'warning');
   }
 }
 
@@ -7536,7 +7497,7 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       if(result.location)patch.location=result.location;
 
       // Canonical role — MAI dall'IA. Solo alias/tassonomia deterministica,
-      // e solo se non già assegnato (Step 1 di runPostImportEnrichment lo fa già).
+      // e solo se non già assegnato (l'import CSV lo risolve già a monte).
       if(!listing.canonical_role){
         const roleResult=await normalizeJobTitle(listing.job_title);
         if(roleResult.canonical_role){
