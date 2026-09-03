@@ -910,6 +910,11 @@ a.job-link:hover{text-decoration:underline;}
       <div id="cd-core-body" style="margin-top:12px;"></div>
     </div>
 
+    <div class="chart-card" id="cd-products-card" style="margin-bottom:24px; border: 2px solid #a78bfa; display:none;">
+      <div class="chart-card-title">💊 Prodotti in commercio <span id="cd-products-count" style="font-size:12px;color:var(--text2);font-weight:400;"></span></div>
+      <div id="cd-products-body" style="margin-top:12px;"></div>
+    </div>
+
     <!-- Composizione organizzativa per funzione, via Apollo people search (company_workforce,
          27/08). Una riga per persona nel database, ma qui si mostra SOLO l'aggregato per
          funzione — mai un nome, Apollo li oscura di default e non chiamiamo mai reveal.
@@ -9504,7 +9509,8 @@ async function loadCompanyDetail(company){
   // Carica dati arricchiti
   if(company.id){
     loadEnrichedData(company.id);
-    loadCoreCard(company.id);
+    loadCoreCard(company.id,listings);
+    loadProductsCard(company.id);
     loadWorkforceCard(company.id);
   }
 }
@@ -9546,15 +9552,14 @@ function coreFattoHtml(f){
   return `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
 }
 
-async function loadCoreCard(companyId){
+async function loadCoreCard(companyId,listings){
   const card=document.getElementById('cd-core-card');
   const body=document.getElementById('cd-core-body');
   if(!card||!body)return;
   try{
-    const [facts,company,prodotti,areeTerapeutiche]=await Promise.all([
+    const [facts,company,areeTerapeutiche]=await Promise.all([
       api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`),
       api(`companies?select=market_radar&id=eq.${companyId}`),
-      api(`company_products?select=brand_name,active_ingredients,category,fonte,source_proof,source_url&company_id=eq.${companyId}&order=created_at.desc`),
       api(`company_therapeutic_areas?select=code,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`)
     ]);
     const mr=company[0]?.market_radar||null;
@@ -9563,7 +9568,7 @@ async function loadCoreCard(companyId){
     // nulla da mostrare, ma questo la rendeva indistinguibile da "non ho controllato"
     // per l'utente — ora mostra sempre uno stato, vuoto o pieno.
     card.style.display='';
-    if(!facts.length&&!mr&&!prodotti.length&&!areeTerapeutiche.length){
+    if(!facts.length&&!mr&&!areeTerapeutiche.length){
       body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora arricchita da CORE.</div>';
       return;
     }
@@ -9589,34 +9594,45 @@ async function loadCoreCard(companyId){
       </div>`;
     }).join('');
 
-    // Prodotti da company_products (tabella dedicata dal 27/08, non piu' company_facts):
-    // stesso rendering di coreFattoHtml (valore + fonte cliccabile), con le molecole
-    // in coda quando note. category non e' mostrata: tipo='prodotto' significava gia'
-    // "commercializzato in Italia" per costruzione del prompt di estrazione.
-    let prodottiHtml='';
-    if(prodotti.length){
-      const righe=prodotti.map(p=>coreFattoHtml({
-        valore:p.brand_name+(p.active_ingredients&&p.active_ingredients.length?` (${p.active_ingredients.join(', ')})`:''),
-        url:p.source_url, prova:p.source_proof, fonte:p.fonte
-      })).join('');
-      prodottiHtml=`<div style="margin-bottom:14px;">
-        <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">Prodotti in Italia</label>
-        <div style="margin-top:6px;">${righe}</div>
-      </div>`;
-    }
-
     // Aree terapeutiche CON fonte per singola area — mai mostrate prima d'ora:
     // la card Apollo mostra companies.aree_terapeutiche, uno specchio senza fonte
     // sincronizzato da questa stessa tabella via trigger (perde fonte/prova/url
     // nel passaggio). Qui si vede la fonte reale di ogni area, come per gli altri
     // fatti CORE — un'area da 'sito_ufficiale' non e' la stessa cosa di una da
     // 'aggregato_annunci', anche se nel badge Apollo appaiono identiche.
+    //
+    // Riconciliazione con job_listings.therapeutic_area: le due fonti non si
+    // erano mai parlate sulla pagina — un'area dichiarata sul sito ma senza
+    // annunci recenti, o annunci in un'area mai dichiarata da CORE, sono
+    // entrambi segnali utili (dato CORE non aggiornato, o azienda che si sta
+    // diversificando) che prima restavano invisibili perche' su due grafici/
+    // card diversi mai messi a confronto.
+    const areeCore=new Set(areeTerapeutiche.map(a=>a.code));
+    const areeAnnunci=new Set((listings||[])
+      .map(l=>l.therapeutic_area)
+      .filter(t=>t&&t!=='not_applicable'&&t!=='multiple'));
+    const soloCore=[...areeCore].filter(c=>!areeAnnunci.has(c));
+    const soloAnnunci=[...areeAnnunci].filter(c=>!areeCore.has(c));
+    const confermate=[...areeCore].filter(c=>areeAnnunci.has(c));
+
     let areeHtml='';
     if(areeTerapeutiche.length){
       const righe=areeTerapeutiche.map(a=>coreFattoHtml({valore:toLabel(a.code),url:a.url,prova:a.prova,fonte:a.fonte})).join('');
       areeHtml=`<div style="margin-bottom:14px;">
         <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">Aree terapeutiche (con fonte)</label>
         <div style="margin-top:6px;">${righe}</div>
+      </div>`;
+    }
+    if(areeCore.size||areeAnnunci.size){
+      const chip=(label,ok)=>`<span style="display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;margin:0 4px 4px 0;background:${ok?'rgba(76,175,130,.15)':'var(--surface2)'};color:${ok?'var(--success)':'var(--text2)'};border:1px solid var(--border);">${escHtml(toLabel(label))}</span>`;
+      areeHtml+=`<div style="margin-bottom:14px;">
+        <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">Aree terapeutiche — fonte primaria vs annunci pubblicati</label>
+        <div style="margin-top:6px;font-size:11px;color:var(--text2);">
+          ${confermate.length?`<div style="margin-bottom:6px;"><b style="color:var(--text);">Confermate da entrambe (${confermate.length})</b><br>${confermate.map(c=>chip(c,true)).join('')}</div>`:''}
+          ${soloCore.length?`<div style="margin-bottom:6px;">Solo da fonte primaria, nessun annuncio recente (${soloCore.length})<br>${soloCore.map(c=>chip(c,false)).join('')}</div>`:''}
+          ${soloAnnunci.length?`<div>Solo negli annunci, mai confermate da CORE (${soloAnnunci.length})<br>${soloAnnunci.map(c=>chip(c,false)).join('')}</div>`:''}
+          ${!confermate.length&&!soloCore.length&&!soloAnnunci.length?'—':''}
+        </div>
       </div>`;
     }
 
@@ -9636,10 +9652,41 @@ async function loadCoreCard(companyId){
       </div>`;
     }
 
-    body.innerHTML=blocchi+areeHtml+prodottiHtml+mrHtml;
+    body.innerHTML=blocchi+areeHtml+mrHtml;
   }catch(e){
     card.style.display='';
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento dati CORE: ${e.message}</div>`;
+  }
+}
+
+// Prodotti in commercio — prima un sotto-blocco dentro la card CORE generica,
+// ora una card propria (richiesta esplicita 02/09/2026): con 622 aziende che
+// hanno prodotti e fino a 49 per azienda, un elenco infilato tra "fase di
+// mercato" e "Market Radar" si perdeva. Stessa fonte (company_products,
+// tabella dedicata dal 27/08) e stesso rendering (coreFattoHtml).
+async function loadProductsCard(companyId){
+  const card=document.getElementById('cd-products-card');
+  const body=document.getElementById('cd-products-body');
+  if(!card||!body)return;
+  card.style.display='';
+  try{
+    const prodotti=await api(`company_products?select=brand_name,active_ingredients,category,fonte,source_proof,source_url&company_id=eq.${companyId}&order=brand_name.asc`);
+    const countEl=document.getElementById('cd-products-count');
+    if(countEl)countEl.textContent=prodotti.length?String(prodotti.length):'';
+    if(!prodotti.length){
+      body.innerHTML='<div style="font-size:12px;color:var(--text2);">Nessun prodotto in commercio rilevato.</div>';
+      return;
+    }
+    // category non e' mostrata: e' costante ('commercializzato') su tutte le
+    // 5.112 righe attuali per costruzione del prompt di estrazione — non porta
+    // informazione finche' non verranno raccolti anche prodotti in pipeline.
+    const righe=prodotti.map(p=>coreFattoHtml({
+      valore:p.brand_name+(p.active_ingredients&&p.active_ingredients.length?` (${p.active_ingredients.join(', ')})`:''),
+      url:p.source_url, prova:p.source_proof, fonte:p.fonte
+    })).join('');
+    body.innerHTML=`<div style="max-height:280px;overflow-y:auto;">${righe}</div>`;
+  }catch(e){
+    body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento prodotti: ${e.message}</div>`;
   }
 }
 
