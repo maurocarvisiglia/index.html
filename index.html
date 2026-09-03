@@ -666,16 +666,6 @@ a.job-link:hover{text-decoration:underline;}
       <div class="section-title">🏢 Aziende</div>
       <div style="display:flex;gap:8px;">
         <input type="text" id="co-search" placeholder="Cerca azienda..." oninput="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
-        <select id="co-type" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
-          <option value="">Tutti i tipi</option>
-          <option value="life_sciences">Life Sciences</option>
-          <option value="headhunter">Head Hunter</option>
-        </select>
-        <select id="co-status" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
-          <option value="">Tutti gli stati</option>
-          <option value="true">Attive</option>
-          <option value="false">Inattive</option>
-        </select>
         <select id="co-sort" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
           <option value="name_asc">Nome A-Z</option>
           <option value="name_desc">Nome Z-A</option>
@@ -747,8 +737,8 @@ a.job-link:hover{text-decoration:underline;}
       <div class="kpi-group overview">
         <div class="kpi-group-title">🏢 Panoramica azienda</div>
         <div class="kpi-mini-grid">
-          <div><div class="kpi-mini-label">Dipendenti</div><div class="kpi-mini-value" id="cd-kpi-employees">—</div></div>
-          <div><div class="kpi-mini-label">Fatturato</div><div class="kpi-mini-value" id="cd-kpi-revenue">—</div></div>
+          <div><div class="kpi-mini-label">Dipendenti (stima Italia)</div><div class="kpi-mini-value" id="cd-kpi-employees">—</div></div>
+          <div><div class="kpi-mini-label">Fatturato (dato globale gruppo)</div><div class="kpi-mini-value" id="cd-kpi-revenue">—</div></div>
           <div><div class="kpi-mini-label">Settore</div><div class="kpi-mini-value" id="cd-kpi-sector">—</div></div>
           <div><div class="kpi-mini-label">Field/HQ</div><div class="kpi-mini-value" id="cd-kpi-hq">—</div></div>
         </div>
@@ -761,7 +751,6 @@ a.job-link:hover{text-decoration:underline;}
           <div><div class="kpi-mini-label">Primo annuncio</div><div class="kpi-mini-value" id="cd-kpi-first">—</div></div>
           <div><div class="kpi-mini-label">Ultimo annuncio</div><div class="kpi-mini-value" id="cd-kpi-last">—</div></div>
         </div>
-        <div style="margin-top:10px;"><div class="kpi-mini-label">Hiring Manager</div><div class="kpi-mini-value" style="font-size:14px;" id="cd-kpi-hm">—</div><div class="kpi-sub" id="cd-kpi-hm-role"></div></div>
       </div>
       <div class="kpi-group pay">
         <div class="kpi-group-title">💶 Retribuzione &amp; opportunity</div>
@@ -829,17 +818,6 @@ a.job-link:hover{text-decoration:underline;}
       <div style="margin-top:12px;">
         <button class="btn btn-primary" onclick="saveCompanyProfile()">💾 Salva profilo</button>
       </div>
-
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;">🔎 Ricerca web — incolla testo trovato online (LinkedIn, sito aziendale...)</div>
-        <textarea id="cd-research-text" placeholder="Incolla qui il testo trovato sul web..." style="width:100%;height:90px;resize:vertical;"></textarea>
-        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-          <button class="btn btn-secondary" onclick="analyzeCompanyResearch()" id="btn-cd-research" style="border-color:#a78bfa;color:#a78bfa;">🤖 Estrai dati dal testo</button>
-          <span id="cd-research-status" style="font-size:12px;color:var(--text2);"></span>
-        </div>
-        <div style="font-size:10px;color:var(--text2);margin-top:6px;">L'estrazione usa esclusivamente il testo incollato qui sopra — nessun dato viene generato a memoria. Controlla e correggi i campi prima di salvare.</div>
-        <div id="cd-research-notes" style="font-size:11px;color:var(--text2);margin-top:8px;font-style:italic;"></div>
-      </div>
     </div>
 
     <!-- DATI ARRICCHITI AUTOMATICAMENTE -->
@@ -859,14 +837,6 @@ a.job-link:hover{text-decoration:underline;}
       <div style="display:grid; grid-template-columns:1.1fr 1fr; gap:24px; margin-top:16px;">
         <div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div>
-              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Dipendenti Italia (stima)</label>
-              <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-dipendenti">—</div>
-            </div>
-            <div>
-              <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Fatturato (dato globale gruppo)</label>
-              <div style="font-size:20px; font-weight:700; color:var(--accent2); margin-top:4px;" id="enriched-fatturato">—</div>
-            </div>
             <div>
               <label style="font-size:10px; color:var(--text2); text-transform:uppercase;">Crescita dipendenti 12 mesi (dato globale gruppo)</label>
               <div style="font-size:20px; font-weight:700; margin-top:4px;" id="enriched-crescita">—</div>
@@ -9189,9 +9159,7 @@ async function loadCompanies(offset=0){
   const pageSize=200;
   try{
     const search=(document.getElementById('co-search')?.value||'').trim();
-    const type=document.getElementById('co-type')?.value||'';
     const sort=document.getElementById('co-sort')?.value||'name_asc';
-    const status=document.getElementById('co-status')?.value||'';
 
     // Build query
     // merged_into=is.null: nasconde i record fusi in un duplicato canonico (restano
@@ -9199,8 +9167,6 @@ async function loadCompanies(offset=0){
     let q=`companies?select=*&merged_into=is.null&limit=${pageSize}&offset=${offset}`;
 
     // Filtri
-    if(type)q+=`&entity_type=eq.${type}`;
-    if(status!=='')q+=`&is_active=eq.${status}`;
     if(search)q+=`&name=ilike.*${encodeURIComponent(search)}*`;
 
     // Ordinamento
@@ -9321,14 +9287,6 @@ async function loadCompanyDetail(company){
   document.getElementById('cd-edit-ateco').value=company.codice_ateco||'';
   document.getElementById('cd-edit-sector').value=company.sector_v2||'';
   document.getElementById('cd-edit-description').value=company.activity_description||'';
-  // Il testo di ricerca incollato/generato va ricaricato da research_raw_text — prima
-  // veniva sempre azzerato al caricamento pagina, quindi spariva alla vista pur
-  // restando salvato nel database (write-only di fatto).
-  document.getElementById('cd-research-text').value=company.research_raw_text||'';
-  document.getElementById('cd-research-status').textContent=company.last_researched_at?
-    'Ultima ricerca: '+new Date(company.last_researched_at).toLocaleDateString('it-IT'):'';
-  // research_notes: scritto dalla pipeline di ricerca web ma mai mostrato finora.
-  document.getElementById('cd-research-notes').textContent=company.research_notes||'';
 
   // Dati anagrafici da import Vocations — mai mostrati prima nonostante popolati.
   const anagraficaCard=document.getElementById('cd-anagrafica-card');
@@ -9375,15 +9333,6 @@ async function loadCompanyDetail(company){
     const sectors=listings.filter(l=>l.sector_v2).map(l=>l.sector_v2);
     const topSector=sectors.length?Object.entries(sectors.reduce((a,s)=>{a[s]=(a[s]||0)+1;return a;},{} )).sort((a,b)=>b[1]-a[1])[0][0]:'—';
     document.getElementById('cd-kpi-sector').textContent=company.sector_v2||topSector;
-
-    // Hiring manager
-    const withHM=listings.find(l=>l.hiring_manager_name);
-    if(withHM){
-      document.getElementById('cd-kpi-hm').innerHTML=withHM.hiring_manager_linkedin?
-        `<a href="${withHM.hiring_manager_linkedin}" target="_blank" style="color:var(--accent2);text-decoration:none;font-size:12px;">${withHM.hiring_manager_name} ↗</a>`:
-        `<span style="font-size:12px;">${withHM.hiring_manager_name}</span>`;
-      document.getElementById('cd-kpi-hm-role').textContent=withHM.hiring_manager_role||'';
-    }
 
     // Sede HQ
     const hqLoc=listings.find(l=>l.location);
@@ -9757,7 +9706,7 @@ async function loadWorkforceCard(companyId){
 async function loadEnrichedData(companyId){
   try{
     // Carica dati arricchiti dalla company
-    const companies=await api(`companies?id=eq.${companyId}&select=dipendenti,fatturato_range,aree_terapeutiche,descrizione_aziendale,completezza_arricchimento,arricchito_il,crescita_dipendenti_12m,apollo_industry,apollo_industries`);
+    const companies=await api(`companies?id=eq.${companyId}&select=aree_terapeutiche,descrizione_aziendale,completezza_arricchimento,arricchito_il,crescita_dipendenti_12m,apollo_industry,apollo_industries`);
     if(!companies.length)return;
 
     const company=companies[0];
@@ -9772,21 +9721,8 @@ async function loadEnrichedData(companyId){
     }
     if(progressText)progressText.textContent=completeness+'%';
 
-    // Dipendenti
-    const dipEl=document.getElementById('enriched-dipendenti');
-    if(dipEl){
-      if(company.dipendenti){
-        dipEl.textContent=company.dipendenti>=1000?`${(company.dipendenti/1000).toFixed(0)}k`:company.dipendenti;
-      }else{
-        dipEl.textContent='—';
-      }
-    }
-
-    // Fatturato
-    const fatEl=document.getElementById('enriched-fatturato');
-    if(fatEl){
-      fatEl.textContent=company.fatturato_range||'—';
-    }
+    // Dipendenti e Fatturato: mostrati solo nella KPI "Panoramica azienda" in cima
+    // alla pagina (cd-kpi-employees/cd-kpi-revenue) — qui erano un duplicato esatto.
 
     // Crescita dipendenti (12 mesi) — frazione da Apollo, es. 0.05 = +5%
     const crescitaEl=document.getElementById('enriched-crescita');
@@ -10019,49 +9955,6 @@ async function saveCompanyProfile(){
 // Estrae i campi profilo SOLO dal testo incollato dall'utente — mai a memoria.
 // Stesso principio di analyzeWithText per gli annunci: l'IA legge e riassume un testo
 // reale fornito, non inventa fatti su aziende che potrebbe "conoscere" in modo impreciso.
-async function analyzeCompanyResearch(){
-  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
-  const text=document.getElementById('cd-research-text').value.trim();
-  const statusEl=document.getElementById('cd-research-status');
-  if(!text||text.length<30){toast('Incolla almeno qualche riga di testo trovato sul web','warning');return;}
-
-  const btn=document.getElementById('btn-cd-research');
-  btn.disabled=true;
-  if(statusEl)statusEl.textContent='⏳ Estrazione in corso...';
-  try{
-    const prompt=`Estrai informazioni SOLO dal testo fornito sotto, riguardante l'azienda "${currentCompany.name}". Non aggiungere nulla che non sia scritto nel testo. Se un'informazione non è presente, usa null.
-
-TESTO (unica fonte ammessa):
-${text.substring(0,4000)}
-
-Rispondi SOLO con questo JSON:
-{
-  "dipendenti": <numero intero o null>,
-  "codice_ateco": "<codice se menzionato, altrimenti null>",
-  "sector_v2": "<uno tra Big Pharma|Mid Pharma|Specialty Pharma|Pharma|Biotech|Medical Devices|Diagnostics|CRO|CDMO|Chimico|Consumer Health|Nutraceutical|Cosmetics|Veterinary|Digital Health|Healthcare Services|Farmacia/Retail|EHS/HSE Consulting|Altro, solo se chiaramente deducibile dal testo, altrimenti null. Usa 'Pharma' solo se e' chiaramente un produttore farmaceutico ma il testo non permette di distinguere la fascia Big/Mid/Specialty>",
-  "activity_description": "<riassunto in 2-3 frasi in italiano di cosa fa l'azienda secondo il testo, o null se il testo non lo spiega>"
-}`;
-    const raw=await callAIPowerful(prompt,500);
-    const clean=raw.replace(/```json|```/g,'').trim();
-    const result=JSON.parse(clean);
-
-    if(result.dipendenti)document.getElementById('cd-edit-dipendenti').value=result.dipendenti;
-    if(result.codice_ateco)document.getElementById('cd-edit-ateco').value=result.codice_ateco;
-    if(result.sector_v2)document.getElementById('cd-edit-sector').value=result.sector_v2;
-    if(result.activity_description)document.getElementById('cd-edit-description').value=result.activity_description;
-
-    await api('companies?id=eq.'+currentCompany.id,'PATCH',{research_raw_text:text,last_researched_at:new Date().toISOString()});
-
-    if(statusEl)statusEl.textContent='✅ Campi aggiornati — controlla e clicca "Salva profilo"';
-    toast('Dati estratti dal testo — verifica prima di salvare','success');
-  }catch(e){
-    if(statusEl)statusEl.textContent='';
-    toast('Errore estrazione: '+e.message,'error');
-  }finally{
-    btn.disabled=false;
-  }
-}
-
 /* ── COMPANIES CRUD ── */
 async function saveCompany(){
   const name=document.getElementById('c-name').value.trim();
