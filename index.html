@@ -767,7 +767,7 @@ a.job-link:hover{text-decoration:underline;}
         <div class="kpi-group-title">💶 Retribuzione &amp; opportunity</div>
         <div class="kpi-mini-grid">
           <div><div class="kpi-mini-label">Con RAL</div><div class="kpi-mini-value" id="cd-kpi-ral">—</div></div>
-          <div><div class="kpi-mini-label">RAL media</div><div class="kpi-mini-value" style="color:var(--accent);" id="cd-kpi-ral-avg">—</div></div>
+          <div><div class="kpi-mini-label">RAL media</div><div class="kpi-mini-value" style="color:var(--accent);" id="cd-kpi-ral-avg">—</div><div style="font-size:10px;color:var(--text2);" id="cd-kpi-ral-note"></div></div>
           <div style="grid-column:1/-1;"><div class="kpi-mini-label">Opportunity score</div><div class="kpi-mini-value" style="color:var(--success);" id="cd-kpi-opp">—</div></div>
         </div>
       </div>
@@ -9405,6 +9405,14 @@ async function loadCompanyDetail(company){
     }else{
       document.getElementById('cd-kpi-ral-avg').textContent='—';
     }
+    // Dichiarate vs stimate — prima mescolate senza distinzione nella media sopra.
+    // ral_estimated esiste in DB da tempo ma non veniva mai letto su questa pagina.
+    const noteEl=document.getElementById('cd-kpi-ral-note');
+    if(noteEl){
+      const dichiarate=withRal.filter(l=>!l.ral_estimated).length;
+      const stimate=withRal.filter(l=>l.ral_estimated).length;
+      noteEl.textContent=withRal.length?`${dichiarate} dichiarate, ${stimate} stimate`:'';
+    }
 
     const firstDates=listings.filter(l=>l.published_date).map(l=>l.published_date).sort();
     document.getElementById('cd-kpi-first').textContent=firstDates.length?firstDates[0]:'—';
@@ -9517,7 +9525,7 @@ const CORE_TIPO_LABEL={
 // Le righe tipo='prodotto' restano in company_facts come backup passivo — la
 // card non le legge piu' da li', per non mostrare due volte lo stesso prodotto.
 const CORE_TIPO_ORDINE=['gruppo','pipeline_regolatoria','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia'];
-const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale'};
+const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci'};
 
 // Il testo di questa card viene da pagine web esterne e titoli di studi clinici —
 // fonti non fidate, a differenza dei campi che lo staff scrive a mano altrove
@@ -9543,10 +9551,11 @@ async function loadCoreCard(companyId){
   const body=document.getElementById('cd-core-body');
   if(!card||!body)return;
   try{
-    const [facts,company,prodotti]=await Promise.all([
+    const [facts,company,prodotti,areeTerapeutiche]=await Promise.all([
       api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`),
       api(`companies?select=market_radar&id=eq.${companyId}`),
-      api(`company_products?select=brand_name,active_ingredients,category,fonte,source_proof,source_url&company_id=eq.${companyId}&order=created_at.desc`)
+      api(`company_products?select=brand_name,active_ingredients,category,fonte,source_proof,source_url&company_id=eq.${companyId}&order=created_at.desc`),
+      api(`company_therapeutic_areas?select=code,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&order=rilevato_il.desc`)
     ]);
     const mr=company[0]?.market_radar||null;
 
@@ -9554,7 +9563,7 @@ async function loadCoreCard(companyId){
     // nulla da mostrare, ma questo la rendeva indistinguibile da "non ho controllato"
     // per l'utente — ora mostra sempre uno stato, vuoto o pieno.
     card.style.display='';
-    if(!facts.length&&!mr&&!prodotti.length){
+    if(!facts.length&&!mr&&!prodotti.length&&!areeTerapeutiche.length){
       body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora arricchita da CORE.</div>';
       return;
     }
@@ -9596,6 +9605,21 @@ async function loadCoreCard(companyId){
       </div>`;
     }
 
+    // Aree terapeutiche CON fonte per singola area — mai mostrate prima d'ora:
+    // la card Apollo mostra companies.aree_terapeutiche, uno specchio senza fonte
+    // sincronizzato da questa stessa tabella via trigger (perde fonte/prova/url
+    // nel passaggio). Qui si vede la fonte reale di ogni area, come per gli altri
+    // fatti CORE — un'area da 'sito_ufficiale' non e' la stessa cosa di una da
+    // 'aggregato_annunci', anche se nel badge Apollo appaiono identiche.
+    let areeHtml='';
+    if(areeTerapeutiche.length){
+      const righe=areeTerapeutiche.map(a=>coreFattoHtml({valore:toLabel(a.code),url:a.url,prova:a.prova,fonte:a.fonte})).join('');
+      areeHtml=`<div style="margin-bottom:14px;">
+        <label style="font-size:10px;color:var(--text2);text-transform:uppercase;">Aree terapeutiche (con fonte)</label>
+        <div style="margin-top:6px;">${righe}</div>
+      </div>`;
+    }
+
     let mrHtml='';
     if(mr){
       const voci=(mr.voci||[]).slice(0,6);
@@ -9612,7 +9636,7 @@ async function loadCoreCard(companyId){
       </div>`;
     }
 
-    body.innerHTML=blocchi+prodottiHtml+mrHtml;
+    body.innerHTML=blocchi+areeHtml+prodottiHtml+mrHtml;
   }catch(e){
     card.style.display='';
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento dati CORE: ${e.message}</div>`;
