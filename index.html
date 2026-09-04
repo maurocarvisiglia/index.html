@@ -1675,7 +1675,6 @@ a.job-link:hover{text-decoration:underline;}
       <div class="form-group"><div class="form-label">Sito web</div><input type="url" id="c-website" placeholder="https://"></div>
       <div class="form-group full"><div class="form-label">LinkedIn URL</div><input type="url" id="c-linkedin" placeholder="https://linkedin.com/company/..."></div>
       <div class="form-group"><div class="form-label">Indeed URL</div><input type="url" id="c-indeed" placeholder="https://indeed.com/..."></div>
-      <div class="form-group"><div class="form-label">Glassdoor URL</div><input type="url" id="c-glassdoor" placeholder="https://glassdoor.com/..."></div>
     </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-company')">Annulla</button>
@@ -9271,7 +9270,6 @@ async function loadCompanyDetail(company){
   if(company.website)links.push(`<a class="hero-link-btn" href="${company.website}" target="_blank">🌐 Sito web</a>`);
   if(company.linkedin_url)links.push(`<a class="hero-link-btn" href="${company.linkedin_url}" target="_blank">in LinkedIn</a>`);
   if(company.indeed_url)links.push(`<a class="hero-link-btn" href="${company.indeed_url}" target="_blank">Indeed</a>`);
-  if(company.glassdoor_url)links.push(`<a class="hero-link-btn" href="${company.glassdoor_url}" target="_blank">Glassdoor</a>`);
   document.getElementById('cd-links').innerHTML=links.join('');
 
   // Anagrafica legale — scritta da import Vocations/CSV/arricchimento ma prima mai
@@ -9962,12 +9960,11 @@ async function saveCompany(){
   const extraFields={entity_type:document.getElementById('c-type').value,
     website:document.getElementById('c-website').value||null,
     linkedin_url:document.getElementById('c-linkedin').value||null,
-    indeed_url:document.getElementById('c-indeed').value||null,
-    glassdoor_url:document.getElementById('c-glassdoor').value||null};
+    indeed_url:document.getElementById('c-indeed').value||null};
   try{
     await findOrCreateCompany(name,null,extraFields,{overwrite:true});
     toast('Azienda salvata!');closeModal('modal-company');loadCompanies();
-    ['c-name','c-website','c-linkedin','c-indeed','c-glassdoor'].forEach(id=>document.getElementById(id).value='');
+    ['c-name','c-website','c-linkedin','c-indeed'].forEach(id=>document.getElementById(id).value='');
   }catch(e){toast('Errore salvataggio','error');}
 }
 
@@ -9976,7 +9973,7 @@ async function saveCompany(){
 // non tocca il valore già presente nel database. ──
 const COMPANY_CSV_FIELD_MAP={
   'Nome azienda':'name','Ragione Sociale':'ragione_sociale','Tipo':'entity_type','Attiva':'is_active',
-  'Sito Web':'website','LinkedIn':'linkedin_url','Indeed':'indeed_url','Glassdoor':'glassdoor_url',
+  'Sito Web':'website','LinkedIn':'linkedin_url','Indeed':'indeed_url',
   'N. Dipendenti':'dipendenti','Codice Ateco':'codice_ateco','Settore':'sector_v2','Descrizione Attività':'activity_description'
 };
 const COMPANY_CSV_HEADER=['ID',...Object.keys(COMPANY_CSV_FIELD_MAP)];
