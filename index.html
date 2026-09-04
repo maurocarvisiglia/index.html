@@ -2825,7 +2825,11 @@ function renderInsights(data, now){
   }
 
   // Render
-  const grid=document.getElementById('insights-grid');
+  // L'elemento HTML si chiama "insight-cards" (riga ~537) — questo codice
+  // cercava "insights-grid" (mai esistito), quindi la sezione "Market
+  // Insights" della dashboard è sempre rimasta vuota. Trovato verificando
+  // ogni pagina in diagnostica il 04/09/2026.
+  const grid=document.getElementById('insight-cards');
   if(!grid)return;
   if(!insights.length){
     grid.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);font-size:13px;grid-column:1/-1;">Dati insufficienti per gli insights — classifica gli annunci con AI</div>';
