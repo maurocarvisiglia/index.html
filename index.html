@@ -9345,12 +9345,22 @@ async function loadCompanyDetail(company){
     anagraficaCard.style.display='none';
   }
 
+  // Dichiarata fuori dal try (non const/let dentro le graffe): la usano anche
+  // loadCoreCard/loadEnrichedData più sotto, DOPO che il blocco try/catch si è
+  // chiuso. Con "const listings" dentro il try, lo scope la confinava lì
+  // dentro — ogni apertura di scheda azienda lanciava un ReferenceError non
+  // gestito su loadCoreCard(company.id,listings), che interrompeva
+  // l'esecuzione PRIMA di arrivare a loadProductsCard/loadWorkforceCard poco
+  // sotto: la card "Prodotti in commercio" (e "Composizione organizzativa")
+  // non si sono mai popolate automaticamente da quando e' stato introdotto
+  // questo parametro. Trovato verificando dal vivo il 04/09/2026.
+  let listings=[];
   try{
     // Query per company_id se disponibile, altrimenti fallback su company_name
     const q=company.id
       ? `job_listings?select=*&or=(company_id.eq.${company.id},company_name.eq.${encodeURIComponent(company.name)})&order=published_date.desc.nullslast`
       : `job_listings?select=*&company_name=eq.${encodeURIComponent(company.name)}&order=published_date.desc.nullslast`;
-    const listings=await api(q);
+    listings=await api(q);
 
     // ── PROFILO AZIENDA ──
     const withEmp=listings.find(l=>l.company_employees);
