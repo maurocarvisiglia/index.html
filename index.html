@@ -9219,8 +9219,6 @@ async function loadCompanies(offset=0){
 
     // Totale con filtri
     let countQ=`companies?select=id&merged_into=is.null`;
-    if(type)countQ+=`&entity_type=eq.${type}`;
-    if(status!=='')countQ+=`&is_active=eq.${status}`;
     if(search)countQ+=`&name=ilike.*${encodeURIComponent(search)}*`;
     const countResp=await fetch(`${SB_URL}/rest/v1/${countQ}`,{
       headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
