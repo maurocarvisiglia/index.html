@@ -3162,6 +3162,25 @@ async function apiPerIdList(resource,selectFields,ids){
   return risultati;
 }
 
+// PostgREST tronca in silenzio a 10.000 righe (limite db-max-rows) qualunque
+// query senza paginazione esplicita — su company_workforce (11.498 righe reali
+// il 04/09/2026) questo faceva mostrare "10000" come conteggio "Persone
+// classificate" invece del vero totale, e sottostimava le aziende catalogate.
+// Pagina a blocchi finche' una risposta torna piu' corta del blocco richiesto
+// (fine dati) — funziona per qualunque tabella, non solo per questa.
+async function apiPaginato(pathBase,pageSize=5000){
+  const risultati=[];
+  let offset=0;
+  const sep=pathBase.includes('?')?'&':'?';
+  while(true){
+    const pagina=await api(`${pathBase}${sep}limit=${pageSize}&offset=${offset}`);
+    risultati.push(...pagina);
+    if(pagina.length<pageSize)break;
+    offset+=pageSize;
+  }
+  return risultati;
+}
+
 /* ═══ SISTEMA ANTI-DUPLICATI AZIENDE ═══
    Stessa formattazione diversa (es. "Pfizer" / "Pfizer Italia S.r.l." / "PFIZER S.R.L.")
    creava aziende separate per la stessa azienda reale (40 gruppi trovati e uniti
@@ -8948,7 +8967,7 @@ async function loadWorkforceProgress(){
   try{
     const [totalCompanies,righe]=await Promise.all([
       api('companies?select=id&website=not.is.null&merged_into=is.null'),
-      api('company_workforce?select=company_id')
+      apiPaginato('company_workforce?select=company_id')
     ]);
     const total=totalCompanies.length;
     const enrichedIds=new Set(righe.map(r=>r.company_id));
@@ -8981,7 +9000,7 @@ async function openWorkforceEnriched(){
   bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
   openModal('modal-apollo-exclusions');
   try{
-    const righe=await api('company_workforce?select=company_id,rilevato_il&order=rilevato_il.desc');
+    const righe=await apiPaginato('company_workforce?select=company_id,rilevato_il&order=rilevato_il.desc');
     const byCompany=new Map();
     righe.forEach(r=>{
       if(!byCompany.has(r.company_id))byCompany.set(r.company_id,{n:0,lastDate:r.rilevato_il});
