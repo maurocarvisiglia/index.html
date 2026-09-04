@@ -2661,12 +2661,30 @@ async function callGemini(prompt, maxTokens=800, temperature=0.1){
   return data.candidates[0].content.parts[0].text.trim();
 }
 
-// ── MOTORE CASCADE: Groq → Mistral → Gemini ──
+// Ultima rete di sicurezza: proxy verso i worker gratuiti di CORE, dietro un
+// endpoint server-side (mai la chiave CORE nel browser). Aggiunta il
+// 04/09/2026 dopo che Mistral+Gemini+Groq sono falliti INSIEME (quota Mistral
+// esaurita da un test, Gemini in timeout, Groq con chiave morta da prima) e il
+// Report Builder e' rimasto senza alcun fallback funzionante.
+async function callCoreProxy(prompt, maxTokens=800){
+  const resp=await _aiFetch('/api/core-proxy',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({prompt,maxTokens})
+  });
+  if(!resp.ok){const body=await resp.json().catch(()=>({}));throw new Error('CORE '+resp.status+': '+(body.error||''));}
+  const data=await resp.json();
+  if(!data.text)throw new Error('CORE: risposta vuota');
+  return data.text;
+}
+
+// ── MOTORE CASCADE: Groq → Mistral → Gemini → CORE (gratuito, ultima spiaggia) ──
 async function callAI(prompt, maxTokens=800, temperature=0.1){
   const providers=[
     {name:'Groq',  fn:()=>callGroq(prompt, maxTokens, temperature)},
     {name:'Mistral',fn:()=>callMistral(prompt, maxTokens, temperature)},
     {name:'Gemini', fn:()=>callGemini(prompt, maxTokens, temperature)},
+    {name:'CORE',   fn:()=>callCoreProxy(prompt, maxTokens)},
   ];
   let lastError=null;
   for(const p of providers){
@@ -2690,7 +2708,10 @@ async function callAIPowerful(prompt, maxTokens=1200, temperature=0.1){
   // in 1,2-7,9 secondi; Gemini flash gratuito ha dato 503 "high demand" in
   // tutti e tre i tentativi, dopo 224-305 secondi ciascuno.
   // Prima si prova quello che risponde; Gemini resta come seconda scelta
-  // perche' quando e' disponibile e' ottimo.
+  // perche' quando e' disponibile e' ottimo. CORE aggiunto il 04/09/2026 come
+  // quarto tentativo, DOPO Groq: e' l'unico dei quattro con worker sempre
+  // gratuiti e indipendenti dalle quote degli altri tre, quindi va tenuto per
+  // ultimo — quando arriva qui, gli altri tre sono gia' giu' insieme.
   try{
     return await callMistral(prompt, maxTokens, temperature);
   }catch(e){
@@ -2698,7 +2719,11 @@ async function callAIPowerful(prompt, maxTokens=1200, temperature=0.1){
     try{return await callGemini(prompt, maxTokens, temperature);}
     catch(e2){
       console.warn('Gemini fallito, provo Groq:',e2.message);
-      return await callGroq(prompt, maxTokens, temperature);
+      try{return await callGroq(prompt, maxTokens, temperature);}
+      catch(e3){
+        console.warn('Groq fallito, provo CORE:',e3.message);
+        return await callCoreProxy(prompt, maxTokens);
+      }
     }
   }
 }
