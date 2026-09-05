@@ -1013,6 +1013,13 @@ a.job-link:hover{text-decoration:underline;}
     <!-- Segnali specifici -->
     <div style="margin-bottom:8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">Segnali di mercato rilevati</div>
     <div id="signals-list"></div>
+
+    <!-- Segnali da Market Radar — dato persistente (companies.market_radar),
+         MAI ripulito a 7 giorni come i segnali sopra: studi di Fase 3 con
+         centri in Italia e pareri CHMP di aziende estere che entrano/investono
+         nel mercato italiano, sincronizzati da un altro progetto Supabase. -->
+    <div style="margin:32px 0 8px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px;">🌍 Segnali da Market Radar <span style="font-weight:400;text-transform:none;letter-spacing:0;">— studi clinici e approvazioni EMA di aziende in ingresso/espansione in Italia</span></div>
+    <div id="signals-market-radar"><div class="loading">Caricamento...</div></div>
   </div>
 
 
@@ -3969,7 +3976,7 @@ function showView(name,btn){
   document.getElementById('view-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
   if(name==='dashboard')loadDashboard();
-  if(name==='signals')generateMarketSignals();
+  if(name==='signals'){generateMarketSignals();loadMarketRadarSignals();}
   // commercial: no auto-load
 
   if(name==='scarcity')loadScarcityIndex();
@@ -5953,6 +5960,37 @@ Genera un JSON con questa struttura ESATTA:
 }
 
 /* ── MARKET SIGNALS PAGE ── */
+
+const MR_TIPO_LABEL={phase3_italy:'Studio Fase 3 in Italia',phase3_eu:'Studio Fase 3 in Europa',ema_chmp:'Parere CHMP',other:'Notizia'};
+
+// Dato persistente (companies.market_radar), sincronizzato da un altro
+// progetto Supabase via scripts/sync-market-radar.mjs (cron giornaliero) —
+// a differenza dei "Segnali di mercato rilevati" sopra, non viene mai
+// ripulito a 7 giorni: resta finche' non arriva un dato piu' recente.
+async function loadMarketRadarSignals(){
+  const el=document.getElementById('signals-market-radar');
+  if(!el)return;
+  try{
+    const rows=await api('companies?select=id,name,sector_v2,market_radar&market_radar=not.is.null&limit=500');
+    const voci=[];
+    for(const c of rows){
+      for(const v of (c.market_radar?.voci||[])){
+        voci.push({...v,company_id:c.id,company_name:c.name,sector:c.sector_v2});
+      }
+    }
+    if(!voci.length){
+      el.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun segnale Market Radar ancora sincronizzato.</div>';
+      return;
+    }
+    voci.sort((a,b)=>String(b.data||'').localeCompare(String(a.data||'')));
+    el.innerHTML=voci.slice(0,40).map(v=>coreFattoHtml({
+      valore:`${v.company_name} — ${MR_TIPO_LABEL[v.tipo]||v.tipo}${v.data?' ('+v.data+')':''}: ${v.titolo||''}`,
+      fonte:'market_radar',prova:v.titolo,url:v.url
+    })).join('');
+  }catch(e){
+    el.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore caricamento Market Radar: '+e.message+'</div>';
+  }
+}
 
 async function generateMarketSignals(){
   const btn=document.getElementById('btn-signals');
