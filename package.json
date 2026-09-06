@@ -7,7 +7,11 @@
   "scripts": {
     "start": "node apollo-enrichment-agent.js",
     "dev": "node apollo-enrichment-agent.js",
-    "test": "node --eval \"console.log('Test mode')\""
+    "test": "node --eval \"console.log('Test mode')\"",
+    "test:core": "node --test tests/core.offline.test.ts tests/core.gateway.test.ts",
+    "test:core:e2e": "node --test tests/core.e2e.test.ts",
+    "diag:core": "node scripts/core-diagnostics.mjs",
+    "test:scrittura": "node tests/scrittura-conflitto.test.mjs"
   },
   "keywords": [
     "supabase",
@@ -19,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.38.0",
+    "adm-zip": "^0.6.0",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1"
   },
@@ -26,6 +31,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "csv-parse": "^7.0.2"
+    "csv-parse": "^7.0.2",
+    "supabase": "^2.114.0"
   }
 }
