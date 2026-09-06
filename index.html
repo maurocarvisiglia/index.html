@@ -702,7 +702,10 @@ a.job-link:hover{text-decoration:underline;}
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
-        <div class="table-count" id="companies-count">—</div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <span id="companies-no-website-count" onclick="openCompaniesWithoutWebsite()" style="cursor:pointer;color:var(--accent);text-decoration:underline;font-size:12px;" title="Aziende senza sito web compilato">—</span>
+          <div class="table-count" id="companies-count">—</div>
+        </div>
       </div>
       <div id="companies-body"><div class="loading">Caricamento...</div></div>
     </div>
@@ -7879,6 +7882,47 @@ async function openWorkforceEnriched(){
   }
 }
 
+async function loadCompaniesNoWebsiteCount(){
+  const el=document.getElementById('companies-no-website-count');
+  if(!el)return;
+  try{
+    const resp=await fetch(`${SB_URL}/rest/v1/companies?select=id&merged_into=is.null&website=is.null`,{
+      headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
+    });
+    const n=parseInt(resp.headers.get('Content-Range')?.split('/')[1]||0);
+    el.textContent=`${n} senza sito web →`;
+  }catch(e){
+    el.textContent='';
+  }
+}
+
+async function openCompaniesWithoutWebsite(){
+  const titleEl=document.getElementById('apollo-exclusions-title');
+  const bodyEl=document.getElementById('apollo-exclusions-body');
+  titleEl.textContent='Aziende senza sito web';
+  bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
+  openModal('modal-apollo-exclusions');
+  try{
+    const companies=await api('companies?select=id,name,ragione_sociale,sector_v2&merged_into=is.null&website=is.null&order=name.asc&limit=5000');
+    if(!companies.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Tutte le aziende hanno un sito web compilato</div>';return;}
+    bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">${companies.length} aziende senza sito — clicca sul nome per aprire la scheda e compilarlo.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Ragione sociale</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Settore</th>
+      </tr></thead>
+      <tbody>${companies.map(c=>`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${companyLinkHtml(c)}</td>
+          <td style="padding:8px;color:var(--text2);">${c.ragione_sociale||'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${c.sector_v2||'—'}</td>
+        </tr>`).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
+  }
+}
+
 async function openCoreEnriched(){
   const titleEl=document.getElementById('apollo-exclusions-title');
   const bodyEl=document.getElementById('apollo-exclusions-body');
@@ -8091,6 +8135,7 @@ async function loadCompanies(offset=0){
     const total=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||0);
 
     document.getElementById('companies-count').textContent=`${total} aziende`;
+    loadCompaniesNoWebsiteCount();
     const body=document.getElementById('companies-body');
 
     if(!companies.length&&offset===0){
