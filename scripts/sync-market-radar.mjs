@@ -146,6 +146,32 @@ const ALIAS = new Map([
   ['merck sharp dohme', 'msd'],
 ]);
 
+/**
+ * Gruppi societari: un'azienda del Radar i cui segnali vanno su PIU' righe
+ * dell'anagrafica, perche' le entita' legali sono distinte ma il decisore e' lo stesso.
+ *
+ * Non si deduce dal campo `gruppo` di company_facts: e' testo libero, 457 valori
+ * distinti su 513 righe, e per Menarini da solo convivono quattro grafie
+ * ("Menarini", "Menarini Group", "Menarini Industrie Farmaceutiche Riunite S.r.l.",
+ * "A. Menarini Industrie Farmaceutiche Riunite Srl") piu' due righe senza gruppo.
+ * Come per ALIAS, ogni voce qui e' una decisione presa, non un'euristica.
+ *
+ * Chiave: nome dell'azienda Market Radar, normalizzato.
+ * Valore: nomi delle righe in anagrafica che devono ricevere i segnali. Il confronto
+ * e' normalizzato, non esatto, cosi' una differenza di punteggiatura non fa perdere
+ * una riga; i nomi non trovati vengono saltati senza far fallire gli altri.
+ */
+const GRUPPI = new Map([
+  ['a menarini international licensing', [
+    'A. MENARINI - INDUSTRIE FARMACEUTICHE RIUNITE - S.R.L.',
+    'A.MENARINI IND.FARM.RIUN.Srl',
+    'A. MENARINI DIAGNOSTICS S.R.L.',
+    'MENARINI',
+    'MENARINI BIOTECH SRL',
+    'Menarini Internat. O.l.s.a',
+  ]],
+]);
+
 async function runMarketRadarSyncDailyBatch(apply = CLI_APPLY) {
 const log = [];
 const push = (m) => { console.log(m); log.push(String(m).replace(/\x1b\[[0-9]+m/g, '')); };
@@ -204,6 +230,27 @@ function accoppia(nomeEstero) {
   const n = norm(nomeEstero);
   if (!n || n.length < 3) return null;
   return perNome.get(n) || perNome.get(ALIAS.get(n) || ' ') || null;
+}
+
+/**
+ * I destinatari di un'azienda del Radar: normalmente uno, piu' d'uno se e' un gruppo.
+ *
+ * Per i gruppi si usa `perNomeTutti` e non `perNome`: il primo conserva anche le forme
+ * ambigue. "MENARINI" e "MENARINI BIOTECH SRL" si riducono entrambe a "menarini"
+ * (RUMORE cancella "biotech" e "srl"), quindi `perNome` le scarta per prudenza —
+ * giusto quando si deve scegliere UNA riga, inutile quando le vogliamo tutte.
+ */
+function accoppiaTutti(nomeEstero) {
+  const gruppo = GRUPPI.get(norm(nomeEstero));
+  if (gruppo) {
+    const perId = new Map();
+    for (const nome of gruppo) {
+      for (const c of perNomeTutti.get(norm(nome)) || []) perId.set(c.id, c);
+    }
+    if (perId.size) return [...perId.values()];
+  }
+  const singola = accoppia(nomeEstero);
+  return singola ? [singola] : [];
 }
 
 const segnaliPerAz = new Map();
@@ -359,125 +406,138 @@ for (const az of mrAziende) {
   const segnali = segnaliPerAz.get(az.id) || [];
   if (!segnali.length) continue;
 
-  const lsi = accoppia(az.name);
-  if (!lsi) { nonInAnagrafica.push({ nome: az.name, has_italy: az.has_italy, segnali: segnali.length }); continue; }
+  // Un'azienda del Radar puo' avere PIU' destinatari in anagrafica quando le entita'
+  // legali sono distinte ma il decisore e' lo stesso (vedi GRUPPI). I segnali vanno
+  // su tutte: aprendo una qualunque scheda del gruppo il segnale si vede.
+  const destinatari = accoppiaTutti(az.name);
+  if (!destinatari.length) { nonInAnagrafica.push({ nome: az.name, has_italy: az.has_italy, segnali: segnali.length }); continue; }
+  let radarToccata = false;
 
-  if (!statoPerAzienda.has(lsi.id)) statoPerAzienda.set(lsi.id, lsi.market_radar || {});
-  const esistente = statoPerAzienda.get(lsi.id);
-  const noti = CLI_RISCRIVI ? new Set() : new Set((esistente.voci || []).map((v) => v.external_id).filter(Boolean));
-  const nuovi = segnali.filter((s) => s.external_id && !noti.has(s.external_id));
-  if (!nuovi.length) { invariate++; continue; }
+  for (const lsi of destinatari) {
 
-  aziendeToccate++;
-  nuoviSegnali += nuovi.length;
-  process.stdout.write(`${D}▸${Z} ${az.name.slice(0, 30).padEnd(32)}${lsi.name.slice(0, 26).padEnd(28)}${nuovi.length} nuovi  `);
+    if (!statoPerAzienda.has(lsi.id)) statoPerAzienda.set(lsi.id, lsi.market_radar || {});
+    const esistente = statoPerAzienda.get(lsi.id);
+    const noti = CLI_RISCRIVI ? new Set() : new Set((esistente.voci || []).map((v) => v.external_id).filter(Boolean));
+    const nuovi = segnali.filter((s) => s.external_id && !noti.has(s.external_id));
+    if (!nuovi.length) { invariate++; continue; }
 
-  // ── il campo market_radar: si aggiunge, non si sovrascrive ──────────────
-  // Con --riscrivi la versione arricchita rimpiazza quella vecchia dello stesso
-  // segnale invece di affiancarsi: senza questo filtro la voce comparirebbe due volte.
-  const idsRilavorati = new Set(nuovi.map((s) => s.external_id));
-  const voci = [
-    ...(esistente.voci || []).filter((v) => !idsRilavorati.has(v.external_id)),
-    ...nuovi.map((s) => {
-      const m = s.meta || {};
-      return {
-        tipo: s.type, data: s.signal_date, titolo: (s.summary || '').slice(0, 300),
-        url: s.url, external_id: s.external_id, fonte: s.source,
-        // Il dettaglio che la sorgente dichiara. Serve a leggere la scheda senza
-        // dover riaprire ClinicalTrials o l'EPAR per capire di cosa si tratta.
-        patologia: s.conditions || null,
-        paesi: s.countries ? s.countries.split(';').map((p) => p.trim()).filter(Boolean) : null,
-        molecole: (m.drugs || []).map((d) => d.name).filter(Boolean).slice(0, 8) || null,
-        meccanismo: m.mechanism || null,
-        atc: m.atc || null,
-        pazienti: m.enrollment ?? null,
-      };
-    }),
-  ];
-  const tipi = {};
-  for (const v of voci) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1;
-  const date = voci.map((v) => v.data).filter(Boolean).sort();
+    if (!radarToccata) { aziendeToccate++; nuoviSegnali += nuovi.length; }
+    radarToccata = true;
+    process.stdout.write(`${D}▸${Z} ${az.name.slice(0, 30).padEnd(32)}${lsi.name.slice(0, 26).padEnd(28)}${nuovi.length} nuovi  `);
 
-  toccate.add(lsi.id);
-  statoPerAzienda.set(lsi.id, {
-      aggiornato_il: new Date().toISOString().slice(0, 10),
-      segnali: voci.length,
-      ultimo_segnale: date[date.length - 1] || null,
-      presenza_italia: az.has_italy,
-      tipo_azienda: az.type,
-      tipi,
-      // Le voci piu' recenti in cima e un tetto di 40: il campo deve restare
-      // leggibile in un'interfaccia, e il conteggio totale resta in `segnali`.
-      voci: voci.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))).slice(0, 40),
-  });
+    // ── il campo market_radar: si aggiunge, non si sovrascrive ──────────────
+    // Con --riscrivi la versione arricchita rimpiazza quella vecchia dello stesso
+    // segnale invece di affiancarsi: senza questo filtro la voce comparirebbe due volte.
+    const idsRilavorati = new Set(nuovi.map((s) => s.external_id));
+    const voci = [
+      ...(esistente.voci || []).filter((v) => !idsRilavorati.has(v.external_id)),
+      ...nuovi.map((s) => {
+        const m = s.meta || {};
+        return {
+          tipo: s.type, data: s.signal_date, titolo: (s.summary || '').slice(0, 300),
+          url: s.url, external_id: s.external_id, fonte: s.source,
+          // Con un gruppo la voce finisce su piu' schede: dire di quale entita' e' il
+          // segnale evita che la scheda della controllata sembri rivendicarlo.
+          entita: destinatari.length > 1 ? az.name : null,
+          // Il dettaglio che la sorgente dichiara. Serve a leggere la scheda senza
+          // dover riaprire ClinicalTrials o l'EPAR per capire di cosa si tratta.
+          patologia: s.conditions || null,
+          paesi: s.countries ? s.countries.split(';').map((p) => p.trim()).filter(Boolean) : null,
+          molecole: (m.drugs || []).map((d) => d.name).filter(Boolean).slice(0, 8) || null,
+          meccanismo: m.mechanism || null,
+          atc: m.atc || null,
+          pazienti: m.enrollment ?? null,
+        };
+      }),
+    ];
+    const tipi = {};
+    for (const v of voci) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1;
+    const date = voci.map((v) => v.data).filter(Boolean).sort();
 
-  // ── aree terapeutiche e fatti, solo dai segnali strutturati ─────────────
-  const daClassificare = nuovi.filter((s) => CLASSIFICABILI.has(s.type) && (s.summary || '').length > 20);
-  let nAree = 0;
-
-  // ── prima la patologia dichiarata: niente modello, niente inferenza ─────
-  const conPatologia = daClassificare.filter((s) => (s.conditions || '').trim());
-  for (const s of conPatologia) {
-    const esito = areaDaPatologia(s.conditions);
-    if (!esito) { scartate++; continue; }
-    areeDaScrivere.push({
-      company_id: lsi.id, code: esito.area, fonte: 'market_radar',
-      // La prova e' la patologia come la scrive la sorgente, non un pezzo di titolo:
-      // riaprendo l'URL si ritrova identica.
-      prova: `${TIPO_ETICHETTA[s.type]}: ${esito.prova}`.slice(0, 400), url: s.url,
-      worker: 'patologia-dichiarata',
+    toccate.add(lsi.id);
+    statoPerAzienda.set(lsi.id, {
+        aggiornato_il: new Date().toISOString().slice(0, 10),
+        segnali: voci.length,
+        ultimo_segnale: date[date.length - 1] || null,
+        presenza_italia: az.has_italy,
+        tipo_azienda: az.type,
+        tipi,
+        // Le voci piu' recenti in cima e un tetto di 40: il campo deve restare
+        // leggibile in un'interfaccia, e il conteggio totale resta in `segnali`.
+        voci: voci.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))).slice(0, 40),
     });
-    nAree++;
-  }
 
-  // ── ripiego sul modello solo per i segnali che la patologia non ce l'hanno ──
-  const daIndovinare = daClassificare.filter((s) => !(s.conditions || '').trim());
-  if (daIndovinare.length) {
-    try {
-      const out = await classifica(daIndovinare);
-      for (const v of out.voci || []) {
-        // L'indice torna dal modello e va risolto sulla lista CHE HA RICEVUTO,
-        // non su quella completa: le due divergono da quando la patologia
-        // dichiarata viene classificata senza modello.
-        const orig = daIndovinare[(v.riga | 0) - 1];
-        if (!orig) continue;
-        if (!AREE.includes(v.area)) { scartate++; continue; }
-        const prova = String(v.prova || '');
-        if (prova.length < 12) { scartate++; continue; }
-        if (!compatta(orig.summary).includes(compatta(prova))) { scartate++; continue; }
-        areeDaScrivere.push({ company_id: lsi.id, code: v.area, fonte: 'market_radar',
-                              prova: `${TIPO_ETICHETTA[orig.type]}: ${orig.summary}`.slice(0, 400), url: orig.url,
-                              worker: 'mistral-small-latest' });
-        nAree++;
-      }
-    } catch (e) {
-      process.stdout.write(`${R}${String(e.message).slice(0, 30)}${Z} `);
+    // ── aree terapeutiche e fatti, solo dai segnali strutturati ─────────────
+    const daClassificare = nuovi.filter((s) => CLASSIFICABILI.has(s.type) && (s.summary || '').length > 20);
+    let nAree = 0;
+
+    // ── prima la patologia dichiarata: niente modello, niente inferenza ─────
+    const conPatologia = daClassificare.filter((s) => (s.conditions || '').trim());
+    for (const s of conPatologia) {
+      const esito = areaDaPatologia(s.conditions);
+      if (!esito) { scartate++; continue; }
+      areeDaScrivere.push({
+        company_id: lsi.id, code: esito.area, fonte: 'market_radar',
+        // La prova e' la patologia come la scrive la sorgente, non un pezzo di titolo:
+        // riaprendo l'URL si ritrova identica.
+        prova: `${TIPO_ETICHETTA[s.type]}: ${esito.prova}${destinatari.length > 1 ? ` (${az.name})` : ''}`.slice(0, 400),
+        url: s.url,
+        worker: 'patologia-dichiarata',
+      });
+      nAree++;
     }
-  }
 
-  // Lo studio e il parere sono fatti in se', indipendenti dalla classificazione.
-  // Fuori dal ramo del modello: con la patologia dichiarata quel ramo non gira
-  // quasi mai, e lasciandoli dentro i fatti smettevano di essere scritti.
-  const FATTO_PER_TIPO = {
-    phase3_italy: 'studio_clinico_italia',
-    phase3_eu: 'studio_clinico_europa',
-    ema_chmp: 'pipeline_regolatoria',
-  };
-  for (const s of daClassificare) {
-    const tipoFatto = FATTO_PER_TIPO[s.type];
-    if (!tipoFatto) continue;
-    // La patologia dichiarata in coda al titolo: la scheda dice di cosa si tratta
-    // senza dover riaprire la fonte.
-    const dettaglio = s.conditions ? ` — ${s.conditions}` : '';
-    fattiDaScrivere.push({
-      company_id: lsi.id,
-      tipo: tipoFatto,
-      valore: `${(s.summary || '').slice(0, 160)}${dettaglio}`.slice(0, 200),
-      fonte: 'market_radar', prova: `${(s.summary || '')}${dettaglio}`.slice(0, 400), url: s.url,
-      worker: 'market-radar',
-    });
+    // ── ripiego sul modello solo per i segnali che la patologia non ce l'hanno ──
+    const daIndovinare = daClassificare.filter((s) => !(s.conditions || '').trim());
+    if (daIndovinare.length) {
+      try {
+        const out = await classifica(daIndovinare);
+        for (const v of out.voci || []) {
+          // L'indice torna dal modello e va risolto sulla lista CHE HA RICEVUTO,
+          // non su quella completa: le due divergono da quando la patologia
+          // dichiarata viene classificata senza modello.
+          const orig = daIndovinare[(v.riga | 0) - 1];
+          if (!orig) continue;
+          if (!AREE.includes(v.area)) { scartate++; continue; }
+          const prova = String(v.prova || '');
+          if (prova.length < 12) { scartate++; continue; }
+          if (!compatta(orig.summary).includes(compatta(prova))) { scartate++; continue; }
+          areeDaScrivere.push({ company_id: lsi.id, code: v.area, fonte: 'market_radar',
+                                prova: `${TIPO_ETICHETTA[orig.type]}: ${orig.summary}`.slice(0, 400), url: orig.url,
+                                worker: 'mistral-small-latest' });
+          nAree++;
+        }
+      } catch (e) {
+        process.stdout.write(`${R}${String(e.message).slice(0, 30)}${Z} `);
+      }
+    }
+
+    // Lo studio e il parere sono fatti in se', indipendenti dalla classificazione.
+    // Fuori dal ramo del modello: con la patologia dichiarata quel ramo non gira
+    // quasi mai, e lasciandoli dentro i fatti smettevano di essere scritti.
+    const FATTO_PER_TIPO = {
+      phase3_italy: 'studio_clinico_italia',
+      phase3_eu: 'studio_clinico_europa',
+      ema_chmp: 'pipeline_regolatoria',
+    };
+    for (const s of daClassificare) {
+      const tipoFatto = FATTO_PER_TIPO[s.type];
+      if (!tipoFatto) continue;
+      // La patologia dichiarata in coda al titolo: la scheda dice di cosa si tratta
+      // senza dover riaprire la fonte.
+      const dettaglio = s.conditions ? ` — ${s.conditions}` : '';
+      fattiDaScrivere.push({
+        company_id: lsi.id,
+        tipo: tipoFatto,
+        valore: `${(s.summary || '').slice(0, 160)}${dettaglio}`.slice(0, 200),
+        fonte: 'market_radar',
+        prova: `${destinatari.length > 1 ? `[${az.name}] ` : ''}${s.summary || ''}${dettaglio}`.slice(0, 400),
+        url: s.url,
+        worker: 'market-radar',
+      });
+    }
+    push(nAree ? `${G}${nAree} aree${Z}` : `${D}nessuna area${Z}`);
   }
-  push(nAree ? `${G}${nAree} aree${Z}` : `${D}nessuna area${Z}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
