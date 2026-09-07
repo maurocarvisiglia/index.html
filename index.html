@@ -8882,62 +8882,56 @@ async function calcolaStatoAssunzioniPerAzienda(){
   return stato;
 }
 
+async function filtraPerAppartenenza(aziende, tabella, filtroExtra){
+  // Tiene solo le aziende GIA' NOTE (mai una scansione/campione di tutta la
+  // tabella pesante) che compaiono in `tabella` secondo `filtroExtra`, a
+  // lotti da 150 id — evita il bug reale trovato in produzione: un LIMIT
+  // senza ORDER BY su company_products (289.000 righe) dava un campione
+  // diverso ad ogni esecuzione, stesso identico filtro -> 11, poi 12, poi 9
+  // risultati. Controllare l'appartenenza di un insieme gia' delimitato è
+  // deterministico per costruzione, non serve alcun LIMIT.
+  if(!aziende.length)return aziende;
+  const trovati=new Set();
+  const ids=aziende.map(a=>a.id);
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const righe=await api(`${tabella}?select=company_id&company_id=in.(${lotto.join(',')})&${filtroExtra}`);
+    righe.forEach(r=>trovati.add(r.company_id));
+  }
+  return aziende.filter(a=>trovati.has(a.id));
+}
+
 async function executeCompanySearchPlan(plan){
   const f=plan.filters;
 
-  // Filtri che richiedono di incrociare un'altra tabella per ottenere un
-  // insieme di company_id candidati, PRIMA di interrogare la tabella
-  // companies (leggera: nessuna subquery correlata, a differenza della
-  // vista v_scheda_azienda usata invece per la scheda di UNA sola azienda).
-  let candidatiIntersezione=null; // null = nessun vincolo, altrimenti Set di id
-  function intersecaCon(nuovoSet){
-    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>nuovoSet.has(id))):nuovoSet;
-  }
+  // Base SEMPRE da companies per intero (apiPaginato, nessun limite che
+  // tronchi silenziosamente prima di applicare gli altri filtri — bug reale
+  // trovato insieme al precedente: un limit=1000 qui tagliava l'elenco per
+  // nome PRIMA di verificare gruppo/fatti CORE/prodotti, quindi una ricerca
+  // senza settore/regione poteva perdere aziende oltre le prime 1000 in
+  // ordine alfabetico).
+  const qsCompanies=['select=id,name,sector_v2,region,company_group_id','is_active=eq.true','merged_into=is.null'];
+  if(f.sector_v2)qsCompanies.push(`sector_v2=eq.${encodeURIComponent(f.sector_v2)}`);
+  if(f.region)qsCompanies.push(`region=eq.${encodeURIComponent(f.region)}`);
+  let aziende=await apiPaginato(`companies?${qsCompanies.join('&')}`, 1000);
 
-  if(f.core_fact_tipo){
-    const righe=await api(`company_facts?tipo=eq.${f.core_fact_tipo}&select=company_id`);
-    intersecaCon(new Set(righe.map(r=>r.company_id)));
-  }
-  if(f.prodotto_categoria){
-    // Limite di sicurezza: 'commercializzato' da solo copre circa 289.000
-    // righe prodotto (AIFA + dispositivi medici) — non serve leggerle tutte
-    // per sapere quali aziende ce l'hanno, un campione ampio basta a
-    // popolare l'insieme di company_id candidati senza appesantire la query.
-    const righe=await api(`company_products?category=eq.${f.prodotto_categoria}&select=company_id&limit=5000`);
-    intersecaCon(new Set(righe.map(r=>r.company_id)));
-  }
-  if(f.therapeutic_area){
-    const righe=await api(`company_therapeutic_areas?code=eq.${encodeURIComponent(f.therapeutic_area)}&select=company_id`);
-    intersecaCon(new Set(righe.map(r=>r.company_id)));
-  }
+  // Ogni filtro successivo RESTRINGE l'insieme gia' noto (mai una nuova
+  // scansione da zero): sempre corretto e deterministico, indipendentemente
+  // da quanto e' grande la tabella incrociata.
+  if(f.core_fact_tipo) aziende=await filtraPerAppartenenza(aziende,'company_facts',`tipo=eq.${encodeURIComponent(f.core_fact_tipo)}`);
+  if(f.prodotto_categoria) aziende=await filtraPerAppartenenza(aziende,'company_products',`category=eq.${encodeURIComponent(f.prodotto_categoria)}`);
+  if(f.therapeutic_area) aziende=await filtraPerAppartenenza(aziende,'company_therapeutic_areas',`code=eq.${encodeURIComponent(f.therapeutic_area)}`);
   if(f.gruppo){
     const gruppi=await api(`company_groups?select=id,name&name=ilike.*${encodeURIComponent(f.gruppo)}*`);
     if(!gruppi.length){
       plan._dropped_filters=[...(plan._dropped_filters||[]),`gruppo "${f.gruppo}" non trovato`];
-      intersecaCon(new Set()); // nessuna azienda puo' corrispondere
+      aziende=[];
     }else{
-      const membri=await api(`companies?select=id&company_group_id=eq.${gruppi[0].id}&merged_into=is.null`);
-      intersecaCon(new Set(membri.map(m=>m.id)));
+      aziende=aziende.filter(a=>a.company_group_id===gruppi[0].id);
     }
   }
 
-  if(candidatiIntersezione&&candidatiIntersezione.size===0)return [];
-
-  const qsCompanies=['select=id,name,sector_v2,region,company_group_id','is_active=eq.true','merged_into=is.null'];
-  if(f.sector_v2)qsCompanies.push(`sector_v2=eq.${encodeURIComponent(f.sector_v2)}`);
-  if(f.region)qsCompanies.push(`region=eq.${encodeURIComponent(f.region)}`);
-
-  let aziende;
-  if(!candidatiIntersezione){
-    aziende=await api(`companies?${qsCompanies.join('&')}&order=name.asc&limit=1000`);
-  }else{
-    aziende=[];
-    const ids=[...candidatiIntersezione];
-    for(let i=0;i<ids.length;i+=150){
-      const lotto=ids.slice(i,i+150);
-      aziende.push(...await api(`companies?${qsCompanies.join('&')}&id=in.(${lotto.join(',')})`));
-    }
-  }
+  if(!aziende.length)return [];
 
   const statoMap=await calcolaStatoAssunzioniPerAzienda();
   aziende.forEach(a=>{a.stato_assunzioni=statoMap.get(a.id)||'nessun_annuncio';});
