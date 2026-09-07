@@ -8856,32 +8856,43 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   return plan;
 }
 
-async function intersecaConLotti(idsBase, tabella, filtroExtra){
-  // Interseca un elenco di company_id con quelli che compaiono in `tabella`
-  // secondo `filtroExtra`, in lotti da 150 id (stessa convenzione gia' in uso
-  // altrove nel file per evitare URL troppo lunghe).
-  const trovati=new Set();
-  for(let i=0;i<idsBase.length;i+=150){
-    const lotto=idsBase.slice(i,i+150);
-    const righe=await api(`${tabella}?select=company_id&company_id=in.(${lotto.join(',')})&${filtroExtra}`);
-    righe.forEach(r=>trovati.add(r.company_id));
-  }
-  return trovati;
+async function calcolaStatoAssunzioniPerAzienda(){
+  // job_listings e' piccola (circa 2.800 righe totali): si scarica una volta
+  // sola e si calcola lo stato in JS con le STESSE soglie di
+  // v_scheda_azienda.stato_assunzioni, invece di leggerlo da quella vista —
+  // la vista ha una subquery correlata per colonna/riga, verificato che una
+  // sola chiamata su 150 id ci mette ~1.7s: su liste piu' lunghe di poche
+  // centinaia causa un timeout Postgres reale (57014, riscontrato in
+  // produzione con "aziende concorrenti di steris" -> prodotto_categoria
+  // commercializzato -> 397 aziende candidate -> 3 lotti -> timeout).
+  const annunci=await api('job_listings?select=company_id,published_date&company_id=not.is.null');
+  const perAzienda={};
+  annunci.forEach(a=>{(perAzienda[a.company_id]=perAzienda[a.company_id]||[]).push(a.published_date);});
+  const ora=Date.now();
+  const stato=new Map();
+  Object.entries(perAzienda).forEach(([id,date])=>{
+    const g30=date.filter(d=>d&&ora-new Date(d).getTime()<=30*86400000).length;
+    const g90=date.filter(d=>d&&ora-new Date(d).getTime()<=90*86400000).length;
+    stato.set(id, g30>=3?'assume_ora':g90>=3?'assume_di_recente':'ha_assunto');
+  });
+  return stato;
 }
 
 async function executeCompanySearchPlan(plan){
   const f=plan.filters;
 
   // Filtri che richiedono di incrociare un'altra tabella per ottenere un
-  // insieme di company_id candidati, PRIMA di interrogare v_scheda_azienda
-  // (che espone gia' sector_v2/regione/aree_terapeutiche/stato_assunzioni
-  // come colonne dirette, ma non i fatti CORE ne' i prodotti).
+  // insieme di company_id candidati, PRIMA di interrogare la tabella
+  // companies (leggera: nessuna subquery correlata, a differenza della
+  // vista v_scheda_azienda usata invece per la scheda di UNA sola azienda).
   let candidatiIntersezione=null; // null = nessun vincolo, altrimenti Set di id
+  function intersecaCon(nuovoSet){
+    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>nuovoSet.has(id))):nuovoSet;
+  }
 
   if(f.core_fact_tipo){
     const righe=await api(`company_facts?tipo=eq.${f.core_fact_tipo}&select=company_id`);
-    const set=new Set(righe.map(r=>r.company_id));
-    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+    intersecaCon(new Set(righe.map(r=>r.company_id)));
   }
   if(f.prodotto_categoria){
     // Limite di sicurezza: 'commercializzato' da solo copre circa 289.000
@@ -8889,45 +8900,60 @@ async function executeCompanySearchPlan(plan){
     // per sapere quali aziende ce l'hanno, un campione ampio basta a
     // popolare l'insieme di company_id candidati senza appesantire la query.
     const righe=await api(`company_products?category=eq.${f.prodotto_categoria}&select=company_id&limit=5000`);
-    const set=new Set(righe.map(r=>r.company_id));
-    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+    intersecaCon(new Set(righe.map(r=>r.company_id)));
+  }
+  if(f.therapeutic_area){
+    const righe=await api(`company_therapeutic_areas?code=eq.${encodeURIComponent(f.therapeutic_area)}&select=company_id`);
+    intersecaCon(new Set(righe.map(r=>r.company_id)));
   }
   if(f.gruppo){
     const gruppi=await api(`company_groups?select=id,name&name=ilike.*${encodeURIComponent(f.gruppo)}*`);
     if(!gruppi.length){
       plan._dropped_filters=[...(plan._dropped_filters||[]),`gruppo "${f.gruppo}" non trovato`];
-      candidatiIntersezione=new Set(); // nessuna azienda puo' corrispondere
+      intersecaCon(new Set()); // nessuna azienda puo' corrispondere
     }else{
       const membri=await api(`companies?select=id&company_group_id=eq.${gruppi[0].id}&merged_into=is.null`);
-      const set=new Set(membri.map(m=>m.id));
-      candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+      intersecaCon(new Set(membri.map(m=>m.id)));
     }
   }
 
   if(candidatiIntersezione&&candidatiIntersezione.size===0)return [];
 
-  const qs=['select=*'];
-  if(f.sector_v2)qs.push(`sector_v2=eq.${encodeURIComponent(f.sector_v2)}`);
-  if(f.region)qs.push(`regione_sede=eq.${encodeURIComponent(f.region)}`);
-  if(f.therapeutic_area)qs.push(`aree_terapeutiche=cs.{${encodeURIComponent(f.therapeutic_area)}}`);
-  if(f.hiring_attivo===true)qs.push('stato_assunzioni=in.(assume_ora,assume_di_recente)');
-  if(f.hiring_attivo===false)qs.push('stato_assunzioni=in.(ha_assunto,nessun_annuncio)');
+  const qsCompanies=['select=id,name,sector_v2,region,company_group_id','is_active=eq.true','merged_into=is.null'];
+  if(f.sector_v2)qsCompanies.push(`sector_v2=eq.${encodeURIComponent(f.sector_v2)}`);
+  if(f.region)qsCompanies.push(`region=eq.${encodeURIComponent(f.region)}`);
 
+  let aziende;
   if(!candidatiIntersezione){
-    qs.push('order=name.asc','limit=200');
-    return api(`v_scheda_azienda?${qs.join('&')}`);
+    aziende=await api(`companies?${qsCompanies.join('&')}&order=name.asc&limit=1000`);
+  }else{
+    aziende=[];
+    const ids=[...candidatiIntersezione];
+    for(let i=0;i<ids.length;i+=150){
+      const lotto=ids.slice(i,i+150);
+      aziende.push(...await api(`companies?${qsCompanies.join('&')}&id=in.(${lotto.join(',')})`));
+    }
   }
-  // Con un vincolo di intersezione si interroga a lotti (id=in.() ha un
-  // limite pratico di lunghezza URL) e si ordina/taglia il risultato in JS.
-  const ids=[...candidatiIntersezione];
-  const risultati=[];
-  for(let i=0;i<ids.length;i+=150){
-    const lotto=ids.slice(i,i+150);
-    const righe=await api(`v_scheda_azienda?${qs.join('&')}&id=in.(${lotto.join(',')})`);
-    risultati.push(...righe);
+
+  const statoMap=await calcolaStatoAssunzioniPerAzienda();
+  aziende.forEach(a=>{a.stato_assunzioni=statoMap.get(a.id)||'nessun_annuncio';});
+  if(f.hiring_attivo===true)aziende=aziende.filter(a=>['assume_ora','assume_di_recente'].includes(a.stato_assunzioni));
+  if(f.hiring_attivo===false)aziende=aziende.filter(a=>!['assume_ora','assume_di_recente'].includes(a.stato_assunzioni));
+
+  aziende.sort((a,b)=>a.name.localeCompare(b.name));
+  aziende=aziende.slice(0,200);
+
+  // Nome gruppo solo per il risultato finale (gia' tagliato a 200), non per
+  // ogni candidato prima del taglio.
+  const gruppiIds=[...new Set(aziende.filter(a=>a.company_group_id).map(a=>a.company_group_id))];
+  const nomeGruppo=new Map();
+  if(gruppiIds.length){
+    const gruppi=await api(`company_groups?select=id,name&id=in.(${gruppiIds.join(',')})`);
+    gruppi.forEach(g=>nomeGruppo.set(g.id,g.name));
   }
-  risultati.sort((a,b)=>a.name.localeCompare(b.name));
-  return risultati.slice(0,200);
+  aziende.forEach(a=>{a.regione_sede=a.region;a.gruppo=a.company_group_id?[nomeGruppo.get(a.company_group_id)]:[];});
+
+  return aziende;
 }
 
 async function searchCompaniesFromPrompt(){
