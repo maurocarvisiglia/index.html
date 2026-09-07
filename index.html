@@ -7905,21 +7905,50 @@ async function openCompaniesWithoutWebsite(){
   try{
     const companies=await api('companies?select=id,name,ragione_sociale,sector_v2&merged_into=is.null&website=is.null&order=name.asc&limit=5000');
     if(!companies.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Tutte le aziende hanno un sito web compilato</div>';return;}
-    bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">${companies.length} aziende senza sito — clicca sul nome per aprire la scheda e compilarlo.</div>
+    bodyEl.innerHTML=`<div id="no-website-conteggio" style="font-size:11px;color:var(--text2);margin-bottom:10px;">${companies.length} aziende senza sito — cerca il sito, incollalo qui e premi Invio (o clicca ✔). Clicca sul nome per aprire la scheda.</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="border-bottom:1px solid var(--border);">
         <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
-        <th style="text-align:left;padding:8px;color:var(--text2);">Ragione sociale</th>
         <th style="text-align:left;padding:8px;color:var(--text2);">Settore</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Sito web</th>
+        <th></th>
       </tr></thead>
-      <tbody>${companies.map(c=>`<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:8px;">${companyLinkHtml(c)}</td>
-          <td style="padding:8px;color:var(--text2);">${c.ragione_sociale||'—'}</td>
+      <tbody>${companies.map(c=>{
+        const rowId='now-'+c.id;
+        return `<tr style="border-bottom:1px solid var(--border);" id="row-${rowId}">
+          <td style="padding:8px;">${companyLinkHtml(c)}<div style="color:var(--text2);font-size:10px;">${c.ragione_sociale||''}</div></td>
           <td style="padding:8px;color:var(--text2);">${c.sector_v2||'—'}</td>
-        </tr>`).join('')}</tbody>
+          <td style="padding:8px;">
+            <input type="text" id="input-${rowId}" placeholder="es. www.azienda.it" style="width:100%;font-size:12px;padding:4px 6px;" onkeydown="if(event.key==='Enter')salvaSitoAzienda('${c.id}','${rowId}')">
+          </td>
+          <td style="padding:8px;white-space:nowrap;">
+            <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="salvaSitoAzienda('${c.id}','${rowId}')">✔</button>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>`;
   }catch(e){
     bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
+  }
+}
+
+async function salvaSitoAzienda(companyId,rowId){
+  const input=document.getElementById('input-'+rowId);
+  const sito=(input?.value||'').trim();
+  if(!sito){toast('Inserisci un sito prima di confermare','warning');return;}
+  try{
+    await api('companies?id=eq.'+companyId,'PATCH',{website:sito});
+    const row=document.getElementById('row-'+rowId);
+    if(row)row.remove();
+    const contatore=document.getElementById('no-website-conteggio');
+    if(contatore){
+      const rimaste=document.querySelectorAll('#apollo-exclusions-body tbody tr').length;
+      contatore.textContent=rimaste?`${rimaste} aziende senza sito — cerca il sito, incollalo qui e premi Invio (o clicca ✔). Clicca sul nome per aprire la scheda.`:'Tutte le aziende hanno un sito web compilato';
+    }
+    loadCompaniesNoWebsiteCount();
+    toast('✅ Sito salvato','success');
+  }catch(e){
+    toast('Errore salvataggio: '+e.message,'error');
   }
 }
 
