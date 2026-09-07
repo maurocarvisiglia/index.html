@@ -8762,6 +8762,8 @@ function searchCompanyForReport(term){
   const btn=document.getElementById('btn-generate-company-report');
   _raSelectedCompany=null;
   btn.disabled=true; btn.style.opacity='.5';
+  const btnConc=document.getElementById('btn-find-competitors');
+  if(btnConc){ btnConc.disabled=true; btnConc.style.opacity='.5'; }
   const q=(term||'').trim();
   if(q.length<2){box.style.display='none';box.innerHTML='';return;}
   _raSearchTimer=setTimeout(async()=>{
@@ -8789,6 +8791,8 @@ function selectCompanyForReport(company){
   document.getElementById('ra-suggestions').style.display='none';
   const btn=document.getElementById('btn-generate-company-report');
   btn.disabled=false; btn.style.opacity='1';
+  const btnConc=document.getElementById('btn-find-competitors');
+  if(btnConc){ btnConc.disabled=false; btnConc.style.opacity='1'; }
 }
 
 // Etichette condivise fra la scheda-singola-azienda e i risultati di ricerca
@@ -9161,6 +9165,186 @@ td.num{text-align:right;}
 
   <div class="footer">
     Report generato da LS Job Intelligence sui dati aggregati disponibili per questa azienda.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+// ── Concorrenza per prodotto: trova altre aziende che vendono lo stesso
+// principio attivo (active_ingredients_norm, farmaci) o la stessa categoria
+// di dispositivo (device_category, dispositivi medici — db/PARTE_20), e per
+// ciascuna mostra SU COSA si sovrappongono, non solo il nome. Distingue
+// sempre "stesso gruppo" (integrazione interna) da concorrenza di mercato
+// vera. Nessuna funzione condivisa col Report Builder ne' con le altre
+// ricerche di questa pagina, stesso principio di isolamento gia' in uso qui. ──
+
+async function trovaConcorrenti(companyId){
+  const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category&company_id=eq.${companyId}`);
+
+  // Coppie (campo, valore, categoria di prodotto) uniche — NON solo (campo,
+  // valore): lo stesso principio attivo prodotto come materia prima da
+  // un'azienda e venduto come farmaco finito da un'altra NON e' concorrenza,
+  // e' filiera (fornitore/cliente, vedi analisi precedente su F.I.S. ->
+  // Sandoz/Teva/Mylan). Contano come concorrenti solo le aziende che
+  // condividono lo stesso principio/categoria ALLA STESSA categoria di
+  // prodotto (entrambe principio_attivo, o entrambe commercializzato).
+  const coppie=new Map(); // "campo|valore|categoria" -> {campo,valore,categoria,nomiPropri:Set}
+  function aggiungi(campo,valore,categoria,nomeProdotto){
+    const chiave=`${campo}|${valore}|${categoria}`;
+    if(!coppie.has(chiave))coppie.set(chiave,{campo,valore,categoria,nomiPropri:new Set()});
+    coppie.get(chiave).nomiPropri.add(nomeProdotto);
+  }
+  propri.forEach(p=>{
+    (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name); });
+    if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name);
+  });
+  if(!coppie.size)return {valori:[], concorrenti:[]};
+
+  // company_id + valore condiviso -> nomi prodotto (propri e del concorrente),
+  // per poter mostrare "in comune su" invece del solo nome azienda.
+  const perAzienda=new Map(); // company_id -> Map(valore -> {nomiPropri:Set, nomiLoro:Set})
+
+  async function raccogli({campo,valore,categoria,nomiPropri}){
+    const filtro=campo==='active_ingredients_norm'?`${campo}=cs.{${encodeURIComponent(valore)}}`:`${campo}=eq.${encodeURIComponent(valore)}`;
+    const righe=await api(`company_products?select=company_id,brand_name&${filtro}&category=eq.${encodeURIComponent(categoria)}&company_id=neq.${companyId}&limit=500`);
+    righe.forEach(r=>{
+      if(!perAzienda.has(r.company_id))perAzienda.set(r.company_id,new Map());
+      const perValore=perAzienda.get(r.company_id);
+      if(!perValore.has(valore))perValore.set(valore,{nomiPropri:new Set(nomiPropri),nomiLoro:new Set()});
+      perValore.get(valore).nomiLoro.add(r.brand_name);
+    });
+  }
+
+  // In parallelo a lotti (non uno alla volta): un'azienda con un catalogo
+  // ampio puo' avere centinaia di coppie distinte (Steris: 187) — in
+  // sequenza sarebbero altrettante andate e ritorno HTTP, ~23s misurati.
+  const listaCompiti=[...coppie.values()];
+  const CONCORRENZA=15;
+  for(let i=0;i<listaCompiti.length;i+=CONCORRENZA){
+    const lotto=listaCompiti.slice(i,i+CONCORRENZA);
+    await Promise.all(lotto.map(raccogli));
+  }
+
+  if(!perAzienda.size)return {valori:listaCompiti.map(c=>c.valore), concorrenti:[]};
+
+  const idsConcorrenti=[...perAzienda.keys()];
+  const aziende=[];
+  for(let i=0;i<idsConcorrenti.length;i+=150){
+    const lotto=idsConcorrenti.slice(i,i+150);
+    aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null`));
+  }
+  const [targetRows]=await Promise.all([api(`companies?select=company_group_id&id=eq.${companyId}`)]);
+  const gruppoTarget=targetRows[0]?.company_group_id||null;
+
+  const concorrenti=aziende.map(a=>{
+    const perValore=perAzienda.get(a.id);
+    const sovrapposizioni=[...perValore.entries()].map(([valore,{nomiPropri,nomiLoro}])=>({
+      valore, nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
+    }));
+    return {
+      id:a.id, name:a.name, sector_v2:a.sector_v2,
+      stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
+      sovrapposizioni,
+    };
+  }).filter(c=>!c.stessoGruppo); // integrazione interna, non e' concorrenza di mercato
+  concorrenti.sort((a,b)=>b.sovrapposizioni.length-a.sovrapposizioni.length||a.name.localeCompare(b.name));
+
+  return {valori:listaCompiti.map(c=>c.valore), concorrenti:concorrenti.slice(0,100)};
+}
+
+async function trovaConcorrentiDiSelezionata(){
+  if(!_raSelectedCompany)return;
+  const resultsEl=document.getElementById('ra-search-results');
+  const btn=document.getElementById('btn-find-competitors');
+  btn.disabled=true;
+  resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca concorrenti in corso...</div>';
+  try{
+    const {valori,concorrenti}=await trovaConcorrenti(_raSelectedCompany.id);
+    renderCompetitorResults(_raSelectedCompany,valori,concorrenti);
+  }catch(e){
+    resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+let _ultimiConcorrenti=null; // {target,valori,concorrenti}, per il pulsante "genera report"
+
+function renderCompetitorResults(target,valori,concorrenti){
+  _ultimiConcorrenti={target,valori,concorrenti};
+  const resultsEl=document.getElementById('ra-search-results');
+  if(!valori.length){
+    resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
+    return;
+  }
+  if(!concorrenti.length){
+    resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun concorrente trovato su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} di ${target.name}.</div>`;
+    return;
+  }
+  const righe=concorrenti.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
+    <td style="color:var(--accent2);text-decoration:underline;">${c.name}</td>
+    <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
+    <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(s=>`<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`).join('')}</td>
+  </tr>`).join('');
+  resultsEl.innerHTML=`
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${concorrenti.length} concorrent${concorrenti.length===1?'e':'i'} trovat${concorrenti.length===1?'o':'i'} per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
+    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">In comune su</th></tr></thead>
+        <tbody>${righe}</tbody>
+      </table>
+    </div>
+    <button class="btn btn-secondary" onclick="generaReportConcorrenti()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report concorrenti</button>`;
+}
+
+function generaReportConcorrenti(){
+  if(!_ultimiConcorrenti)return;
+  const win=window.open('','_blank');
+  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
+  const html=renderCompetitorReportHTML(_ultimiConcorrenti.target,_ultimiConcorrenti.concorrenti);
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(()=>win.print(),1000);
+}
+
+function renderCompetitorReportHTML(target,concorrenti){
+  const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  const righe=concorrenti.map(c=>`<tr>
+    <td>${c.name}</td>
+    <td style="color:#888;">${c.sector_v2||''}</td>
+    <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(s=>`<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`).join('')}</td>
+  </tr>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Concorrenti — ${target.name}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.page{max-width:900px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Concorrenza per prodotto</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${target.name}</div>
+      <div style="font-size:11px;color:#888;">${date}</div>
+    </div>
+  </div>
+  <div class="summary-box">${concorrenti.length} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna).</div>
+  <div class="section-title">Concorrenti</div>
+  <table><thead><tr><th>Azienda</th><th>Settore</th><th>In comune su</th></tr></thead><tbody>${righe}</tbody></table>
+  <div class="footer">
+    Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
     <span style="color:${GOLD};">LS Job Intelligence</span>
   </div>
@@ -10698,6 +10882,7 @@ function renderDemandScatter(){
 
     <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
       <button class="btn btn-primary" id="btn-generate-company-report" onclick="generateCompanyReport()" disabled style="background:#8b5cf6;border-color:#8b5cf6;opacity:.5;">📄 Genera Report</button>
+      <button class="btn btn-secondary" id="btn-find-competitors" onclick="trovaConcorrentiDiSelezionata()" disabled style="border-color:#8b5cf6;color:#8b5cf6;opacity:.5;">🥊 Trova concorrenti</button>
       <div id="ra-status" style="font-size:12px;color:var(--text2);"></div>
     </div>
 

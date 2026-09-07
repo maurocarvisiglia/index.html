@@ -264,6 +264,11 @@ async function runDispositiviMediciDailyBatch(apply = CLI_APPLY) {
         company_id: azienda.id,
         brand_name: nomeProdotto.slice(0, 300),
         active_ingredients: null,
+        // Colonna dedicata (db/PARTE_20), non solo testo dentro source_proof:
+        // e' quello che permette di trovare "aziende con lo stesso tipo di
+        // dispositivo" (usato da trovaConcorrenti() in index.html), lo
+        // stesso ruolo che active_ingredients_norm ha per i farmaci.
+        device_category: cnd || null,
         category: 'commercializzato',
         fonte: 'registro_pubblico',
         source_proof: `Repertorio Dispositivi Medici (Min. Salute) — Fabbricante/Assemblatore: ${fabbricante}${viaPiva ? ' (abbinato per P.IVA)' : ''}${cnd ? ' — ' + cnd : ''}`.slice(0, 400),
