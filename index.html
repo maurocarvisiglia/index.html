@@ -2923,6 +2923,18 @@ async function loadCompanyIndex(forceRefresh){
   });
 }
 
+// Aziende eliminate perche' non sono vere aziende Life Sciences (nome di
+// persona, studio legale, scuola di musica...) non devono poter rientrare
+// da un futuro import se il nome ricompare in una fonte esterna (es. CSV
+// Vocations) — richiesta esplicita di Mauro 07/09/2026. Stessa chiave di
+// normalizeCompanyName() usata per il resto dell'anti-duplicati.
+let _blocklistCache=null; // Set di name_norm bloccati
+async function loadBlocklist(forceRefresh){
+  if(_blocklistCache&&!forceRefresh)return;
+  const rows=await api('companies_blocklist?select=name_norm');
+  _blocklistCache=new Set(rows.map(r=>r.name_norm));
+}
+
 // Trova un'azienda esistente (per nome, ragione sociale, IVA o dominio sito) o ne
 // crea una nuova. Default: extraFields riempie SOLO i campi mancanti dell'esistente
 // — non sovrascrive mai un dato gia' presente (cautela usata ovunque in questa
@@ -2934,6 +2946,7 @@ async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
   extraFields=extraFields||{};
   opts=opts||{};
   await loadCompanyIndex();
+  await loadBlocklist();
   const key1=normalizeCompanyName(name);
   const key2=normalizeCompanyName(ragioneSociale);
   const key3=extraFields.iva?'iva:'+String(extraFields.iva).trim():null;
@@ -2957,6 +2970,10 @@ async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
     if(key3&&!_companyIndexCache.has(key3))_companyIndexCache.set(key3,existing);
     if(key4&&!_companyIndexCache.has(key4))_companyIndexCache.set(key4,existing);
     return existing.id;
+  }
+
+  if((key1&&_blocklistCache.has(key1))||(key2&&_blocklistCache.has(key2))){
+    return null; // azienda in blocklist: non ricreata, l'annuncio resta senza company_id
   }
 
   const body={name:name||ragioneSociale,ragione_sociale:ragioneSociale||null,entity_type:'life_sciences',is_active:true,...extraFields};
