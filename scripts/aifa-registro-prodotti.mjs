@@ -125,11 +125,40 @@ const FONTI = [
     label: 'Equivalenti', paginaFonte: 'https://www.aifa.gov.it/liste-di-trasparenza', colTitolare: 'Ditta', colDenom: 'Farmaco', colPrincipio: 'Principio attivo' },
 ];
 
+// Parser CSV completo (non un semplice split per riga): un campo tra
+// virgolette puo' contenere un vero a-capo (successo per davvero in
+// Lista_farmaci_equivalenti.csv, 3 righe su 8511 — bug reale del 06/09/2026,
+// scoperto perche' aveva prodotto 3 aziende fantasma con per nome un codice
+// di gruppo equivalenza invece del titolare vero: "JDQ", "JNC", "G3C").
+// Uno split ingenuo su '\n' spezza quella riga in due, e i campi successivi
+// slittano — qui invece si scandisce carattere per carattere, e un a-capo
+// dentro le virgolette resta PARTE del campo invece di terminare la riga.
 function parseCSV(testo) {
-  const righe = testo.split(/\r?\n/).filter(Boolean);
-  const header = righe[0].split(';');
-  return righe.slice(1).map((r) => {
-    const cols = r.split(';');
+  const righe = [];
+  let riga = [];
+  let campo = '';
+  let inQuote = false;
+  for (let i = 0; i < testo.length; i++) {
+    const ch = testo[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (testo[i + 1] === '"') { campo += '"'; i++; }
+        else inQuote = false;
+      } else campo += ch;
+    } else if (ch === '"') inQuote = true;
+    else if (ch === ';') { riga.push(campo); campo = ''; }
+    else if (ch === '\r') { /* ignorato, gestito da \n */ }
+    else if (ch === '\n') {
+      riga.push(campo); campo = '';
+      if (riga.some((c) => c !== '')) righe.push(riga);
+      riga = [];
+    } else campo += ch;
+  }
+  riga.push(campo);
+  if (riga.some((c) => c !== '')) righe.push(riga);
+
+  const header = righe[0];
+  return righe.slice(1).map((cols) => {
     const obj = {};
     header.forEach((h, i) => { obj[h.trim()] = cols[i]; });
     return obj;
