@@ -52,6 +52,10 @@ dotenv.config();
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', D = '\x1b[2m', B = '\x1b[1m', Z = '\x1b[0m';
 const CLI_APPLY = process.argv.includes('--apply');
+// Il dedup su external_id salta i segnali gia' visti, quindi quando cambia COSA si
+// estrae — non solo quanto — le voci gia' scritte resterebbero alla versione vecchia.
+// Con --riscrivi i segnali noti vengono rilavorati e le loro voci sostituite.
+const CLI_RISCRIVI = process.argv.includes('--riscrivi');
 
 const envFile = (n) => (readFileSync(join(ROOT, '.env'), 'utf8').match(new RegExp('^\\s*' + n + '=(.*)$', 'm')) || [])[1]?.trim();
 const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
@@ -150,7 +154,11 @@ push(`\n${B}Market Radar -> LS Intelligence${Z}  ${D}${apply ? 'SCRIVE' : 'solo 
 
 const [mrAziende, mrSegnali] = await Promise.all([
   mr('companies?select=id,name,type,has_italy,expansion,status&limit=1000'),
-  mr('signals?select=company_id,type,signal_date,summary,url,source,external_id&limit=2000'),
+  // conditions/countries/meta sono i campi che Market Radar ha iniziato a salvare:
+  // patologia dichiarata dalla sorgente, paesi europei con centri attivi, e il dettaglio
+  // del prodotto (molecole, meccanismo d'azione, codice ATC, numerosita' dello studio).
+  // Senza di questi restava solo il titolo, da cui l'area terapeutica andava indovinata.
+  mr('signals?select=company_id,type,signal_date,summary,url,source,external_id,conditions,countries,meta&limit=2000'),
 ]);
 const lsiAziende = await sb('companies?select=id,name,sector_v2,market_radar,is_active,merged_into&limit=4000');
 const attive = lsiAziende.filter((c) => c.is_active && !c.merged_into);
@@ -230,6 +238,66 @@ Rispondi SOLO con questo JSON:
 /** Confronto insensibile a spaziatura e maiuscole: la citazione e il titolo sono lo stesso testo. */
 const compatta = (s) => String(s).toLowerCase().replace(/\s+/g, ' ').trim();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AREE DALLA PATOLOGIA DICHIARATA — senza modello
+//
+// Market Radar salva ora `conditions`: la patologia come la dichiara la sorgente,
+// non dedotta. ClinicalTrials la espone in conditionsModule.conditions
+// ("Myelofibrosis; Anemia"), EMA nel campo "Therapeutic area (MeSH)" dell'EPAR.
+//
+// Quando c'e', classificare non richiede un modello: e' una mappatura fra due
+// vocabolari chiusi. Rispetto al modello che leggeva il titolo dello studio questo
+// e' piu' accurato (la patologia e' dichiarata, non inferita), verificabile (la
+// prova e' il testo esatto della sorgente) e a costo zero.
+//
+// Il modello resta come ripiego per i segnali privi di `conditions`.
+//
+// L'ORDINE CONTA: "Clear Cell Renal Cell Carcinoma" e' oncologia, non nefrologia,
+// quindi oncology va valutata prima di nephrology. Stesso motivo per cui hepatology
+// viene dopo infectious_diseases: "Hepatitis B" e' un'infezione, "Liver Cirrhosis" no.
+// ─────────────────────────────────────────────────────────────────────────────
+const REGOLE_AREA = [
+  ['oncology',            /cancer|carcinom|neoplas|tumou?r|sarcom|myelom|lymphom|leukemi|leukaemi|melanom|adenocarcinom|malignan|glioma|glioblast|mesotheliom|nsclc|sclc|blastoma|oncolog|metasta|myelofibros|myelodysplas|polycythemi|thrombocythemi/i],
+  ['hematology',          /anemi|anaemi|neutropeni|thrombocytopeni|h[ae]mophili|sickle|thalass|coagulat|von willebrand|antithrombin|h[ae]moglobinuri|graft vs host/i],
+  ['rare_diseases',       /gangliosid|niemann|adrenoleukodystroph|leukodystroph|fabry|gaucher|\bpompe\b|mucopolysacchar|amyloidos|angioedema|phenylketonur|rett syndrome|achondroplas|hypochondroplas|phosphomannomutase|\bcdg\b|orphan/i],
+  ['infectious_diseases', /\bhiv\b|covid|sars-cov|influenza|hepatitis|tubercul|sepsis|\brsv\b|malari|herpes|clostrid|bacterial|viral infect|antimicrob/i],
+  ['vaccines',            /vaccin|immuni[sz]ation/i],
+  ['rheumatology',        /arthrit|spondyl|scleroderm|systemic sclerosis|sj[oö]gren|vasculit|\blupus\b|polymyalgi/i],
+  ['immunology',          /psorias|crohn|colitis|inflammatory bowel|autoimmun|vitiligo|atopic|hidradenit|urticari|immune thrombocyt|transplant reject/i],
+  ['neurology',           /alzheim|parkinson|epileps|seizur|migrain|multiple sclerosis|neuropath|myasthen|dystroph|spinal muscular|huntington|dementia|ataxi|stroke|supranuclear|neuromyeliti|\bpalsy\b|neurolog/i],
+  ['neuroscience',        /psychos|schizophren|depress|bipolar|\bmania\b|narcoleps|anxiety|insomni|autism/i],
+  ['cardiovascular',      /cardiovascul|hypertens|heart failure|cardiomyopath|atheroscler|cholesterol|dyslipid|lipoprotein|triglycerid|arrhythmi|atrial fibrillat|angina/i],
+  ['diabetes',            /diabet/i],
+  ['endocrinology',       /obesit|weight management|thyroid|acromegal|cushing|hypoparathyroid|growth hormone|adrenal|hypogonad/i],
+  ['respiratory',         /asthma|copd|chronic obstructive|pulmonary|interstitial|bronch|cystic fibros|respirator|pneumon|lung diseas/i],
+  ['ophthalmology',       /macular|retina|retinopath|ophthalm|glaucom|uveiti|ocular|cornea|geographic atroph|keratocon/i],
+  ['dermatology',         /dermatit|lichen|pyoderma|alopeci|\bacne\b|keratos|epidermolysis|pemphig/i],
+  ['nephrology',          /nephropath|nephrit|kidney diseas|renal diseas|renal failure|glomerul|dialys|\bmpgn\b/i],
+  ['hepatology',          /cirrhos|steatohepat|\bnash\b|\bmasld\b|cholangit|biliary|liver diseas|hepatic/i],
+  ['gastroenterology',    /gastroparesis|celiac|c[oe]eliac|esophagit|short bowel|intestinal failure|pancreatit|irritable bowel|gastro/i],
+  ['womens_health',       /endometrios|menopaus|contracept|preeclampsia|uterine|vulvo|postpartum/i],
+  ['urology',             /incontinen|erectile|prostatic hyperplas|overactive bladder|urinary/i],
+  ['pain',                /\bpain\b|analgesi|opioid|neuralgi/i],
+];
+
+/**
+ * Ritorna { area, prova } se la patologia dichiarata cade in una delle aree note.
+ * `prova` e' il termine esatto della sorgente che ha fatto scattare la regola:
+ * riaprendo l'URL lo si ritrova identico.
+ */
+function areaDaPatologia(conditions) {
+  const testo = String(conditions || '').trim();
+  if (!testo) return null;
+  for (const [area, rx] of REGOLE_AREA) {
+    if (!rx.test(testo)) continue;
+    if (!AREE.includes(area)) continue; // la tassonomia comanda: se il codice non e' in uso, si salta
+    // Fra i termini separati da ';' si cita quello che ha fatto scattare la regola.
+    const termine = testo.split(';').map((t) => t.trim()).find((t) => rx.test(t)) || testo;
+    return { area, prova: termine.slice(0, 200) };
+  }
+  return null;
+}
+
 async function classifica(voci) {
   const utente = voci.map((v, i) => `${i + 1}. ${v.summary}`).join('\n');
   for (let t = 0; t < 5; t++) {
@@ -250,8 +318,15 @@ async function classifica(voci) {
 // ─────────────────────────────────────────────────────────────────────────────
 // CORSA
 // ─────────────────────────────────────────────────────────────────────────────
-const TIPO_ETICHETTA = { phase3_italy: 'studio di Fase 3 con centri in Italia', ema_chmp: 'parere positivo CHMP', other: 'notizia' };
-const CLASSIFICABILI = new Set(['phase3_italy', 'ema_chmp']);
+const TIPO_ETICHETTA = {
+  phase3_italy: 'studio di Fase 3 con centri in Italia',
+  // Market Radar ha esteso la raccolta a venti mercati europei: un Fase 3 senza sede
+  // italiana resta un segnale sull'azienda, e la patologia che studia e' la stessa.
+  phase3_eu: 'studio di Fase 3 in Europa',
+  ema_chmp: 'parere positivo CHMP',
+  other: 'notizia',
+};
+const CLASSIFICABILI = new Set(['phase3_italy', 'phase3_eu', 'ema_chmp']);
 
 const areeDaScrivere = [], fattiDaScrivere = [];
 
@@ -289,7 +364,7 @@ for (const az of mrAziende) {
 
   if (!statoPerAzienda.has(lsi.id)) statoPerAzienda.set(lsi.id, lsi.market_radar || {});
   const esistente = statoPerAzienda.get(lsi.id);
-  const noti = new Set((esistente.voci || []).map((v) => v.external_id).filter(Boolean));
+  const noti = CLI_RISCRIVI ? new Set() : new Set((esistente.voci || []).map((v) => v.external_id).filter(Boolean));
   const nuovi = segnali.filter((s) => s.external_id && !noti.has(s.external_id));
   if (!nuovi.length) { invariate++; continue; }
 
@@ -298,9 +373,26 @@ for (const az of mrAziende) {
   process.stdout.write(`${D}▸${Z} ${az.name.slice(0, 30).padEnd(32)}${lsi.name.slice(0, 26).padEnd(28)}${nuovi.length} nuovi  `);
 
   // ── il campo market_radar: si aggiunge, non si sovrascrive ──────────────
+  // Con --riscrivi la versione arricchita rimpiazza quella vecchia dello stesso
+  // segnale invece di affiancarsi: senza questo filtro la voce comparirebbe due volte.
+  const idsRilavorati = new Set(nuovi.map((s) => s.external_id));
   const voci = [
-    ...(esistente.voci || []),
-    ...nuovi.map((s) => ({ tipo: s.type, data: s.signal_date, titolo: (s.summary || '').slice(0, 300), url: s.url, external_id: s.external_id, fonte: s.source })),
+    ...(esistente.voci || []).filter((v) => !idsRilavorati.has(v.external_id)),
+    ...nuovi.map((s) => {
+      const m = s.meta || {};
+      return {
+        tipo: s.type, data: s.signal_date, titolo: (s.summary || '').slice(0, 300),
+        url: s.url, external_id: s.external_id, fonte: s.source,
+        // Il dettaglio che la sorgente dichiara. Serve a leggere la scheda senza
+        // dover riaprire ClinicalTrials o l'EPAR per capire di cosa si tratta.
+        patologia: s.conditions || null,
+        paesi: s.countries ? s.countries.split(';').map((p) => p.trim()).filter(Boolean) : null,
+        molecole: (m.drugs || []).map((d) => d.name).filter(Boolean).slice(0, 8) || null,
+        meccanismo: m.mechanism || null,
+        atc: m.atc || null,
+        pazienti: m.enrollment ?? null,
+      };
+    }),
   ];
   const tipi = {};
   for (const v of voci) tipi[v.tipo] = (tipi[v.tipo] || 0) + 1;
@@ -322,11 +414,32 @@ for (const az of mrAziende) {
   // ── aree terapeutiche e fatti, solo dai segnali strutturati ─────────────
   const daClassificare = nuovi.filter((s) => CLASSIFICABILI.has(s.type) && (s.summary || '').length > 20);
   let nAree = 0;
-  if (daClassificare.length) {
+
+  // ── prima la patologia dichiarata: niente modello, niente inferenza ─────
+  const conPatologia = daClassificare.filter((s) => (s.conditions || '').trim());
+  for (const s of conPatologia) {
+    const esito = areaDaPatologia(s.conditions);
+    if (!esito) { scartate++; continue; }
+    areeDaScrivere.push({
+      company_id: lsi.id, code: esito.area, fonte: 'market_radar',
+      // La prova e' la patologia come la scrive la sorgente, non un pezzo di titolo:
+      // riaprendo l'URL si ritrova identica.
+      prova: `${TIPO_ETICHETTA[s.type]}: ${esito.prova}`.slice(0, 400), url: s.url,
+      worker: 'patologia-dichiarata',
+    });
+    nAree++;
+  }
+
+  // ── ripiego sul modello solo per i segnali che la patologia non ce l'hanno ──
+  const daIndovinare = daClassificare.filter((s) => !(s.conditions || '').trim());
+  if (daIndovinare.length) {
     try {
-      const out = await classifica(daClassificare);
+      const out = await classifica(daIndovinare);
       for (const v of out.voci || []) {
-        const orig = daClassificare[(v.riga | 0) - 1];
+        // L'indice torna dal modello e va risolto sulla lista CHE HA RICEVUTO,
+        // non su quella completa: le due divergono da quando la patologia
+        // dichiarata viene classificata senza modello.
+        const orig = daIndovinare[(v.riga | 0) - 1];
         if (!orig) continue;
         if (!AREE.includes(v.area)) { scartate++; continue; }
         const prova = String(v.prova || '');
@@ -340,16 +453,29 @@ for (const az of mrAziende) {
     } catch (e) {
       process.stdout.write(`${R}${String(e.message).slice(0, 30)}${Z} `);
     }
-    // Lo studio e il parere sono fatti in se', indipendenti dalla classificazione.
-    for (const s of daClassificare) {
-      fattiDaScrivere.push({
-        company_id: lsi.id,
-        tipo: s.type === 'ema_chmp' ? 'pipeline_regolatoria' : 'studio_clinico_italia',
-        valore: (s.summary || '').slice(0, 200),
-        fonte: 'market_radar', prova: (s.summary || '').slice(0, 400), url: s.url,
-        worker: 'market-radar',
-      });
-    }
+  }
+
+  // Lo studio e il parere sono fatti in se', indipendenti dalla classificazione.
+  // Fuori dal ramo del modello: con la patologia dichiarata quel ramo non gira
+  // quasi mai, e lasciandoli dentro i fatti smettevano di essere scritti.
+  const FATTO_PER_TIPO = {
+    phase3_italy: 'studio_clinico_italia',
+    phase3_eu: 'studio_clinico_europa',
+    ema_chmp: 'pipeline_regolatoria',
+  };
+  for (const s of daClassificare) {
+    const tipoFatto = FATTO_PER_TIPO[s.type];
+    if (!tipoFatto) continue;
+    // La patologia dichiarata in coda al titolo: la scheda dice di cosa si tratta
+    // senza dover riaprire la fonte.
+    const dettaglio = s.conditions ? ` — ${s.conditions}` : '';
+    fattiDaScrivere.push({
+      company_id: lsi.id,
+      tipo: tipoFatto,
+      valore: `${(s.summary || '').slice(0, 160)}${dettaglio}`.slice(0, 200),
+      fonte: 'market_radar', prova: `${(s.summary || '')}${dettaglio}`.slice(0, 400), url: s.url,
+      worker: 'market-radar',
+    });
   }
   push(nAree ? `${G}${nAree} aree${Z}` : `${D}nessuna area${Z}`);
 }
