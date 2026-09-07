@@ -7882,14 +7882,37 @@ async function openWorkforceEnriched(){
   }
 }
 
+// Distingue aziende italiane da estere usando solo dati gia' in anagrafica
+// (nessun campo nuovo da compilare a mano — richiesta esplicita di Mauro
+// 07/09/2026): provincia/regione se compilate, altrimenti forma societaria
+// o parola di paese nel nome. Un titolare AIC estero senza sede in Italia
+// (es. una EEIG belga, una Ltd irlandese) non avra' mai un sito da trovare:
+// tenerlo nel promemoria "senza sito" era lavoro sprecato.
+//
+// Volutamente ASIMMETRICO: 'italia' scatta su un segnale positivo debole
+// (Srl/SpA/Italia nel nome), 'estero' richiede un segnale ALTRETTANTO
+// esplicito (forma societaria straniera o nome di paese) — un'azienda senza
+// nessuno dei due segnali resta 'sconosciuto' e VIENE COMUNQUE MOSTRATA nel
+// promemoria: e' piu' sicuro riproporre un'azienda italiana per errore che
+// escluderne una per sbaglio.
+const PAESE_FORMA_ITALIA=/\b(s\.?r\.?l\.?|s\.?p\.?a\.?)\b/i;
+const PAESE_TESTO_ITALIA=/\bitalia\b|\bitaly\b/i;
+const PAESE_FORMA_ESTERO=/\b(ltd|limited|gmbh|b\.?v\.?|n\.?v\.?|a\.?g\.?|plc|llc|inc\.?|kft|sarl|s\.?a\.?r\.?l\.?|aps|a\/s|oy|ab|eeig|ehf|s\.?r\.?o\.?|bvba|pty|pte|oü|sagl|s\.?a\.?|s\.?l\.?|lda)\b/i;
+const PAESE_PAROLA_ESTERO=/\b(ireland|irel|netherlands|nederland|deutschland|germany|france|espana|spain|belgium|belgie|hungary|ungheria|malta|luxembourg|switzerland|austria|poland|denmark|sweden|norway|finland|romania|czech|slovak|croatia|greece|portugal|laboratoire|laboratoires|handels|vertrieb)\b/i;
+function classificaPaeseAzienda(c){
+  if(c.province||c.region)return 'italia';
+  const testo=(c.name||'')+' '+(c.ragione_sociale||'');
+  if(PAESE_TESTO_ITALIA.test(testo)||PAESE_FORMA_ITALIA.test(testo))return 'italia';
+  if(PAESE_PAROLA_ESTERO.test(testo)||PAESE_FORMA_ESTERO.test(testo))return 'estero';
+  return 'sconosciuto';
+}
+
 async function loadCompaniesNoWebsiteCount(){
   const el=document.getElementById('companies-no-website-count');
   if(!el)return;
   try{
-    const resp=await fetch(`${SB_URL}/rest/v1/companies?select=id&merged_into=is.null&website=is.null`,{
-      headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
-    });
-    const n=parseInt(resp.headers.get('Content-Range')?.split('/')[1]||0);
+    const companies=await api('companies?select=id,name,ragione_sociale,province,region&merged_into=is.null&website=is.null&limit=5000');
+    const n=companies.filter(c=>classificaPaeseAzienda(c)!=='estero').length;
     el.textContent=`${n} senza sito web →`;
   }catch(e){
     el.textContent='';
@@ -7903,9 +7926,12 @@ async function openCompaniesWithoutWebsite(){
   bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
   openModal('modal-apollo-exclusions');
   try{
-    const companies=await api('companies?select=id,name,ragione_sociale,sector_v2&merged_into=is.null&website=is.null&order=name.asc&limit=5000');
-    if(!companies.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Tutte le aziende hanno un sito web compilato</div>';return;}
-    bodyEl.innerHTML=`<div id="no-website-conteggio" style="font-size:11px;color:var(--text2);margin-bottom:10px;">${companies.length} aziende senza sito — cerca il sito, incollalo qui e premi Invio (o clicca ✔). Clicca sul nome per aprire la scheda.</div>
+    const tutte=await api('companies?select=id,name,ragione_sociale,sector_v2,province,region&merged_into=is.null&website=is.null&order=name.asc&limit=5000');
+    const estero=tutte.filter(c=>classificaPaeseAzienda(c)==='estero').length;
+    const companies=tutte.filter(c=>classificaPaeseAzienda(c)!=='estero');
+    const notaEstero=estero?` (${estero} estere senza sede in Italia escluse: non hanno un sito italiano da trovare)`:'';
+    if(!companies.length){bodyEl.innerHTML=`<div style="color:var(--text2);font-size:13px;">Tutte le aziende hanno un sito web compilato${notaEstero}</div>`;return;}
+    bodyEl.innerHTML=`<div id="no-website-conteggio" style="font-size:11px;color:var(--text2);margin-bottom:10px;">${companies.length} aziende senza sito${notaEstero} — cerca il sito, incollalo qui e premi Invio (o clicca ✔). Clicca sul nome per aprire la scheda.</div>
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="border-bottom:1px solid var(--border);">
         <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
