@@ -8418,13 +8418,17 @@ const CORE_TIPO_LABEL={
   // Market Radar ha esteso la raccolta a venti mercati europei: un Fase 3 senza sede
   // italiana resta un segnale sull'azienda, ma registrarlo come "in Italia" sarebbe falso.
   studio_clinico_europa:'Studi clinici in Europa (Fase 3)',
+  // Da scripts/officine-api-principi-attivi.mjs (06/09/2026): officine autorizzate
+  // AIFA alla produzione di principi attivi, non un prodotto ma un dato sul tipo
+  // di attivita' dell'azienda (produzione/qualita' GMP).
+  certificazione_gmp:'Certificazione GMP (officina principi attivi)',
 };
 // 'prodotto' NON e' piu' qui: dal 27/08 i prodotti vengono da company_products
 // (tabella dedicata, con molecole e indice di ricerca), non da company_facts.
 // Le righe tipo='prodotto' restano in company_facts come backup passivo — la
 // card non le legge piu' da li', per non mostrare due volte lo stesso prodotto.
-const CORE_TIPO_ORDINE=['gruppo','pipeline_regolatoria','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
-const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci'};
+const CORE_TIPO_ORDINE=['gruppo','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
+const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci',registro_pubblico:'registro pubblico'};
 
 // Il testo di questa card viene da pagine web esterne e titoli di studi clinici —
 // fonti non fidate, a differenza dei campi che lo staff scrive a mano altrove
