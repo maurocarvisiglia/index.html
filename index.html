@@ -8791,6 +8791,188 @@ function selectCompanyForReport(company){
   btn.disabled=false; btn.style.opacity='1';
 }
 
+// Etichette condivise fra la scheda-singola-azienda e i risultati di ricerca
+// multi-azienda sotto: 'stato_assunzioni' e' calcolato da v_scheda_azienda,
+// non e' specifico ne' del Report Builder ne' di questa pagina.
+const STATO_ASSUNZIONI_LABEL={assume_ora:'Assume ora',assume_di_recente:'Ha assunto di recente',ha_assunto:'Ha assunto in passato',nessun_annuncio:'Nessun annuncio rilevato'};
+
+// ── Ricerca multi-azienda con prompt (stesso principio del Report Builder:
+// l'AI interpreta il prompt in filtri, ma ogni filtro viene ri-verificato
+// contro i valori REALI del database prima di essere usato — un valore non
+// trovato viene scartato e segnalato, mai passato silenziosamente. Nessuna
+// funzione/costante e' condivisa con planReportFromPrompt/executeReportPlan:
+// si riusano solo callAIPowerful() e api(), utility generiche. ──
+
+let _companySearchFilterValuesCache=null;
+async function loadCompanySearchFilterValues(forceRefresh){
+  if(_companySearchFilterValuesCache&&!forceRefresh)return _companySearchFilterValuesCache;
+  const rows=await api('companies?select=sector_v2,region&is_active=eq.true&merged_into=is.null');
+  const out={};
+  ['sector_v2','region'].forEach(f=>{
+    const counts={};
+    rows.forEach(r=>{const v=r[f];if(v)counts[v]=(counts[v]||0)+1;});
+    out[f]=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,c])=>({value:k,count:c}));
+  });
+  _companySearchFilterValuesCache=out;
+  return out;
+}
+
+async function planCompanySearchFromPrompt(userPrompt){
+  const fv=await loadCompanySearchFilterValues();
+  const fmtVals=f=>(fv[f]||[]).map(x=>`${x.value} (${x.count})`).join(', ')||'nessun valore presente nei dati';
+  const tipiCore=CORE_TIPO_ORDINE.map(t=>`${t} = ${CORE_TIPO_LABEL[t]}`).join(', ');
+  const planPrompt=`Sei un pianificatore di ricerche aziende per LS Job Intelligence, piattaforma di market intelligence Life Sciences italiana.
+Il tuo compito e' SOLO interpretare la richiesta e tradurla in un piano JSON di filtri su aziende. NON calcoli nulla, NON scrivi testo — solo struttura.
+
+RICHIESTA DELL'UTENTE: "${userPrompt}"
+
+FILTRI DISPONIBILI (tutti opzionali, null se non specificati dalla richiesta):
+- sector_v2: uno tra ${fmtVals('sector_v2')} — questi sono gli UNICI valori esistenti, non usarne altri
+- region: una tra ${fmtVals('region')} — UNICI valori esistenti, non inventarne altre
+- therapeutic_area: area terapeutica come codice inglese minuscolo (es. oncology, cardiovascular, immunology) se la richiesta la nomina, altrimenti null
+- hiring_attivo: true se la richiesta chiede aziende che stanno assumendo/hanno annunci attivi/hiring in corso, false se chiede il contrario (nessun annuncio), altrimenti null
+- gruppo: nome del gruppo aziendale in testo libero se la richiesta lo nomina (es. "Bayer", "Menarini"), altrimenti null
+- core_fact_tipo: uno tra questi (usa la chiave a sinistra dell'uguale, mai l'etichetta): ${tipiCore} — solo se la richiesta chiede esplicitamente una di queste caratteristiche, altrimenti null
+- prodotto_categoria: "principio_attivo" se la richiesta chiede aziende che PRODUCONO una materia prima/principio attivo, "commercializzato" se chiede aziende che vendono farmaci/dispositivi finiti, altrimenti null
+
+Rispondi SOLO con questo JSON, nessun altro testo:
+{"title":"<titolo breve descrittivo>","filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
+
+  const raw=await callAIPowerful(planPrompt,400);
+  const clean=raw.replace(/```json|```/g,'').trim();
+  let plan;
+  try{ plan=JSON.parse(clean); }
+  catch(e){ throw new Error('Non ho capito la richiesta. Prova a riformularla in modo più specifico.'); }
+  if(!plan.filters)plan.filters={};
+
+  const dropped=[];
+  const f=plan.filters;
+  if(f.sector_v2&&!(fv.sector_v2||[]).some(x=>x.value===f.sector_v2)){dropped.push(`settore "${f.sector_v2}" (nessuna azienda con questo valore)`);f.sector_v2=null;}
+  if(f.region&&!(fv.region||[]).some(x=>x.value===f.region)){dropped.push(`regione "${f.region}" (nessuna azienda con questo valore)`);f.region=null;}
+  if(f.core_fact_tipo&&!CORE_TIPO_ORDINE.includes(f.core_fact_tipo)){dropped.push(`caratteristica "${f.core_fact_tipo}" non riconosciuta`);f.core_fact_tipo=null;}
+  if(f.prodotto_categoria&&!['principio_attivo','commercializzato'].includes(f.prodotto_categoria)){dropped.push(`categoria prodotto "${f.prodotto_categoria}" non riconosciuta`);f.prodotto_categoria=null;}
+  if(f.hiring_attivo!==true&&f.hiring_attivo!==false)f.hiring_attivo=null;
+  plan._dropped_filters=dropped;
+  return plan;
+}
+
+async function intersecaConLotti(idsBase, tabella, filtroExtra){
+  // Interseca un elenco di company_id con quelli che compaiono in `tabella`
+  // secondo `filtroExtra`, in lotti da 150 id (stessa convenzione gia' in uso
+  // altrove nel file per evitare URL troppo lunghe).
+  const trovati=new Set();
+  for(let i=0;i<idsBase.length;i+=150){
+    const lotto=idsBase.slice(i,i+150);
+    const righe=await api(`${tabella}?select=company_id&company_id=in.(${lotto.join(',')})&${filtroExtra}`);
+    righe.forEach(r=>trovati.add(r.company_id));
+  }
+  return trovati;
+}
+
+async function executeCompanySearchPlan(plan){
+  const f=plan.filters;
+
+  // Filtri che richiedono di incrociare un'altra tabella per ottenere un
+  // insieme di company_id candidati, PRIMA di interrogare v_scheda_azienda
+  // (che espone gia' sector_v2/regione/aree_terapeutiche/stato_assunzioni
+  // come colonne dirette, ma non i fatti CORE ne' i prodotti).
+  let candidatiIntersezione=null; // null = nessun vincolo, altrimenti Set di id
+
+  if(f.core_fact_tipo){
+    const righe=await api(`company_facts?tipo=eq.${f.core_fact_tipo}&select=company_id`);
+    const set=new Set(righe.map(r=>r.company_id));
+    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+  }
+  if(f.prodotto_categoria){
+    // Limite di sicurezza: 'commercializzato' da solo copre circa 289.000
+    // righe prodotto (AIFA + dispositivi medici) — non serve leggerle tutte
+    // per sapere quali aziende ce l'hanno, un campione ampio basta a
+    // popolare l'insieme di company_id candidati senza appesantire la query.
+    const righe=await api(`company_products?category=eq.${f.prodotto_categoria}&select=company_id&limit=5000`);
+    const set=new Set(righe.map(r=>r.company_id));
+    candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+  }
+  if(f.gruppo){
+    const gruppi=await api(`company_groups?select=id,name&name=ilike.*${encodeURIComponent(f.gruppo)}*`);
+    if(!gruppi.length){
+      plan._dropped_filters=[...(plan._dropped_filters||[]),`gruppo "${f.gruppo}" non trovato`];
+      candidatiIntersezione=new Set(); // nessuna azienda puo' corrispondere
+    }else{
+      const membri=await api(`companies?select=id&company_group_id=eq.${gruppi[0].id}&merged_into=is.null`);
+      const set=new Set(membri.map(m=>m.id));
+      candidatiIntersezione=candidatiIntersezione?new Set([...candidatiIntersezione].filter(id=>set.has(id))):set;
+    }
+  }
+
+  if(candidatiIntersezione&&candidatiIntersezione.size===0)return [];
+
+  const qs=['select=*'];
+  if(f.sector_v2)qs.push(`sector_v2=eq.${encodeURIComponent(f.sector_v2)}`);
+  if(f.region)qs.push(`regione_sede=eq.${encodeURIComponent(f.region)}`);
+  if(f.therapeutic_area)qs.push(`aree_terapeutiche=cs.{${encodeURIComponent(f.therapeutic_area)}}`);
+  if(f.hiring_attivo===true)qs.push('stato_assunzioni=in.(assume_ora,assume_di_recente)');
+  if(f.hiring_attivo===false)qs.push('stato_assunzioni=in.(ha_assunto,nessun_annuncio)');
+
+  if(!candidatiIntersezione){
+    qs.push('order=name.asc','limit=200');
+    return api(`v_scheda_azienda?${qs.join('&')}`);
+  }
+  // Con un vincolo di intersezione si interroga a lotti (id=in.() ha un
+  // limite pratico di lunghezza URL) e si ordina/taglia il risultato in JS.
+  const ids=[...candidatiIntersezione];
+  const risultati=[];
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const righe=await api(`v_scheda_azienda?${qs.join('&')}&id=in.(${lotto.join(',')})`);
+    risultati.push(...righe);
+  }
+  risultati.sort((a,b)=>a.name.localeCompare(b.name));
+  return risultati.slice(0,200);
+}
+
+async function searchCompaniesFromPrompt(){
+  const promptText=(document.getElementById('ra-prompt')?.value||'').trim();
+  const resultsEl=document.getElementById('ra-search-results');
+  const btn=document.getElementById('btn-search-companies');
+  if(!promptText||!resultsEl)return;
+  btn.disabled=true;
+  resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Interpretazione della richiesta...</div>';
+  try{
+    const plan=await planCompanySearchFromPrompt(promptText);
+    const aziende=await executeCompanySearchPlan(plan);
+    renderCompanySearchResults(plan,aziende);
+  }catch(e){
+    resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+function renderCompanySearchResults(plan,aziende){
+  const resultsEl=document.getElementById('ra-search-results');
+  const dropped=plan._dropped_filters||[];
+  const droppedHtml=dropped.length?`<div style="font-size:11px;color:var(--warning,#f59e0b);margin-bottom:10px;">⚠️ Filtri ignorati: ${dropped.join('; ')}</div>`:'';
+  if(!aziende.length){
+    resultsEl.innerHTML=`${droppedHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessuna azienda trovata con questi criteri.</div>`;
+    return;
+  }
+  const righe=aziende.map(a=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${a.id}",name:${JSON.stringify(a.name)}};generateCompanyReport();'>
+    <td style="color:var(--accent2);text-decoration:underline;">${a.name}</td>
+    <td style="color:var(--text2);">${a.sector_v2||'—'}</td>
+    <td style="color:var(--text2);">${a.regione_sede||'—'}</td>
+    <td style="color:var(--text2);">${STATO_ASSUNZIONI_LABEL[a.stato_assunzioni]||'—'}</td>
+    <td style="color:var(--text2);">${(a.gruppo||[]).join(', ')||'—'}</td>
+  </tr>`).join('');
+  resultsEl.innerHTML=`${droppedHtml}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${aziende.length} aziend${aziende.length===1?'a trovata':'e trovate'}${aziende.length===200?' (limite di visualizzazione raggiunto, potrebbero essercene altre)':''} — clicca una riga per generare la scheda completa</div>
+    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">Regione</th><th style="text-align:left;padding:8px 10px;">Assunzioni</th><th style="text-align:left;padding:8px 10px;">Gruppo</th></tr></thead>
+        <tbody>${righe}</tbody>
+      </table>
+    </div>`;
+}
+
 async function generateCompanyReport(){
   if(!_raSelectedCompany)return;
   const id=_raSelectedCompany.id;
@@ -8854,8 +9036,6 @@ function renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,c
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
   const eur=(n)=>n==null?'—':'€'+Number(n).toLocaleString('it-IT');
-
-  const STATO_ASSUNZIONI_LABEL={assume_ora:'Assume ora',assume_di_recente:'Ha assunto di recente',ha_assunto:'Ha assunto in passato',nessun_annuncio:'Nessun annuncio rilevato'};
 
   const kpiCells=[
     ['Settore',scheda?.sector_v2||company.sector_v2||'—'],
@@ -10481,7 +10661,7 @@ function renderDemandScatter(){
      stessa cartella HTML/JS ma nessuna funzione condivisa con generateCustomReport/
      planReportFromPrompt/executeReportPlan/narrateReport/renderReportHTML) ── -->
 <div class="view" id="view-report-aziende">
-  <div style="padding:24px 32px;max-width:760px;">
+  <div style="padding:24px 32px;max-width:900px;">
     <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">📇 Report Aziende</div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Genera una scheda stampabile su una singola azienda: dati CORE, prodotti, gruppo, decision maker e ultimi annunci pubblicati.</div>
 
@@ -10495,12 +10675,23 @@ function renderDemandScatter(){
       <div id="ra-status" style="font-size:12px;color:var(--text2);"></div>
     </div>
 
+    <div style="display:flex;align-items:center;gap:12px;margin:28px 0;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:1px;">
+      <div style="flex:1;height:1px;background:var(--border);"></div>oppure cerca per criteri<div style="flex:1;height:1px;background:var(--border);"></div>
+    </div>
+
+    <textarea id="ra-prompt" placeholder="Es. aziende in Lombardia con certificazione GMP attiva&#10;Es. aziende del gruppo Bayer con hiring attivo&#10;Es. aziende che producono principi attivi in area oncologica" style="width:100%;height:70px;font-size:13px;padding:12px 14px;resize:vertical;"></textarea>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+      <button class="btn btn-primary" id="btn-search-companies" onclick="searchCompaniesFromPrompt()" style="background:#8b5cf6;border-color:#8b5cf6;">🔎 Cerca aziende</button>
+    </div>
+    <div id="ra-search-results" style="margin-top:16px;"></div>
+
     <div style="margin-top:32px;font-size:11px;color:var(--text2);line-height:1.9;">
       <strong style="color:var(--text);">Esempi di attività già possibili oggi:</strong>
       <ul style="margin:8px 0 20px 18px;padding:0;">
         <li>Prima di un contatto commerciale o un colloquio: genera la scheda di un'azienda per vedere in un colpo d'occhio hiring recente, prodotti, gruppo di appartenenza e decision maker noti.</li>
         <li>Verifica rapida se un'azienda "minore" fa in realtà parte di un gruppo più ampio (es. Bracco, Bayer) prima di valutarla come entità isolata.</li>
         <li>Controlla se un'azienda sta assumendo davvero in un'area, o se l'unico segnale disponibile sono prodotti/certificazioni senza alcun annuncio recente.</li>
+        <li>Cerca per criteri (box sopra) per ottenere un elenco di aziende invece di una sola — es. tutte quelle di un gruppo, di un settore/regione, o con una certificazione specifica.</li>
       </ul>
       <strong style="color:var(--text);">Direzioni su cui stiamo lavorando (dati già in parte disponibili):</strong>
       <ul style="margin:8px 0 0 18px;padding:0;">
