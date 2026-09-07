@@ -9503,16 +9503,100 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
 </body></html>`;
 }
 
-function generaReportConfronto(){
+async function raccogliChiaviProdotto(companyId){
+  // Colonne leggere, nessun limite: anche per un catalogo enorme (Stryker,
+  // 37.231 righe) resta un filtro su company_id indicizzato, non un
+  // campionamento — l'intersezione la facciamo dopo, in JS.
+  const righe=await api(`company_products?select=active_ingredients_norm,device_category,category&company_id=eq.${companyId}`);
+  const chiavi=new Set();
+  righe.forEach(p=>{
+    // Stessa distinzione di trovaConcorrenti: principio attivo prodotto come
+    // materia prima e lo stesso principio venduto come farmaco finito NON
+    // sono la stessa cosa (filiera, non sovrapposizione) — la categoria di
+    // prodotto fa parte della chiave.
+    (p.active_ingredients_norm||[]).forEach(i=>{ if(i) chiavi.add(`active_ingredients_norm|${i}|${p.category}`); });
+    if(p.device_category) chiavi.add(`device_category|${p.device_category}|${p.category}`);
+  });
+  return chiavi;
+}
+
+async function calcolaSovrapposizioniConfronto(datiAziende){
+  const chiaviPerAzienda=await Promise.all(datiAziende.map(d=>raccogliChiaviProdotto(d.company.id)));
+  const coppie=[];
+  for(let i=0;i<datiAziende.length;i++){
+    for(let j=i+1;j<datiAziende.length;j++){
+      const comuni=[...chiaviPerAzienda[i]].filter(k=>chiaviPerAzienda[j].has(k)).map(k=>k.split('|')[1]);
+      const areeA=new Set(datiAziende[i].scheda?.aree_terapeutiche||[]);
+      const areeB=new Set(datiAziende[j].scheda?.aree_terapeutiche||[]);
+      const areeComuni=[...areeA].filter(a=>areeB.has(a));
+      const areeSoloA=[...areeA].filter(a=>!areeB.has(a));
+      const areeSoloB=[...areeB].filter(a=>!areeA.has(a));
+      coppie.push({
+        aziendaA:datiAziende[i].company.name, aziendaB:datiAziende[j].company.name,
+        prodottiComuni:[...new Set(comuni)], areeComuni, areeSoloA, areeSoloB,
+      });
+    }
+  }
+  return coppie;
+}
+
+async function narraConfrontoAziende(datiAziende, sovrapposizioni){
+  const riassuntoAziende=datiAziende.map(d=>({
+    nome:d.company.name, settore:d.scheda?.sector_v2||d.company.sector_v2||null, regione:d.scheda?.regione_sede||d.company.region||null,
+    dipendenti:d.scheda?.dipendenti_italia||null, stato_assunzioni:d.scheda?.stato_assunzioni||null,
+    aree_terapeutiche:d.scheda?.aree_terapeutiche||[], gruppo:d.gruppo?.nome||null,
+  }));
+
+  const planPrompt=`Sei un analista di mercato Life Sciences per LS Job Intelligence. Scrivi un breve confronto tra aziende usando SOLO i dati forniti qui sotto — non aggiungere aree terapeutiche, prodotti o fatti non elencati. Se non c'e' alcuna sovrapposizione di prodotto tra due aziende, dillo chiaramente invece di supporre che siano concorrenti.
+
+AZIENDE:
+${JSON.stringify(riassuntoAziende,null,2)}
+
+SOVRAPPOSIZIONI CALCOLATE (uniche informazioni valide su concorrenza/prodotto — non inventarne altre):
+${JSON.stringify(sovrapposizioni,null,2)}
+
+Rispondi SOLO con questo JSON, nessun altro testo, testo in italiano, ogni campo un paragrafo breve (2-4 frasi):
+{"introduzione":"<contesto delle aziende: settore, dimensione, presenza geografica>","aree_terapeutiche":"<dove si sovrappongono e dove divergono le aree terapeutiche, basandoti SOLO sulle aree elencate sopra>","concorrenza_prodotto":"<basandoti SOLO sulle sovrapposizioni calcolate: su quali prodotti/principi attivi/categorie sono realmente in concorrenza, o dichiara esplicitamente che non c'e' sovrapposizione diretta se prodottiComuni e' vuoto per quella coppia>","sintesi":"<1-2 frasi conclusive>"}`;
+
+  const raw=await callAIPowerful(planPrompt,900);
+  const clean=raw.replace(/```json|```/g,'').trim();
+  return JSON.parse(clean);
+}
+
+function narrazioneFallback(sovrapposizioni){
+  // Se tutti i provider AI falliscono: il report resta comunque utile,
+  // sintetizzando le stesse sovrapposizioni gia' calcolate senza prosa.
+  const righe=sovrapposizioni.map(s=>{
+    const prodotto=s.prodottiComuni.length?`condividono ${s.prodottiComuni.length} principi attivi/categorie prodotto (${s.prodottiComuni.slice(0,5).join(', ')}${s.prodottiComuni.length>5?', ...':''})`:'non risultano prodotti/principi attivi in comune nei dati disponibili';
+    const aree=s.areeComuni.length?`aree terapeutiche in comune: ${s.areeComuni.join(', ')}.`:'nessuna area terapeutica in comune rilevata.';
+    return `${s.aziendaA} e ${s.aziendaB} ${prodotto}. ${aree}`;
+  }).join(' ');
+  return {introduzione:'Analisi generata senza narrazione AI (provider non disponibili).', aree_terapeutiche:righe, concorrenza_prodotto:righe, sintesi:''};
+}
+
+async function generaReportConfronto(){
   if(!_ultimoConfronto)return;
   const win=window.open('','_blank');
   if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const html=renderCompanyComparisonHTML(_ultimoConfronto);
-  win.document.open(); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(),1000);
+  win.document.write('<title>Generazione report...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione del confronto in corso...</body>');
+  win.document.close();
+  try{
+    const sovrapposizioni=await calcolaSovrapposizioniConfronto(_ultimoConfronto);
+    let narrazione;
+    try{ narrazione=await narraConfrontoAziende(_ultimoConfronto,sovrapposizioni); }
+    catch(e){ console.warn('narrazione AI non disponibile, uso fallback deterministico:',e.message); narrazione=narrazioneFallback(sovrapposizioni); }
+    const html=renderCompanyComparisonHTML(_ultimoConfronto,sovrapposizioni,narrazione);
+    if(win&&!win.closed){
+      win.document.open(); win.document.write(html); win.document.close();
+      setTimeout(()=>win.print(),1000);
+    }
+  }catch(e){
+    toast('Errore generazione confronto: '+e.message,'error');
+    if(win&&!win.closed)win.close();
+  }
 }
 
-function renderCompanyComparisonHTML(datiAziende){
+function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
   const GOLD='#8b5cf6',DARK='#1c1c1c',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
@@ -9547,6 +9631,7 @@ body{font-family:Georgia,serif;background:#fff;color:${DARK};}
 .page{max-width:${Math.max(900,300+datiAziende.length*220)}px;margin:0 auto;padding:40px 48px;}
 .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:#faf9f6;border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:16px;}
 table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
 th{text-align:left;padding:10px;font-size:12px;color:${DARK};border-bottom:2px solid ${BORDER};background:#faf9f6;}
 td{padding:10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
@@ -9561,7 +9646,11 @@ td{padding:10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top
       <div style="font-size:11px;color:#888;">${date}</div>
     </div>
   </div>
+  ${narrazione?.introduzione?`<div class="section-title">Contesto</div><div class="summary-box">${narrazione.introduzione}</div>`:''}
   <table><thead><tr><th>Dimensione</th>${colonne}</tr></thead><tbody>${corpo}</tbody></table>
+  ${narrazione?.aree_terapeutiche?`<div class="section-title">Aree terapeutiche</div><div class="summary-box">${narrazione.aree_terapeutiche}</div>`:''}
+  ${narrazione?.concorrenza_prodotto?`<div class="section-title">Concorrenza per prodotto</div><div class="summary-box">${narrazione.concorrenza_prodotto}</div>`:''}
+  ${narrazione?.sintesi?`<div class="section-title">Sintesi</div><div class="summary-box">${narrazione.sintesi}</div>`:''}
   <div class="footer">
     Report generato da LS Job Intelligence sui dati aggregati disponibili per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
