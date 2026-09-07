@@ -872,6 +872,16 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- Gruppo aziendale (company_groups, 07/09/2026): aziende con piu' entita' legali
+         diverse (Bayer Italia SpA, Bayer AG, Bayer CropScience...) collegate senza fondersi
+         — annunci/settore/prodotti restano propri di ciascuna, qui solo il collegamento
+         visivo e il totale annunci di gruppo. Nascosta se l'azienda non appartiene a nessun
+         gruppo (la maggioranza). -->
+    <div class="chart-card" id="cd-gruppo-card" style="margin-bottom:24px; border: 2px solid #f59e0b; display:none;">
+      <div class="chart-card-title">🏢 Gruppo <span id="cd-gruppo-nome" style="font-size:12px;color:var(--text2);font-weight:400;"></span></div>
+      <div id="cd-gruppo-body" style="margin-top:12px;"></div>
+    </div>
+
     <!-- CORE: gruppo/prodotti/pipeline/siti/fase mercato/modello commerciale (company_facts) +
          segnali Market Radar (companies.market_radar). Ogni fatto porta la sua fonte: sito
          ufficiale, ricerca web o studio clinico. Non e' un dato dichiarato "di gruppo" come la
@@ -8457,6 +8467,52 @@ async function loadCompanyDetail(company){
     loadCoreCard(company.id,listings);
     loadProductsCard(company.id);
     loadWorkforceCard(company.id);
+    loadGruppoCard(company);
+  }
+}
+
+async function loadGruppoCard(company){
+  const card=document.getElementById('cd-gruppo-card');
+  const nomeEl=document.getElementById('cd-gruppo-nome');
+  const body=document.getElementById('cd-gruppo-body');
+  if(!card||!body||!company.id)return;
+  try{
+    // Non ci si fida di company.company_group_id: chi chiama openCompanyDetail()
+    // spesso passa un oggetto con un select= piu' vecchio/parziale (tabella
+    // aziende, risultati ricerca...) che non include ancora questo campo nuovo.
+    const [fresco]=await api(`companies?select=company_group_id&id=eq.${company.id}`);
+    const groupId=fresco?.company_group_id;
+    if(!groupId){card.style.display='none';return;}
+    const [gruppi,sorelle]=await Promise.all([
+      api(`company_groups?select=id,name&id=eq.${groupId}`),
+      api(`companies?select=id,name,sector_v2&company_group_id=eq.${groupId}&merged_into=is.null&order=name.asc`)
+    ]);
+    const gruppo=gruppi[0];
+    if(!gruppo){card.style.display='none';return;}
+    card.style.display='';
+    nomeEl.textContent=gruppo.name;
+
+    const ids=sorelle.map(s=>s.id);
+    const listings=[];
+    for(let i=0;i<ids.length;i+=150){
+      const lotto=ids.slice(i,i+150);
+      listings.push(...await api(`job_listings?select=id,company_id&company_id=in.(${lotto.join(',')})`));
+    }
+    const conteggioPerAzienda={};
+    listings.forEach(l=>{conteggioPerAzienda[l.company_id]=(conteggioPerAzienda[l.company_id]||0)+1;});
+    const totaleGruppo=listings.length;
+
+    const righe=sorelle.map(s=>{
+      const n=conteggioPerAzienda[s.id]||0;
+      const corrente=s.id===company.id;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${corrente?'':'cursor:pointer;'}" ${corrente?'':`onclick='viewCompanyFromExclusions(${JSON.stringify(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})'`}>
+        <span style="font-size:12px;${corrente?'font-weight:700;color:var(--accent);':'color:var(--accent2);text-decoration:underline;'}">${s.name}${corrente?' (questa scheda)':''}</span>
+        <span style="font-size:11px;color:var(--text2);">${n} annunci</span>
+      </div>`;
+    }).join('');
+    body.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:8px;">${sorelle.length} entità collegate · <strong style="color:var(--text);">${totaleGruppo} annunci di gruppo totali</strong> — annunci, settore e prodotti restano propri di ciascuna azienda, i fatti CORE di tipo "Gruppo" si condividono automaticamente.</div>${righe}`;
+  }catch(e){
+    card.style.display='none';
   }
 }
 
