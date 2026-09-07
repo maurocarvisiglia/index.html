@@ -18,15 +18,18 @@
  * banale).
  *
  * NON prodotti in company_products (qui non abbiamo nomi di prodotto, solo
- * aziende): scrive/completa solo settore e sito web delle aziende, SOLO dove
- * il campo è vuoto — mai sovrascritto un dato già presente.
+ * aziende): scrive/completa solo settore e sito web delle aziende esistenti,
+ * SOLO dove il campo è vuoto — mai sovrascritto un dato già presente.
  *
  * ABBINAMENTO: P.IVA esatta anzitutto (qui il 100% delle imprese la riporta —
  * molto più affidabile del nome), poi la stessa logica nome esatto/per
- * contenimento degli altri registri di questa sessione. Nessuna creazione
- * automatica di aziende nuove: sono ~600 aziende reali, ma questo script fa
- * SOLO la misura + il completamento; la creazione, se voluta, è una scelta
- * separata da confermare dopo aver visto quante sarebbero.
+ * contenimento degli altri registri di questa sessione.
+ *
+ * Le imprese associate SENZA corrispondenza in anagrafica vengono create
+ * come aziende nuove (decisione esplicita di Mauro il 07/09/2026, dopo aver
+ * visto la misura: 455 orfane, molte con sito verificabile) — dedup sul nome
+ * ripulito prima di scrivere, stesso bug reale gia' corretto in
+ * aifa-registro-prodotti.mjs.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -93,6 +96,16 @@ async function listaImpreseCosmeticaItalia() {
   const json = await res.json();
   if (json.error) throw new Error(`Cosmetica Italia: ${json.error.message}`);
   return json.result;
+}
+
+function ripulisciNomeAzienda(nome) {
+  const t = (nome || '').trim().replace(/\s+/g, ' ');
+  const tuttoMaiuscolo = t === t.toUpperCase() && /[A-Z]/.test(t);
+  if (!tuttoMaiuscolo) return t;
+  return t.split(' ').map((w) => {
+    if (/^(s\.?p\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|s\.?n\.?c\.?|b\.?v\.?|gmbh|a\/s|llc|inc\.?|ltd\.?|plc)$/i.test(w)) return w;
+    return w.length > 1 ? w[0] + w.slice(1).toLowerCase() : w;
+  }).join(' ');
 }
 
 function normalizzaSito(w) {
@@ -177,7 +190,7 @@ async function runCosmeticaItaliaDailyBatch(apply = CLI_APPLY) {
     for (const o of orfani.filter((o) => o.webSite).slice(0, 20)) push(`    ${o.ragioneSociale} — ${o.webSite} (${o.indirizzi?.SL?.siglaProvincia || '?'})`);
   }
 
-  const summary = { impreseLette: imprese.length, aziendeCollegate: viaIva + viaEsatto + viaContenimento, impreseOrfane: orfani.length, aziendeDaAggiornare: daAggiornare.length, aziendeAggiornate: 0 };
+  const summary = { impreseLette: imprese.length, aziendeCollegate: viaIva + viaEsatto + viaContenimento, impreseOrfane: orfani.length, aziendeDaAggiornare: daAggiornare.length, aziendeAggiornate: 0, aziendeCreate: 0 };
 
   if (!apply) {
     push(`\n  ${Y}misura soltanto: nulla scritto. Rilancia con --apply.${Z}\n`);
@@ -195,7 +208,48 @@ async function runCosmeticaItaliaDailyBatch(apply = CLI_APPLY) {
     }
   }
   summary.aziendeAggiornate = aggiornate;
-  push(`\n  ${G}aggiornate ${aggiornate} aziende (settore e/o sito, solo campi vuoti)${Z}\n`);
+  push(`\n  ${G}aggiornate ${aggiornate} aziende (settore e/o sito, solo campi vuoti)${Z}`);
+
+  // Crea le imprese associate orfane come aziende nuove — richiesta esplicita
+  // di Mauro dopo aver visto la misura (455 orfane). Dedup sul nome ripulito
+  // PRIMA di scrivere: stesso bug reale gia' corretto in aifa-registro-prodotti.mjs
+  // (due varianti di maiuscole/spazi della stessa azienda violavano l'indice
+  // unico companies_nome_normalizzato_uidx).
+  const vistiNome = new Map();
+  const nuoveRighe = [];
+  for (const impresa of orfani) {
+    const name = ripulisciNomeAzienda(impresa.ragioneSociale);
+    const nomeKey = name.trim().toLowerCase();
+    if (vistiNome.has(nomeKey)) continue;
+    vistiNome.set(nomeKey, true);
+    nuoveRighe.push({
+      name,
+      ragione_sociale: impresa.ragioneSociale,
+      entity_type: 'life_sciences',
+      is_active: true,
+      sector_v2: 'Cosmetics',
+      iva: soloCifre(impresa.partitaIva) || null,
+      province: impresa.indirizzi?.SL?.siglaProvincia || impresa.indirizzi?.SO?.siglaProvincia || null,
+      website: normalizzaSito(impresa.webSite),
+    });
+  }
+  push(`\n${D}Creo ${nuoveRighe.length} aziende nuove dalle imprese associate orfane (${orfani.length - nuoveRighe.length} duplicate scartate)...${Z}`);
+  let aziendeCreate = 0;
+  for (let i = 0; i < nuoveRighe.length; i += 100) {
+    const lotto = nuoveRighe.slice(i, i + 100);
+    try {
+      const creati = await sb('companies', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(lotto) });
+      aziendeCreate += creati.length;
+    } catch (e) {
+      logLotti(`lotto rifiutato (${e.message.slice(0, 70)}) - riprovo riga per riga`);
+      for (const riga of lotto) {
+        try { await sb('companies', { method: 'POST', body: JSON.stringify([riga]) }); aziendeCreate++; }
+        catch (e2) { logLotti(`  scartata ${riga.name}: ${e2.message.slice(0, 88)}`); }
+      }
+    }
+  }
+  summary.aziendeCreate = aziendeCreate;
+  push(`${G}  create ${aziendeCreate} aziende${Z}\n`);
   return { summary, log };
 }
 
