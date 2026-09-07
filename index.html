@@ -7909,7 +7909,17 @@ const PAESE_FORMA_ITALIA=/\b(s\.?r\.?l\.?|s\.?p\.?a\.?)\b/i;
 const PAESE_TESTO_ITALIA=/\bitalia\b|\bitaly\b/i;
 const PAESE_FORMA_ESTERO=/\b(ltd|limited|gmbh|b\.?v\.?|n\.?v\.?|a\.?g\.?|plc|llc|inc\.?|kft|sarl|s\.?a\.?r\.?l\.?|aps|a\/s|oy|ab|eeig|ehf|s\.?r\.?o\.?|bvba|pty|pte|oü|sagl|s\.?a\.?|s\.?l\.?|lda)\b/i;
 const PAESE_PAROLA_ESTERO=/\b(ireland|irel|netherlands|nederland|deutschland|germany|france|espana|spain|belgium|belgie|hungary|ungheria|malta|luxembourg|switzerland|austria|poland|denmark|sweden|norway|finland|romania|czech|slovak|croatia|greece|portugal|laboratoire|laboratoires|handels|vertrieb)\b/i;
+// Eccezioni verificate a mano da Mauro (07/09/2026): aziende senza nessun
+// segnale testuale di paese nel nome (es. "Panmedica", "Theravia") ma
+// confermate estere una per una, con il paese reale — non generalizzabili in
+// una regola (il nome da solo non lo dice), quindi elenco esplicito invece
+// di allargare i pattern e rischiare falsi positivi altrove.
+const PAESE_ECCEZIONI_ESTERO=new Set([
+  'BELPHARMA s.a.','BoF Careers','Cis Bio International','Ethyx Pharmaceuticals',
+  'GEN.ORPH Sas','Mitem Pharma','Olpha As','Panmedica','REPUBLIC M!','Substipharm','Theravia',
+]);
 function classificaPaeseAzienda(c){
+  if(PAESE_ECCEZIONI_ESTERO.has(c.name))return 'estero';
   if(c.province||c.region)return 'italia';
   const testo=(c.name||'')+' '+(c.ragione_sociale||'');
   if(PAESE_TESTO_ITALIA.test(testo)||PAESE_FORMA_ITALIA.test(testo))return 'italia';
