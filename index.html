@@ -8839,8 +8839,10 @@ FILTRI DISPONIBILI (tutti opzionali, null se non specificati dalla richiesta):
 - core_fact_tipo: uno tra questi (usa la chiave a sinistra dell'uguale, mai l'etichetta): ${tipiCore} — solo se la richiesta chiede esplicitamente una di queste caratteristiche, altrimenti null
 - prodotto_categoria: "principio_attivo" se la richiesta chiede aziende che PRODUCONO una materia prima/principio attivo, "commercializzato" se chiede aziende che vendono farmaci/dispositivi finiti, altrimenti null
 
+MODALITA': se la richiesta chiede esplicitamente di CONFRONTARE, mettere a confronto, vedere le DIFFERENZE tra due o piu' aziende NOMINATE per nome (es. "confronta Steris e Stryker", "differenze tra Bayer e Menarini"), imposta modalita="confronto" e riporta in aziende_da_confrontare i nomi ESATTAMENTE come scritti dall'utente (non correggerli, non completarli, non inventare la ragione sociale — verranno cercati nel database separatamente). In ogni altro caso (ricerca per criteri, anche su piu' aziende ma non nominate una per una) usa modalita="lista" e lascia aziende_da_confrontare vuoto.
+
 Rispondi SOLO con questo JSON, nessun altro testo:
-{"title":"<titolo breve descrittivo>","filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
+{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
 
   const raw=await callAIPowerful(planPrompt,400);
   const clean=raw.replace(/```json|```/g,'').trim();
@@ -8857,7 +8859,33 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   if(f.prodotto_categoria&&!['principio_attivo','commercializzato'].includes(f.prodotto_categoria)){dropped.push(`categoria prodotto "${f.prodotto_categoria}" non riconosciuta`);f.prodotto_categoria=null;}
   if(f.hiring_attivo!==true&&f.hiring_attivo!==false)f.hiring_attivo=null;
   plan._dropped_filters=dropped;
+
+  plan.modalita=plan.modalita==='confronto'?'confronto':'lista';
+  plan.aziende_da_confrontare=Array.isArray(plan.aziende_da_confrontare)?plan.aziende_da_confrontare.filter(n=>typeof n==='string'&&n.trim()).slice(0,6):[];
+  if(plan.modalita==='confronto'&&plan.aziende_da_confrontare.length<2){
+    plan.modalita='lista'; // un confronto con meno di 2 nomi non e' un confronto
+  }
   return plan;
+}
+
+async function risolviAziendePerConfronto(nomi){
+  // Mai fidarsi del nome come lo scrive l'AI: si cerca sempre nell'anagrafica
+  // reale, stesso principio dei filtri sector_v2/region sopra. Un nome che
+  // non si trova o resta ambiguo viene segnalato, mai indovinato in silenzio.
+  const risultati=[];
+  for(const nome of nomi){
+    const candidati=await api(`companies?select=id,name,sector_v2&is_active=eq.true&merged_into=is.null&name=ilike.*${encodeURIComponent(nome.trim())}*&order=name.asc&limit=10`);
+    if(candidati.length===0){
+      risultati.push({nomeCercato:nome, stato:'non_trovata', candidati:[]});
+    }else if(candidati.length===1){
+      risultati.push({nomeCercato:nome, stato:'trovata', azienda:candidati[0]});
+    }else{
+      const esatto=candidati.find(c=>c.name.trim().toLowerCase()===nome.trim().toLowerCase());
+      if(esatto) risultati.push({nomeCercato:nome, stato:'trovata', azienda:esatto});
+      else risultati.push({nomeCercato:nome, stato:'ambigua', candidati});
+    }
+  }
+  return risultati;
 }
 
 async function calcolaStatoAssunzioniPerAzienda(){
@@ -8963,8 +8991,14 @@ async function searchCompaniesFromPrompt(){
   resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Interpretazione della richiesta...</div>';
   try{
     const plan=await planCompanySearchFromPrompt(promptText);
-    const aziende=await executeCompanySearchPlan(plan);
-    renderCompanySearchResults(plan,aziende);
+    if(plan.modalita==='confronto'){
+      resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca delle aziende da confrontare...</div>';
+      const risolte=await risolviAziendePerConfronto(plan.aziende_da_confrontare);
+      await renderComparisonResolutionResults(risolte);
+    }else{
+      const aziende=await executeCompanySearchPlan(plan);
+      renderCompanySearchResults(plan,aziende);
+    }
   }catch(e){
     resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
   }finally{
@@ -8972,7 +9006,11 @@ async function searchCompaniesFromPrompt(){
   }
 }
 
+let _ultimaRicercaCriteri=null; // {plan,aziende}, per il pulsante "genera report"
+let _ultimoConfronto=null; // array di raccogliDatiAzienda(), per il pulsante "genera report di confronto"
+
 function renderCompanySearchResults(plan,aziende){
+  _ultimaRicercaCriteri={plan,aziende};
   const resultsEl=document.getElementById('ra-search-results');
   const dropped=plan._dropped_filters||[];
   const droppedHtml=dropped.length?`<div style="font-size:11px;color:var(--warning,#f59e0b);margin-bottom:10px;">⚠️ Filtri ignorati: ${dropped.join('; ')}</div>`:'';
@@ -8989,12 +9027,85 @@ function renderCompanySearchResults(plan,aziende){
   </tr>`).join('');
   resultsEl.innerHTML=`${droppedHtml}
     <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${aziende.length} aziend${aziende.length===1?'a trovata':'e trovate'}${aziende.length===200?' (limite di visualizzazione raggiunto, potrebbero essercene altre)':''} — clicca una riga per generare la scheda completa</div>
-    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">Regione</th><th style="text-align:left;padding:8px 10px;">Assunzioni</th><th style="text-align:left;padding:8px 10px;">Gruppo</th></tr></thead>
         <tbody>${righe}</tbody>
       </table>
-    </div>`;
+    </div>
+    <button class="btn btn-secondary" onclick="generaReportListaAziende()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report</button>`;
+}
+
+async function renderComparisonResolutionResults(risolte){
+  const resultsEl=document.getElementById('ra-search-results');
+  const righeStato=risolte.map(r=>{
+    if(r.stato==='trovata')return `<div style="padding:6px 0;color:var(--text);">✅ <strong>${r.nomeCercato}</strong> → ${r.azienda.name}${r.azienda.sector_v2?` (${r.azienda.sector_v2})`:''}</div>`;
+    if(r.stato==='ambigua')return `<div style="padding:6px 0;color:#f59e0b;">⚠️ <strong>${r.nomeCercato}</strong>: più aziende corrispondono (${r.candidati.map(c=>c.name).join(', ')}) — riformula con il nome esatto</div>`;
+    return `<div style="padding:6px 0;color:var(--danger);">❌ <strong>${r.nomeCercato}</strong>: nessuna azienda trovata con questo nome</div>`;
+  }).join('');
+
+  const trovate=risolte.filter(r=>r.stato==='trovata');
+  if(trovate.length<2){
+    resultsEl.innerHTML=`${righeStato}<div style="font-size:12px;color:var(--text2);margin-top:10px;">Servono almeno 2 aziende risolte correttamente per generare un confronto.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML=`${righeStato}<div style="font-size:12px;color:var(--text2);margin:10px 0;">⏳ Raccolta dati per il confronto...</div>`;
+  const dati=await Promise.all(trovate.map(r=>raccogliDatiAzienda(r.azienda.id,r.azienda)));
+  _ultimoConfronto=dati;
+
+  const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
+  const righeTabella=dati.map(d=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${d.company.id}",name:${JSON.stringify(d.company.name)}};generateCompanyReport();'>
+    <td style="color:var(--text);font-weight:700;">${d.company.name}</td>
+    <td style="color:var(--text2);">${d.scheda?.sector_v2||d.company.sector_v2||'—'}</td>
+    <td style="color:var(--text2);">${d.scheda?.regione_sede||d.company.region||'—'}</td>
+    <td style="color:var(--text2);">${d.scheda?.stato_assunzioni?STATO_ASSUNZIONI_LABEL[d.scheda.stato_assunzioni]:'—'}</td>
+    <td style="color:var(--text2);">${nf(d.totaleProdotti)}</td>
+  </tr>`).join('');
+
+  resultsEl.innerHTML=`${righeStato}
+    <div style="font-size:12px;color:var(--text2);margin:10px 0 8px;">Anteprima confronto — il report completo include anche RAL, aree terapeutiche, gruppo e fatti CORE</div>
+    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">Regione</th><th style="text-align:left;padding:8px 10px;">Assunzioni</th><th style="text-align:left;padding:8px 10px;">N. prodotti</th></tr></thead>
+        <tbody>${righeTabella}</tbody>
+      </table>
+    </div>
+    <button class="btn btn-secondary" onclick="generaReportConfronto()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report di confronto</button>`;
+}
+
+async function raccogliDatiAzienda(id, fallbackCompany){
+  // Fattorizza il fetch gia' scritto per la scheda singola azienda: lo usa
+  // anche il confronto tra aziende nominate, per non duplicare la stessa
+  // sequenza di query in due posti.
+  const [schedaRows, companyRows, facts, prioritari, countResp, contatti, annunci] = await Promise.all([
+    api(`v_scheda_azienda?select=*&id=eq.${id}`),
+    api(`companies?select=id,name,ragione_sociale,website,sector_v2,region,company_group_id&id=eq.${id}`),
+    api(`company_facts?select=tipo,valore,fonte,rilevato_il&company_id=eq.${id}`),
+    api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=neq.registro_pubblico&order=brand_name.asc`),
+    fetch(`${SB_URL}/rest/v1/company_products?select=id&company_id=eq.${id}`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
+    api(`company_contacts?select=nome,ruolo,email,telefono&company_id=eq.${id}`),
+    api(`job_listings?select=job_title,seniority_v2,functional_area_v2,therapeutic_area,contract_type,ral_min,ral_max,ral_estimated,region,province,published_date,url&company_id=eq.${id}&order=published_date.desc&limit=50`)
+  ]);
+  const scheda=schedaRows[0]||null;
+  const company=companyRows[0]||fallbackCompany;
+  const totaleProdotti=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||prioritari.length);
+  let prodotti=prioritari;
+  if(prioritari.length<PRODOTTI_CARD_LIMITE){
+    const resto=await api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=eq.registro_pubblico&order=brand_name.asc&limit=${PRODOTTI_CARD_LIMITE-prioritari.length}`);
+    prodotti=[...prioritari,...resto];
+  }
+
+  let gruppo=null;
+  if(company.company_group_id){
+    const [gruppi,sorelle]=await Promise.all([
+      api(`company_groups?select=id,name&id=eq.${company.company_group_id}`),
+      api(`companies?select=id,name&company_group_id=eq.${company.company_group_id}&merged_into=is.null&order=name.asc`)
+    ]);
+    if(gruppi[0])gruppo={nome:gruppi[0].name,sorelle};
+  }
+
+  return {company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo};
 }
 
 async function generateCompanyReport(){
@@ -9011,34 +9122,8 @@ async function generateCompanyReport(){
   }
   statusEl.textContent='Generazione in corso...';
   try{
-    const [schedaRows, companyRows, facts, prioritari, countResp, contatti, annunci] = await Promise.all([
-      api(`v_scheda_azienda?select=*&id=eq.${id}`),
-      api(`companies?select=name,ragione_sociale,website,sector_v2,region,company_group_id&id=eq.${id}`),
-      api(`company_facts?select=tipo,valore,fonte,rilevato_il&company_id=eq.${id}`),
-      api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=neq.registro_pubblico&order=brand_name.asc`),
-      fetch(`${SB_URL}/rest/v1/company_products?select=id&company_id=eq.${id}`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
-      api(`company_contacts?select=nome,ruolo,email,telefono&company_id=eq.${id}`),
-      api(`job_listings?select=job_title,seniority_v2,functional_area_v2,therapeutic_area,contract_type,ral_min,ral_max,ral_estimated,region,province,published_date,url&company_id=eq.${id}&order=published_date.desc&limit=50`)
-    ]);
-    const scheda=schedaRows[0]||null;
-    const company=companyRows[0]||_raSelectedCompany;
-    const totaleProdotti=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||prioritari.length);
-    let prodotti=prioritari;
-    if(prioritari.length<PRODOTTI_CARD_LIMITE){
-      const resto=await api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=eq.registro_pubblico&order=brand_name.asc&limit=${PRODOTTI_CARD_LIMITE-prioritari.length}`);
-      prodotti=[...prioritari,...resto];
-    }
-
-    let gruppo=null;
-    if(company.company_group_id){
-      const [gruppi,sorelle]=await Promise.all([
-        api(`company_groups?select=id,name&id=eq.${company.company_group_id}`),
-        api(`companies?select=id,name&company_group_id=eq.${company.company_group_id}&merged_into=is.null&order=name.asc`)
-      ]);
-      if(gruppi[0])gruppo={nome:gruppi[0].name,sorelle};
-    }
-
-    const html=renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo});
+    const dati=await raccogliDatiAzienda(id, _raSelectedCompany);
+    const html=renderCompanyReportHTML(dati);
     if(win&&!win.closed){
       win.document.open();
       win.document.write(html);
@@ -9339,6 +9424,146 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   <table><thead><tr><th>Azienda</th><th>Settore</th><th>In comune su</th></tr></thead><tbody>${righe}</tbody></table>
   <div class="footer">
     Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+// ── Report stampabile per la ricerca a criteri (elenco di piu' aziende) e
+// per il confronto tra aziende nominate esplicitamente. Stesso principio di
+// isolamento delle altre funzioni di rendering di questa pagina: stile
+// proprio, nessuna condivisione col Report Builder. ──
+
+function generaReportListaAziende(){
+  if(!_ultimaRicercaCriteri)return;
+  const win=window.open('','_blank');
+  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
+  const html=renderCompanyListReportHTML(_ultimaRicercaCriteri.plan,_ultimaRicercaCriteri.aziende);
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(()=>win.print(),1000);
+}
+
+function renderCompanyListReportHTML(plan,aziende){
+  const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  const f=plan.filters||{};
+  const criteriTesto=[
+    f.sector_v2&&`settore ${f.sector_v2}`,
+    f.region&&`regione ${f.region}`,
+    f.therapeutic_area&&`area terapeutica ${f.therapeutic_area}`,
+    f.gruppo&&`gruppo ${f.gruppo}`,
+    f.core_fact_tipo&&(CORE_TIPO_LABEL[f.core_fact_tipo]||f.core_fact_tipo),
+    f.prodotto_categoria&&(f.prodotto_categoria==='principio_attivo'?'produce principi attivi':'commercializza prodotti finiti'),
+    f.hiring_attivo===true&&'hiring attivo',
+    f.hiring_attivo===false&&'nessun annuncio attivo',
+  ].filter(Boolean).join(' · ')||'nessun criterio specifico';
+
+  const righe=aziende.map(a=>`<tr>
+    <td>${a.name}</td>
+    <td style="color:#888;">${a.sector_v2||''}</td>
+    <td style="color:#888;">${a.regione_sede||''}</td>
+    <td style="color:#888;">${STATO_ASSUNZIONI_LABEL[a.stato_assunzioni]||''}</td>
+    <td style="color:#888;">${(a.gruppo||[]).join(', ')}</td>
+  </tr>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${plan.title||'Elenco aziende'}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.page{max-width:900px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Elenco Aziende</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${plan.title||'Ricerca per criteri'}</div>
+      <div style="font-size:11px;color:#888;">${date}</div>
+    </div>
+  </div>
+  <div class="summary-box"><strong>${aziende.length}</strong> aziend${aziende.length===1?'a trovata':'e trovate'} — criteri: ${criteriTesto}${(plan._dropped_filters||[]).length?`<br><span style="color:#a15c00;">⚠️ filtri ignorati: ${plan._dropped_filters.join('; ')}</span>`:''}</div>
+  <table><thead><tr><th>Azienda</th><th>Settore</th><th>Regione</th><th>Assunzioni</th><th>Gruppo</th></tr></thead><tbody>${righe}</tbody></table>
+  <div class="footer">
+    Report generato da LS Job Intelligence in base ai criteri di ricerca applicati.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+function generaReportConfronto(){
+  if(!_ultimoConfronto)return;
+  const win=window.open('','_blank');
+  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
+  const html=renderCompanyComparisonHTML(_ultimoConfronto);
+  win.document.open(); win.document.write(html); win.document.close();
+  setTimeout(()=>win.print(),1000);
+}
+
+function renderCompanyComparisonHTML(datiAziende){
+  const GOLD='#8b5cf6',DARK='#1c1c1c',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
+  const eur=(n)=>n==null?'—':'€'+Number(n).toLocaleString('it-IT');
+
+  const nProdottiPerCategoria=(prodotti,cat)=>prodotti.filter(p=>p.category===cat).length;
+
+  const righe=[
+    ['Settore',d=>d.scheda?.sector_v2||d.company.sector_v2||'—'],
+    ['Regione sede',d=>d.scheda?.regione_sede||d.company.region||'—'],
+    ['Dipendenti',d=>nf(d.scheda?.dipendenti_italia)],
+    ['Fatturato',d=>d.scheda?.fatturato_range||'—'],
+    ['Gruppo',d=>d.gruppo?d.gruppo.nome:'—'],
+    ['Stato assunzioni',d=>d.scheda?.stato_assunzioni?STATO_ASSUNZIONI_LABEL[d.scheda.stato_assunzioni]:'—'],
+    ['Annunci (30/90/tot)',d=>d.scheda?`${nf(d.scheda.annunci_30gg)} / ${nf(d.scheda.annunci_90gg)} / ${nf(d.scheda.annunci_totali)}`:'—'],
+    ['RAL mediana',d=>d.scheda?.ral_mediana?eur(Math.round(d.scheda.ral_mediana)):'—'],
+    ['Aree terapeutiche',d=>(d.scheda?.aree_terapeutiche||[]).join(', ')||'—'],
+    ['Prodotti commercializzati',d=>nf(nProdottiPerCategoria(d.prodotti,'commercializzato')+ (d.totaleProdotti>d.prodotti.length?d.totaleProdotti-d.prodotti.length:0))],
+    ['Principi attivi prodotti',d=>nf(nProdottiPerCategoria(d.prodotti,'principio_attivo'))],
+    ['Decision maker noti',d=>nf(d.scheda?.decisori_noti??d.contatti.length)],
+  ];
+
+  const colonne=datiAziende.map(d=>`<th>${d.company.name}</th>`).join('');
+  const corpo=righe.map(([label,fn])=>`<tr><td style="font-weight:700;color:#888;width:180px;">${label}</td>${datiAziende.map(d=>`<td>${fn(d)}</td>`).join('')}</tr>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Confronto — ${datiAziende.map(d=>d.company.name).join(' vs ')}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.page{max-width:${Math.max(900,300+datiAziende.length*220)}px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:10px;font-size:12px;color:${DARK};border-bottom:2px solid ${BORDER};background:#faf9f6;}
+td{padding:10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Confronto Aziende</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${datiAziende.map(d=>d.company.name).join(' vs ')}</div>
+      <div style="font-size:11px;color:#888;">${date}</div>
+    </div>
+  </div>
+  <table><thead><tr><th>Dimensione</th>${colonne}</tr></thead><tbody>${corpo}</tbody></table>
+  <div class="footer">
+    Report generato da LS Job Intelligence sui dati aggregati disponibili per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
     <span style="color:${GOLD};">LS Job Intelligence</span>
   </div>
