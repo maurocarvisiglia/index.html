@@ -237,6 +237,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn active" id="nav-dashboard" onclick="showView('dashboard',this)">📊 Market Overview</button>
     <button class="nav-btn" id="nav-listings" onclick="showView('listings',this)">📋 Annunci</button>
     <button class="nav-btn" id="nav-companies" onclick="showView('companies',this)">🏢 Aziende</button>
+    <button class="nav-btn" id="nav-report-aziende" onclick="showView('report-aziende',this)" style="border-color:#8b5cf6;color:#8b5cf6;">📇 Report Aziende</button>
     <button class="nav-btn" id="nav-ruolo" onclick="showView('ruolo',this)">🔍 Analisi Ruolo</button>
     <button class="nav-btn" id="nav-commercial" onclick="showView('commercial',this)" style="border-color:#10b981;color:#10b981;">💼 Commercial</button>
     <button class="nav-btn" id="nav-signals" onclick="showView('signals',this)" style="border-color:#a78bfa;color:#a78bfa;">📡 Market Signals</button>
@@ -8743,6 +8744,224 @@ async function loadProductsCard(companyId){
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// REPORT AZIENDE — scheda stampabile su una singola azienda (v_scheda_azienda
+// + CORE + prodotti + gruppo + contatti + annunci reali). Pagina e pipeline
+// indipendenti dal Report Builder sopra (generateCustomReport/planReportFromPrompt/
+// executeReportPlan/narrateReport/renderReportHTML): nessuna funzione o
+// costante e' condivisa tra i due, per non rischiare regressioni sull'altro
+// quando si tocca questo.
+// ══════════════════════════════════════════════════════════════════════════
+
+let _raSelectedCompany=null;
+let _raSearchTimer=null;
+
+function searchCompanyForReport(term){
+  clearTimeout(_raSearchTimer);
+  const box=document.getElementById('ra-suggestions');
+  const btn=document.getElementById('btn-generate-company-report');
+  _raSelectedCompany=null;
+  btn.disabled=true; btn.style.opacity='.5';
+  const q=(term||'').trim();
+  if(q.length<2){box.style.display='none';box.innerHTML='';return;}
+  _raSearchTimer=setTimeout(async()=>{
+    try{
+      const risultati=await api(`companies?select=id,name,ragione_sociale,sector_v2&is_active=eq.true&merged_into=is.null&name=ilike.*${encodeURIComponent(q)}*&order=name.asc&limit=15`);
+      if(!risultati.length){
+        box.innerHTML='<div style="padding:10px 14px;font-size:12px;color:var(--text2);">Nessuna azienda trovata</div>';
+        box.style.display='';
+        return;
+      }
+      box.innerHTML=risultati.map(c=>`<div onclick='selectCompanyForReport(${JSON.stringify(c).replace(/'/g,'&#39;')})' style="padding:8px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+        <div style="color:var(--text);">${c.name}</div>
+        ${c.sector_v2?`<div style="font-size:11px;color:var(--text2);">${c.sector_v2}</div>`:''}
+      </div>`).join('');
+      box.style.display='';
+    }catch(e){
+      box.style.display='none';
+    }
+  },300);
+}
+
+function selectCompanyForReport(company){
+  _raSelectedCompany=company;
+  document.getElementById('ra-search').value=company.name;
+  document.getElementById('ra-suggestions').style.display='none';
+  const btn=document.getElementById('btn-generate-company-report');
+  btn.disabled=false; btn.style.opacity='1';
+}
+
+async function generateCompanyReport(){
+  if(!_raSelectedCompany)return;
+  const id=_raSelectedCompany.id;
+  const statusEl=document.getElementById('ra-status');
+  // Finestra aperta subito, in modo sincrono rispetto al click: se si aspetta
+  // il risultato delle query prima di aprirla, il browser la blocca come
+  // popup perche' non e' piu' vista come conseguenza diretta del gesto utente.
+  const win=window.open('','_blank');
+  if(win){
+    win.document.write('<title>Generazione report...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione del report in corso...</body>');
+    win.document.close();
+  }
+  statusEl.textContent='Generazione in corso...';
+  try{
+    const [schedaRows, companyRows, facts, prioritari, countResp, contatti, annunci] = await Promise.all([
+      api(`v_scheda_azienda?select=*&id=eq.${id}`),
+      api(`companies?select=name,ragione_sociale,website,sector_v2,region,company_group_id&id=eq.${id}`),
+      api(`company_facts?select=tipo,valore,fonte,rilevato_il&company_id=eq.${id}`),
+      api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=neq.registro_pubblico&order=brand_name.asc`),
+      fetch(`${SB_URL}/rest/v1/company_products?select=id&company_id=eq.${id}`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
+      api(`company_contacts?select=nome,ruolo,email,telefono&company_id=eq.${id}`),
+      api(`job_listings?select=job_title,seniority_v2,functional_area_v2,therapeutic_area,contract_type,ral_min,ral_max,ral_estimated,region,province,published_date,url&company_id=eq.${id}&order=published_date.desc&limit=50`)
+    ]);
+    const scheda=schedaRows[0]||null;
+    const company=companyRows[0]||_raSelectedCompany;
+    const totaleProdotti=parseInt(countResp.headers.get('Content-Range')?.split('/')[1]||prioritari.length);
+    let prodotti=prioritari;
+    if(prioritari.length<PRODOTTI_CARD_LIMITE){
+      const resto=await api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=eq.registro_pubblico&order=brand_name.asc&limit=${PRODOTTI_CARD_LIMITE-prioritari.length}`);
+      prodotti=[...prioritari,...resto];
+    }
+
+    let gruppo=null;
+    if(company.company_group_id){
+      const [gruppi,sorelle]=await Promise.all([
+        api(`company_groups?select=id,name&id=eq.${company.company_group_id}`),
+        api(`companies?select=id,name&company_group_id=eq.${company.company_group_id}&merged_into=is.null&order=name.asc`)
+      ]);
+      if(gruppi[0])gruppo={nome:gruppi[0].name,sorelle};
+    }
+
+    const html=renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo});
+    if(win&&!win.closed){
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      setTimeout(()=>win.print(),1000);
+    }else{
+      toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning');
+    }
+    statusEl.textContent='';
+  }catch(e){
+    statusEl.textContent='';
+    toast('Errore generazione report: '+e.message,'error');
+    if(win&&!win.closed)win.close();
+  }
+}
+
+function renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo}){
+  const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
+  const eur=(n)=>n==null?'—':'€'+Number(n).toLocaleString('it-IT');
+
+  const STATO_ASSUNZIONI_LABEL={assume_ora:'Assume ora',assume_di_recente:'Ha assunto di recente',ha_assunto:'Ha assunto in passato',nessun_annuncio:'Nessun annuncio rilevato'};
+
+  const kpiCells=[
+    ['Settore',scheda?.sector_v2||company.sector_v2||'—'],
+    ['Regione sede',scheda?.regione_sede||company.region||'—'],
+    ['Dipendenti',nf(scheda?.dipendenti_italia)],
+    ['Fatturato',scheda?.fatturato_range||'—'],
+    ['Stato assunzioni',scheda?scheda.stato_assunzioni?STATO_ASSUNZIONI_LABEL[scheda.stato_assunzioni]||scheda.stato_assunzioni:'—':'—'],
+    ['Annunci (30/90/tot)',scheda?`${nf(scheda.annunci_30gg)} / ${nf(scheda.annunci_90gg)} / ${nf(scheda.annunci_totali)}`:'—'],
+    ['RAL mediana',scheda?.ral_mediana?eur(Math.round(scheda.ral_mediana)):'—'],
+    ['RAL min–max',scheda&&(scheda.ral_min||scheda.ral_max)?`${eur(scheda.ral_min)} – ${eur(scheda.ral_max)}`:'—'],
+    ['Aree terapeutiche',nf(scheda?.aree_terapeutiche?.length||0)],
+    ['Decision maker noti',nf(scheda?.decisori_noti||contatti.length)]
+  ];
+
+  const kpiHtml=kpiCells.map(([label,value])=>`<div class="kpi-cell"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div></div>`).join('');
+
+  const gruppoHtml=gruppo?`
+    <div class="section-title">Gruppo aziendale</div>
+    <div class="summary-box">
+      <strong>${gruppo.nome}</strong> — ${gruppo.sorelle.length} entità collegate<br>
+      ${gruppo.sorelle.map(s=>s.name+(s.id===company.id?' (questa azienda)':'')).join(', ')}
+    </div>`:'';
+
+  const factsOrdinati=CORE_TIPO_ORDINE.filter(t=>facts.some(f=>f.tipo===t));
+  const coreHtml=factsOrdinati.length?`
+    <div class="section-title">Dati CORE</div>
+    <table><tbody>
+      ${factsOrdinati.map(t=>{
+        const righeTipo=facts.filter(f=>f.tipo===t);
+        return righeTipo.map(f=>`<tr><td style="width:220px;color:#888;">${CORE_TIPO_LABEL[t]||t}</td><td>${f.valore}</td><td class="num" style="font-weight:400;color:#aaa;font-size:10px;">${CORE_FONTE_LABEL[f.fonte]||f.fonte||''}</td></tr>`).join('');
+      }).join('')}
+    </tbody></table>`:'';
+
+  const prodottiHtml=prodotti.length?`
+    <div class="section-title">Prodotti in commercio ${totaleProdotti>prodotti.length?`<span style="color:#888;text-transform:none;letter-spacing:0;">(mostrati ${prodotti.length} su ${nf(totaleProdotti)})</span>`:''}</div>
+    <table><tbody>
+      ${prodotti.slice(0,50).map(p=>`<tr><td>${p.brand_name}</td><td style="color:#888;">${p.active_ingredients&&p.active_ingredients.length?p.active_ingredients.join(', '):''}</td><td class="num" style="font-weight:400;color:#aaa;font-size:10px;">${p.category==='principio_attivo'?'principio attivo':'commercializzato'}</td></tr>`).join('')}
+    </tbody></table>`:'';
+
+  const contattiHtml=contatti.length?`
+    <div class="section-title">Decision maker</div>
+    <table><tbody>
+      ${contatti.map(c=>`<tr><td>${c.nome||'—'}</td><td style="color:#888;">${c.ruolo||''}</td><td class="num" style="font-weight:400;color:#555;font-size:11px;">${[c.email,c.telefono].filter(Boolean).join(' · ')}</td></tr>`).join('')}
+    </tbody></table>`:'';
+
+  const annunciHtml=annunci.length?`
+    <div class="section-title">Annunci recenti (${annunci.length})</div>
+    <table><tbody>
+      ${annunci.map(a=>`<tr>
+        <td>${a.job_title||'—'}</td>
+        <td style="color:#888;">${[a.seniority_v2,a.functional_area_v2].filter(Boolean).join(' · ')}</td>
+        <td style="color:#888;">${a.region||a.province||''}</td>
+        <td class="num" style="font-weight:400;">${a.ral_min||a.ral_max?eur(a.ral_min)+(a.ral_max&&a.ral_max!==a.ral_min?'–'+eur(a.ral_max):'')+(a.ral_estimated?' (stima)':''):''}</td>
+        <td class="num" style="font-weight:400;color:#aaa;font-size:10px;">${a.published_date?new Date(a.published_date).toLocaleDateString('it-IT'):''}</td>
+      </tr>`).join('')}
+    </tbody></table>`:'<div class="summary-box">Nessun annuncio pubblicato rilevato per questa azienda.</div>';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Report Azienda — ${company.name}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}.page-break{page-break-before:always;}}
+.kpi-grid,.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
+.page{max-width:900px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:${BORDER};border:1px solid ${BORDER};border-radius:10px;overflow:hidden;margin:28px 0;}
+.kpi-cell{background:#fff;padding:14px 12px;text-align:center;}
+.kpi-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+.kpi-value{font-size:16px;font-weight:700;color:${DARK};}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+td{padding:7px 10px;border-bottom:1px solid ${BORDER2};color:#333;}
+td.num{text-align:right;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Report Azienda</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${company.name}</div>
+      <div style="font-size:11px;color:#888;">${company.ragione_sociale&&company.ragione_sociale!==company.name?company.ragione_sociale+' · ':''}${date}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">${kpiHtml}</div>
+
+  ${gruppoHtml}
+  ${coreHtml}
+  ${prodottiHtml}
+  ${contattiHtml}
+  ${annunciHtml}
+
+  <div class="footer">
+    Report generato da LS Job Intelligence sui dati aggregati disponibili per questa azienda.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
 // Etichette leggibili per i codici funzione della tassonomia (27/08). Elenco
 // piatto perche' la vista v_company_workforce_funzioni gia' filtra per azienda:
 // qui serve solo tradurre il codice, non ricostruire la gerarchia livello/archetipo.
@@ -10254,6 +10473,41 @@ function renderDemandScatter(){
         <div id="geo-readiness-body"></div>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- ── REPORT AZIENDE (pagina indipendente dal Report Builder sottostante:
+     stessa cartella HTML/JS ma nessuna funzione condivisa con generateCustomReport/
+     planReportFromPrompt/executeReportPlan/narrateReport/renderReportHTML) ── -->
+<div class="view" id="view-report-aziende">
+  <div style="padding:24px 32px;max-width:760px;">
+    <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">📇 Report Aziende</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Genera una scheda stampabile su una singola azienda: dati CORE, prodotti, gruppo, decision maker e ultimi annunci pubblicati.</div>
+
+    <div style="position:relative;max-width:420px;">
+      <input type="text" id="ra-search" placeholder="Cerca azienda per nome..." autocomplete="off" oninput="searchCompanyForReport(this.value)" style="width:100%;font-size:13px;padding:10px 14px;">
+      <div id="ra-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:260px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.25);"></div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
+      <button class="btn btn-primary" id="btn-generate-company-report" onclick="generateCompanyReport()" disabled style="background:#8b5cf6;border-color:#8b5cf6;opacity:.5;">📄 Genera Report</button>
+      <div id="ra-status" style="font-size:12px;color:var(--text2);"></div>
+    </div>
+
+    <div style="margin-top:32px;font-size:11px;color:var(--text2);line-height:1.9;">
+      <strong style="color:var(--text);">Esempi di attività già possibili oggi:</strong>
+      <ul style="margin:8px 0 20px 18px;padding:0;">
+        <li>Prima di un contatto commerciale o un colloquio: genera la scheda di un'azienda per vedere in un colpo d'occhio hiring recente, prodotti, gruppo di appartenenza e decision maker noti.</li>
+        <li>Verifica rapida se un'azienda "minore" fa in realtà parte di un gruppo più ampio (es. Bracco, Bayer) prima di valutarla come entità isolata.</li>
+        <li>Controlla se un'azienda sta assumendo davvero in un'area, o se l'unico segnale disponibile sono prodotti/certificazioni senza alcun annuncio recente.</li>
+      </ul>
+      <strong style="color:var(--text);">Direzioni su cui stiamo lavorando (dati già in parte disponibili):</strong>
+      <ul style="margin:8px 0 0 18px;padding:0;">
+        <li><strong>Filiera di prodotto</strong> — collegare chi produce un principio attivo a chi lo usa nel farmaco finito e a chi lo commercializza (es. la furosemide di F.I.S. Fabbrica Italiana Sintetici rifornisce 9 aziende diverse, da Sandoz a Sanofi).</li>
+        <li><strong>Concorrenza per prodotto</strong> — aziende diverse con lo stesso principio attivo o la stessa categoria di dispositivo sono competitor diretti, anche se sembrano scollegate su settore o area terapeutica.</li>
+        <li><strong>Segnali anticipatori</strong> — un'azienda con una novità regolatoria/CORE recente ma senza ancora annunci pubblicati potrebbe assumere a breve in quell'area: un segnale prima che compaia l'annuncio.</li>
+      </ul>
     </div>
   </div>
 </div>

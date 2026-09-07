@@ -92,6 +92,15 @@ const CATEGORIA_GENERICA = new Set([
 // "Sa" — bug reale trovato il 07/09/2026 su "MINERARIA SACILESE").
 const FORMA_SOCIETARIA = /\b(s\.?p\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|s\.?n\.?c\.?|s\.?c\.?a\.?r\.?l\.?|societa cooperativa)(?![a-zA-Z])/gi;
 
+// Il campo "Substance" di EDQM a volte include in coda i codici prodotto
+// interni del certificato ("Levothyroxine sodium hydrate, Product code 083508
+// and product code 083510") — non fanno parte del nome della sostanza, si
+// tagliano. Trovato il 07/09/2026 su 5 righe già importate (ripulite a mano),
+// qui si evita che si riformino ad ogni rilancio dello script.
+function pulisciSostanza(s) {
+  return (s || '').replace(/,?\s*Product codes?:?.*/i, '').trim();
+}
+
 // "ICE S.P.A. Basaluzzo, Alessandria IT" -> {nome: "ICE S.P.A.", luogo: "Basaluzzo, Alessandria"}
 // Cerca l'ULTIMA forma societaria nel testo (prima della citta') e taglia li'.
 function separaNomeELuogo(holderConPaese) {
@@ -161,7 +170,7 @@ async function runPrincipiAttiviEdqmDailyBatch(apply = CLI_APPLY) {
 
   for (const r of italianeValide) {
     const { nome: nomeAzienda, luogo } = separaNomeELuogo(r['Certificate (CEP) Holder']);
-    const sostanza = (r['Substance'] || '').trim();
+    const sostanza = pulisciSostanza(r['Substance']);
     if (!nomeAzienda || !sostanza) continue;
 
     let azienda = accoppiaEsatto(nomeAzienda);
