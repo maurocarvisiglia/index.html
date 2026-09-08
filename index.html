@@ -9719,20 +9719,34 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
     return `<div style="margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
   }
 
+  // Settore/area terapeutica/presenza Italia erano 3 colonne separate — con
+  // 7 colonne totali il browser schiacciava "In comune su"/"Pipeline" in
+  // strisce larghe pochi caratteri, rendendo illeggibili le sintesi AI piu'
+  // lunghe (caso reale: AstraZeneca/GSK nel report Orion, 8/09/2026).
+  // Consolidati in una riga di metadati sotto il nome azienda (stesso posto
+  // gia' usato per "catalogo: N prodotti"): la tabella scende a 3-4 colonne,
+  // le due che contano davvero (overlap, pipeline) hanno finalmente spazio.
   function tabella(titolo,concorrenti,conAreaTerapeutica){
     if(!concorrenti.length)return '';
     const conPipeline=concorrenti.some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
-    const righe=concorrenti.map(c=>`<tr>
+    const righe=concorrenti.map(c=>{
+      const presenza=presenzaItaliaTesto(c);
+      const meta=[
+        c.catalogoTotale!=null?`catalogo: ${c.catalogoTotale} prodotti`:null,
+        c.sector_v2||null,
+        conAreaTerapeutica&&c.aree_terapeutiche.length?c.aree_terapeutiche.join(', '):null,
+        presenza!=='—'?presenza:null,
+      ].filter(Boolean).join(' · ');
+      return `<tr>
       <td>${tierBadgeHtml(c)}</td>
-      <td>${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:#aaa;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
-      <td style="color:#888;">${c.sector_v2||''}</td>
-      ${conAreaTerapeutica?`<td style="color:#888;">${c.aree_terapeutiche.join(', ')}</td>`:''}
-      <td style="color:#888;">${presenzaItaliaTesto(c)}</td>
+      <td>${c.name}${meta?`<div style="font-size:9px;color:#aaa;">${meta}</div>`:''}</td>
       <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
       ${conPipeline?`<td style="color:#333;font-size:11px;">${pipelineCellTesto(c,fattoPipelineHtml)}</td>`:''}
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
     return `<div class="section-title">${titolo} (${concorrenti.length})</div>
-    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>Presenza Italia</th><th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
+    <table><colgroup><col style="width:110px;"><col style="width:22%;"><col>${conPipeline?'<col>':''}</colgroup>
+    <thead><tr><th>Punteggio</th><th>Azienda</th><th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
   }
 
   const riepilogo=prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
