@@ -192,7 +192,24 @@ async function runDispositiviMediciDailyBatch(apply = CLI_APPLY) {
     const tokensEstero = tokenSet(norm(nomeEstero));
     if (!tokensEstero.size) return null;
     const candidati = conToken.filter(({ tokens }) => {
-      if (tokens.size === 1 && CATEGORIA_GENERICA.has([...tokens][0])) return false;
+      // Un solo token distintivo NON basta piu', qualunque esso sia — non solo
+      // quando e' in CATEGORIA_GENERICA. Scoperto l'8/09/2026 sul registro reale:
+      // "Orion Pharma S.R.L." si riduce al solo token "orion" (dopo la rimozione
+      // di "pharma"/"srl") e ha abbinato per contenimento "ORION SUTURES PRIVATE
+      // LIMITED" (India), "ORION GT S.R.L." e "ORION TECHNOLOGIES SRL" — tre
+      // fabbricanti totalmente estranei che condividono solo quella parola.
+      // Stesso identico bug trovato su altre 7 aziende reali (Sun Pharma ->
+      // "Sun Medical Co." Giappone, Leo Pharma -> "Leo Medical Co." Corea, CHR
+      // Hansen -> "Hansen Medical Inc" USA, Lotus Pharmaceutical -> "Lotus
+      // Surgicals"/"Lotus NL B.V.", Towa Pharmaceutical -> "Towa Medical
+      // Instruments"/"Towa S.r.l.", piu' abbinamenti parziali su Promega e
+      // Medac) — su un registro di >2 milioni di righe e decine di migliaia di
+      // fabbricanti distinti, un solo token comune (anche non generico in senso
+      // industriale, come un nome proprio breve) non e' mai un segnale
+      // sufficientemente specifico. Richiede sempre almeno 2 token distintivi in
+      // comune, che nella pratica ha sempre significato "stessa azienda" nei
+      // ~300 abbinamenti per contenimento gia' rivisti a mano in questo script.
+      if (tokens.size < 2) return false;
       return [...tokens].every((t) => tokensEstero.has(t));
     });
     return candidati.length === 1 ? candidati[0].c : null;

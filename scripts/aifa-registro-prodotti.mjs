@@ -221,10 +221,16 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
     const titolareTokens = tokenSet(norm(nomeEstero));
     if (!titolareTokens.size) return null;
     const candidati = conToken.filter(({ tokens }) => {
-      // Un solo token nel nome dell'azienda ESISTENTE, e quel token e' un
-      // termine di categoria (non un brand) -> troppo debole per fidarsi da
-      // solo, scarta a prescindere dal contenimento (vedi commento sopra).
-      if (tokens.size === 1 && CATEGORIA_GENERICA.has([...tokens][0])) return false;
+      // Un solo token distintivo non basta MAI, generico o no — non solo
+      // quando e' in CATEGORIA_GENERICA. Stesso bug trovato l'8/09/2026 nel
+      // gemello di questo script per i dispositivi medici
+      // (dispositivi-medici-registro.mjs): "Orion Pharma S.R.L." si riduceva
+      // al solo token "orion" e abbinava per contenimento fabbricanti esteri
+      // completamente estranei che condividevano solo quella parola (Sun
+      // Pharma -> "Sun Medical", Leo Pharma -> "Leo Medical", CHR Hansen ->
+      // "Hansen Medical", ecc. — 8 aziende reali coinvolte). Stessa logica di
+      // matching, stesso rischio: richiede sempre almeno 2 token distintivi.
+      if (tokens.size < 2) return false;
       return [...tokens].every((t) => titolareTokens.has(t));
     });
     return candidati.length === 1 ? candidati[0].c : null;

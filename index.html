@@ -9925,7 +9925,14 @@ function formattaSovrapposizione(s){
 // dell'app), stesso principio gia' seguito per fattoPipelineHtml.
 function tierBadgeHtml(c){
   if(c.punteggio==null||!c.tier)return '';
-  return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${c.tier.colore};border-radius:10px;padding:2px 8px;white-space:nowrap;">${c.punteggio} · ${c.tier.label}</span>`;
+  // NIENTE white-space:nowrap: con table-layout:fixed (introdotto per il
+  // word-break delle celle lunghe) una colonna stretta non si allarga piu'
+  // per contenere il badge — "Competitor strategico" senza possibilita' di
+  // andare a capo finiva per sovrapporsi visivamente al testo della colonna
+  // successiva (bug reale trovato l'8/09/2026 sul report Orion, introdotto
+  // dalla stessa modifica che ha risolto il problema del testo incollato).
+  // Il badge va a capo su 2 righe quando serve, mai piu' fuori dai suoi limiti.
+  return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${c.tier.colore};border-radius:10px;padding:2px 8px;line-height:1.4;">${c.punteggio} · ${c.tier.label}</span>`;
 }
 
 // Presenza/struttura in Italia di un'azienda (Fase B, richiesta sulle stesse
