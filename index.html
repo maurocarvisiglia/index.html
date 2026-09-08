@@ -1797,6 +1797,7 @@ async function importVocationsCSV(event){
   // blacklist non vanno importati affatto — controllo qui, PRIMA
   // dell'inserimento, non dopo.
   await loadBlocklist();
+  await loadCompanyIndex(); // per il fallback sector_v2 da anagrafica quando il CSV dice N/A
   for(let idx=0;idx<rows.length;idx++){
     const row=rows[idx];
     const title=(row['Nome posizione']||'').trim();
@@ -1825,7 +1826,16 @@ async function importVocationsCSV(event){
     if(rd&&rd!=='N/A'){const p=rd.split('/');if(p.length===3)published_date=p[2]+'-'+p[1]+'-'+p[0];}
     const ral=parseRAL(row['Stipendio annuo']||'');
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
-    const sector_v2=sectorMap[settoreRaw]||null;
+    let sector_v2=sectorMap[settoreRaw]||null;
+    // Se il CSV non specifica un settore (spesso "N/A" anche per aziende grandi e
+    // note — caso reale: Alfasigma), recupera sector_v2 dall'anagrafica azienda
+    // gia' esistente invece di lasciarlo vuoto — richiesto da Mauro l'8/09/2026
+    // ("i report devono pescare da tutti i dati disponibili"). Mai il contrario:
+    // non si scrive MAI su companies da qui, solo lettura.
+    if(!sector_v2){
+      const esistente=_companyIndexCache?.get(normalizeCompanyName(company))||_companyIndexCache?.get(normalizeCompanyName(ragioneSocialeRaw));
+      if(esistente?.sector_v2)sector_v2=esistente.sector_v2;
+    }
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
     let contract_type=contractMap[contractRaw]||null;
     const tl=title.toLowerCase();
@@ -1848,22 +1858,32 @@ async function importVocationsCSV(event){
     let functional_area_v2=roleInfo.functional_area||null;
     if(!functional_area_v2){
       // Healthcare PRIMA degli altri per evitare conflitti
-      if(/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|direttore.*farmacia|direttric.*farmacia/.test(tl))functional_area_v2='healthcare_services';
-      else if(/\bisf\b|informatore scientifico|informatore medico|sales rep|key account|\bkam\b|territory|district manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|addett.*vendite|field.*reimbursement/.test(tl))functional_area_v2='commercial';
-      else if(/medical advisor|\bmsl\b|medical science liaison|medical manager|medical affairs|field.*medical/.test(tl))functional_area_v2='medical_affairs';
+      // Aggiunte l'8/09/2026 (diagnosi import Vocations 08/09): dentale/ostetrica/
+      // cardiologo non erano coperti — ruoli sanitari reali visti nel CSV.
+      if(/farmacist|fisioterapist|infermier|\boss\b|operatore socio sanitario|audioprotesist|logopedist|igienist|nutrizionist|soccorritore|tecnico.*radiolog|direttore.*farmacia|direttric.*farmacia|assistente dental|dentale|odontoiatric|ostetric|cardiolog/.test(tl))functional_area_v2='healthcare_services';
+      // "Informatore/trice Scientifico/a" (grafia inclusiva con slash) non veniva
+      // riconosciuto dal pattern esatto "informatore scientifico" — sostituito con
+      // un pattern piu' permissivo. Aggiunti anche account manager/field service/
+      // field application/supporto clienti (equivalente IT di "customer support")/
+      // vendita (non solo "vendite" plurale)/sales generico.
+      else if(/\bisf\b|informatore.*scientific|informatore medico|sales rep|key account|\baccount manager\b|\bkam\b|territory|district manager|agente.*farmacia|agente.*monomandatario|tecnico.*commerciale|addett.*vendit|field.*reimbursement|field service|field application|supporto clienti|service training|customer education|\bsales\b/.test(tl))functional_area_v2='commercial';
+      else if(/medical advisor|\bmsl\b|medical science liaison|medical manager|medical affairs|medical excellence|field.*medical|clinical education/.test(tl))functional_area_v2='medical_affairs';
       else if(/regulatory|registrazione|global.*labeling|trade compliance/.test(tl))functional_area_v2='regulatory_affairs';
-      else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b|serialization|instrumentation.*calibration/.test(tl))functional_area_v2='quality';
-      else if(/market access|pricing|tender/.test(tl))functional_area_v2='market_access';
+      else if(/quality assurance|\bqa\b|quality manager|quality control|\bqc\b|quality specialist|serialization|instrumentation.*calibration/.test(tl))functional_area_v2='quality';
+      else if(/market access|pricing|tender|\bgare\b|ufficio gare/.test(tl))functional_area_v2='market_access';
       else if(/pharmacovigilance|drug safety|farmacovigilanza|patient safety/.test(tl))functional_area_v2='drug_safety';
       else if(/clinical research|\bcra\b|clinical operations|clinical.*project|clinical.*science|clinical.*quality/.test(tl))functional_area_v2='clinical_operations';
       else if(/marketing|brand manager|product manager|new product commercialization/.test(tl))functional_area_v2='marketing';
-      else if(/production planning|plant manager|manufacturing.*manager|confezionamento|pesate|opex|lean|\brspp\b/.test(tl))functional_area_v2='manufacturing';
+      // Espanso: operaio/responsabile produzione/capo turno/attrezzista/plant
+      // engineer/maintenance/site operations/HSE-ASPP-sicurezza sul lavoro erano
+      // tutti assenti — mancava buona parte del vocabolario produzione reale.
+      else if(/production planning|plant manager|plant engineer|manufacturing.*manager|confezionamento|pesate|opex|lean|\brspp\b|\baspp\b|\bhse\b|sicurezza sul lavoro|consulente hse|operai[oa]|responsabile.*produzione|capo turno|attrezzista|maintenance|site operations|consumable operator/.test(tl))functional_area_v2='manufacturing';
       else if(/supply chain|logistic|warehouse|magazzino|procurement|approvvigionament|material buyer/.test(tl))functional_area_v2='supply_chain';
       else if(/\br&d\b|ricerca.*sviluppo|analytical.*development|post.?doc|medicinal chemistry/.test(tl))functional_area_v2='rd';
-      else if(/\bhr\b|human resource|talent.*acquisition|recruiter|selezione.*recruiting|talent.*development/.test(tl))functional_area_v2='hr';
-      else if(/finance|controller|budget|accounting|\bsso\b/.test(tl))functional_area_v2='finance';
-      else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack/.test(tl))functional_area_v2='it';
-      else if(/business development|licensing|partnership/.test(tl))functional_area_v2='business_development';
+      else if(/\bhr\b|human resource|talent.*acquisition|recruiter|selezione.*recruiting|talent.*development|people experience/.test(tl))functional_area_v2='hr';
+      else if(/finance|controller|budget|accounting|\bsso\b|treasury/.test(tl))functional_area_v2='finance';
+      else if(/software|digital.*service|data engineer|cybersecurity|ai engineer|full.*stack|\bsap\b|application support|\bict\b|it application/.test(tl))functional_area_v2='it';
+      else if(/business development|licensing|partnership|market development/.test(tl))functional_area_v2='business_development';
       else if(/customer service|customer support|assistenza clienti/.test(tl))functional_area_v2='commercial';
     }
     // Seniority: UNICA funzione condivisa con la riclassificazione (classifySeniorityFromText).
@@ -2935,7 +2955,7 @@ async function loadCompanyIndex(forceRefresh){
   // merged_into=is.null: le aziende gia' fuse in un'altra non devono mai essere
   // ritrovate come "esistenti" — altrimenti si riaprirebbe un record scartato
   // invece di usare quello canonico in cui e' stato fuso.
-  const rows=await api('companies?select=id,name,ragione_sociale,iva,website&merged_into=is.null');
+  const rows=await api('companies?select=id,name,ragione_sociale,iva,website,sector_v2&merged_into=is.null');
   _companyIndexCache=new Map();
   rows.forEach(c=>{
     const key1=normalizeCompanyName(c.name);
@@ -8599,6 +8619,22 @@ const CORE_TIPO_LABEL={
 const CORE_TIPO_ORDINE=['gruppo','partnership_commerciale','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
 const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci',registro_pubblico:'registro pubblico'};
 
+// Etichette per i codici di company_therapeutic_areas.code — mai esistita finora
+// (il codice serve solo da filtro nei report a prompt, mai da mostrare a
+// schermo/stampa): senza questa mappa i report stampavano il codice grezzo
+// ("ta_consumer_health") invece di un'etichetta leggibile. Trovato l'8/09/2026
+// sul report concorrenti di Orion/Steris (bug "Layout PDF e Pulizia Stringhe").
+const THERAPEUTIC_AREA_LABEL={
+  oncology:'Oncologia',hematology:'Ematologia',rare_diseases:'Malattie rare',immunology:'Immunologia',
+  cardiovascular:'Cardiovascolare',diabetes:'Diabete',respiratory:'Respiratorio',neurology:'Neurologia',
+  neuroscience:'Neuroscienze',dermatology:'Dermatologia',ophthalmology:'Oftalmologia',vaccines:'Vaccini',
+  infectious_diseases:'Malattie infettive',gastroenterology:'Gastroenterologia',womens_health:'Salute femminile',
+  urology:'Urologia',pain:'Dolore',ta_consumer_health:'Consumer Health',endocrinology:'Endocrinologia',
+  hepatology:'Epatologia',nephrology:'Nefrologia',oncohematology:'Onco-ematologia',pathology:'Patologia',
+  pediatrics:'Pediatria',rheumatology:'Reumatologia',multiple:'Multiple',not_applicable:'Non applicabile',
+};
+function areaTerapeuticaLabel(code){ return THERAPEUTIC_AREA_LABEL[code]||code; }
+
 // Sottoinsieme di CORE_TIPO_ORDINE usato dal report concorrenti (Report Aziende)
 // per i segnali di "market radar": pipeline regolatoria e studi clinici, sia
 // del target sia dei concorrenti trovati. Richiesto da Mauro dopo il report
@@ -8622,7 +8658,10 @@ function escHtml(s){
 function coreFattoHtml(f){
   const fonte=CORE_FONTE_LABEL[f.fonte]||f.fonte||'';
   const link=f.url?`<a href="${escHtml(f.url)}" target="_blank" title="${escHtml(f.prova||'')}" style="font-size:10px;color:var(--text2);text-decoration:none;margin-left:6px;white-space:nowrap;">↗ ${fonte}</a>`:'';
-  return `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
+  // Spazio letterale prima del link, non solo margin-left CSS: un margine
+  // visivo non produce un carattere di spazio nel livello testo del PDF
+  // stampato, quindi "valore"+link finivano incollati ("AUMOLEsito ufficia").
+  return `<div style="font-size:12px;color:var(--text);margin-bottom:4px;">${escHtml(f.valore)} ${link}</div>`;
 }
 
 async function loadCoreCard(companyId,listings){
@@ -9094,12 +9133,12 @@ async function generaReportUnico(){
         if(win&&!win.closed)win.close();
         return;
       }
-      const {concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico}=await trovaConcorrenti(risolta.azienda.id);
+      const {concorrentiFarmaci,concorrentiDispositivi,partnership,partnershipRilevate,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,dispositiviMarginaliPerTarget,sintesiEsecutiva}=await trovaConcorrenti(risolta.azienda.id);
       // "primi N" si applica per gruppo, non sul totale misto — altrimenti
       // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
       // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
       const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
-      html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget,coperturaOrganico);
+      html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva);
     }else{
       const aziende=await executeCompanySearchPlan(plan);
       if(!aziende.length){
@@ -9323,8 +9362,8 @@ tr{break-inside:avoid;page-break-inside:avoid;}
 .kpi-value{font-size:16px;font-weight:700;color:${DARK};}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
 .summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
-td{padding:7px 10px;border-bottom:1px solid ${BORDER2};color:#333;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+td{padding:7px 10px;border-bottom:1px solid ${BORDER2};color:#333;overflow-wrap:break-word;word-break:break-word;}
 td.num{text-align:right;}
 .footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
 </style></head><body>
@@ -9414,7 +9453,33 @@ async function recuperaOrganicoPerAziende(ids){
 function fattoPipelineHtml(f){
   const fonte=CORE_FONTE_LABEL[f.fonte]||f.fonte||'';
   const link=f.url?`<a href="${escHtml(f.url)}" target="_blank" title="${escHtml(f.prova||'')}" style="font-size:10px;color:#888;text-decoration:none;margin-left:6px;">↗ ${fonte}</a>`:'';
-  return `<div style="margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
+  // Stesso fix di coreFattoHtml: spazio letterale, non solo margin-left CSS —
+  // altrimenti il testo estratto dal PDF stampato incolla valore e link.
+  return `<div style="margin-bottom:4px;">${escHtml(f.valore)} ${link}</div>`;
+}
+
+// Categorie CND "contenitore" — non descrivono un prodotto specifico ma un
+// residuo ("non altrimenti classificata", accessori hardware generici):
+// condivise per costruzione da decine di aziende che non vendono affatto lo
+// stesso tipo di dispositivo (verificato su Steris l'8/09/2026: "STRUMENTAZIONE
+// VARIA PER ESPLORAZIONI FUNZIONALI... - COMPONENTI ACCESSORI HARDWARE" mette
+// insieme cavi/hardware genericissimi di Steris, Medtronic, Stryker, Straumann
+// — zero relazione di prodotto reale). Escluse dal conteggio/punteggio dei
+// concorrenti-dispositivi PRIMA di calcolare rarità/punteggio: un'azienda che
+// condivide SOLO categorie di questo tipo con il target non è un vero overlap,
+// non solo un overlap "pesato meno". Mai applicato a farmaci/classe
+// terapeutica: li' il valore condiviso e' sempre un principio attivo o un
+// codice ATC, mai un contenitore generico.
+const CATEGORIE_DISPOSITIVO_GENERICHE=[
+  /NON ALTRIMENTI CLASSIFICATA$/i,
+  /- COMPONENTI ACCESSORI HARDWARE$/i,
+  /^DISPOSITIVI (NON COMPRESI NELLE CLASSI PRECEDENTI|VARI NON COMPRESI IN ALTRE CLASSI) - ALTRI$/i,
+  /^ATTREZZATURE DI SUPPORTO ALL'ATTIVITA' SANITARIA - (ALTRE|ACCESSORI)$/i,
+  /^"?DISPOSITIVI PER CONFEZIONAMENTO E STERILIZZAZIONE \(ESCLUSI DM CAT\. D - Z\) - ALTRI"?$/i,
+  /^VASSOI E BACINELLE PER USO CLINICO MARCATI COME DISPOSITIVI MEDICI$/i,
+];
+function categoriaDispositivoGenerica(valore){
+  return CATEGORIE_DISPOSITIVO_GENERICHE.some(re=>re.test(valore));
 }
 
 // ── Concorrenza per prodotto: trova altre aziende che vendono lo stesso
@@ -9450,6 +9515,19 @@ async function trovaConcorrenti(companyId){
 
   const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category,regime_farmaco,atc_code&company_id=eq.${companyId}`);
 
+  const [targetRows]=await Promise.all([api(`companies?select=name,company_group_id,sector_v2&id=eq.${companyId}`)]);
+  // Il target ha una vocazione chiaramente farmaceutica — i concorrenti sui
+  // dispositivi sono per definizione una linea secondaria del suo business,
+  // qualunque sia l'ampiezza del suo catalogo dispositivi. Usa sector_v2 (gia'
+  // classificato, zero query aggiuntive), non il conteggio SKU proprio: Orion
+  // Pharma ha 14 prodotti dispositivo (suture) contro 10 farmaco — il 58% per
+  // NUMERO di SKU, ma resta "Mid Pharma" per fatturato/identita' di mercato
+  // (verificato l'8/09/2026: il conteggio SKU e' un proxy sbagliato, un catalogo
+  // di varianti di sutura puo' avere piu' righe di poche referenze farmaco ad
+  // alto fatturato senza che l'azienda sia per questo un'azienda di dispositivi).
+  const SETTORI_FARMA=new Set(['Big Pharma','Mid Pharma','Pharma','Specialty Pharma','Biotech']);
+  const dispositiviMarginaliPerTarget=SETTORI_FARMA.has(targetRows[0]?.sector_v2);
+
   // Coppie (campo, valore, categoria di prodotto) uniche — NON solo (campo,
   // valore): lo stesso principio attivo prodotto come materia prima da
   // un'azienda e venduto come farmaco finito da un'altra NON e' concorrenza,
@@ -9469,7 +9547,7 @@ async function trovaConcorrenti(companyId){
     (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
     if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
 
   // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
   // + regime farmaco, per poter mostrare "in comune su" con contesto invece
@@ -9538,7 +9616,7 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogliClasse));
   }
 
-  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}};
+  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
 
   const idsConcorrenti=[...new Set([...perAzienda.keys(),...perAziendaClasse.keys()])];
   const aziende=[];
@@ -9546,7 +9624,6 @@ async function trovaConcorrenti(companyId){
     const lotto=idsConcorrenti.slice(i,i+150);
     aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id,region,dipendenti,fatturato_range&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null`));
   }
-  const [targetRows]=await Promise.all([api(`companies?select=company_group_id&id=eq.${companyId}`)]);
   const gruppoTarget=targetRows[0]?.company_group_id||null;
 
   // Area terapeutica DELL'AZIENDA (approssimazione scelta da Mauro l'8/09/2026:
@@ -9623,11 +9700,29 @@ async function trovaConcorrenti(companyId){
     percentuale:idsConcorrenti.length?Math.round(100*organicoPerAzienda.size/idsConcorrenti.length):0,
   };
 
+  // Un'azienda gia' segnalata come partner commerciale/co-sviluppo nei fatti
+  // CORE del target (es. Bayer/Nubeqa co-sviluppato con Orion) non e' un
+  // concorrente: e' un canale di mercato condiviso. Richiesto da Mauro
+  // l'8/09/2026 dopo aver visto Bayer comparire nel gruppo "classe
+  // terapeutica" di Steris nonostante la nota di partnership gia' mostrata in
+  // testa al report — la nota era decorativa, non incideva sul conteggio.
+  // Match testuale (nessun ID aziendale nel fatto CORE, solo testo libero
+  // estratto dall'AI): il nome azienda compare per intero dentro il testo
+  // della partnership. Soglia minima di 4 caratteri per evitare falsi
+  // positivi su nomi troppo corti/generici (stesso principio gia' in uso per
+  // gli alias di normalizeJobTitle).
+  function notaComePartner(nome){
+    if(!partnership.length||!nome||nome.length<4)return false;
+    const nomeLower=nome.toLowerCase();
+    return partnership.some(p=>p.toLowerCase().includes(nomeLower));
+  }
+
   function infoAzienda(a){
     return {
       id:a.id, name:a.name, sector_v2:a.sector_v2,
       aree_terapeutiche:[...(areeTerapeuticePerAzienda.get(a.id)||[])],
       stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
+      partnerNoto:notaComePartner(a.name),
       segnaliPipeline:segnaliPipelinePerAzienda.get(a.id)||[],
       sintesiPipeline:sintesiPipelinePerAzienda.get(a.id)||null,
       recruitingRelevance:recruitingRelevancePerAzienda(a.id),
@@ -9635,17 +9730,23 @@ async function trovaConcorrenti(companyId){
     };
   }
 
-  const tutti=aziende.map(a=>{
+  const tuttiConPartner=aziende.map(a=>{
     const perValore=perAzienda.get(a.id);
-    const sovrapposizioni=perValore?[...perValore.entries()].map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
-      valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
-      nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
-      regimi:[...new Set([...regimiPropri,...regimiLoro])],
-    })):[];
+    const sovrapposizioni=perValore?[...perValore.entries()]
+      .map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
+        valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
+        nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
+        regimi:[...new Set([...regimiPropri,...regimiLoro])],
+      }))
+      // Categorie CND generiche ("non altrimenti classificata", hardware
+      // accessorio) escluse SOLO lato dispositivo — mai un vero segnale di
+      // prodotto reale, vedi CATEGORIE_DISPOSITIVO_GENERICHE sopra.
+      .filter(s=>!(s.tipo==='dispositivo'&&categoriaDispositivoGenerica(s.valore)))
+      :[];
     return {...infoAzienda(a), sovrapposizioni};
   }).filter(c=>!c.stessoGruppo); // integrazione interna, non e' concorrenza di mercato
 
-  const tuttiClasse=aziende.map(a=>{
+  const tuttiClasseConPartner=aziende.map(a=>{
     const perClasse=perAziendaClasse.get(a.id);
     const sovrapposizioni=perClasse?[...perClasse.entries()].map(([prefix,{nomiPropri,nomiLoro}])=>({
       valore:`Classe ATC ${prefix}`, tipo:'classe_terapeutica',
@@ -9653,6 +9754,18 @@ async function trovaConcorrenti(companyId){
     })):[];
     return {...infoAzienda(a), sovrapposizioni};
   }).filter(c=>!c.stessoGruppo);
+
+  // Le aziende gia' segnalate come partner (notaComePartner) escono dal
+  // conteggio concorrenti (mai un "Competitor strategico" travestito da
+  // partner commerciale) e finiscono in una sezione dedicata a se', con lo
+  // stesso dettaglio di sovrapposizione gia' calcolato — non solo il nome.
+  const partnershipRilevate=[];
+  const idPartnerVisti=new Set();
+  [...tuttiConPartner,...tuttiClasseConPartner].forEach(c=>{
+    if(c.partnerNoto&&!idPartnerVisti.has(c.id)){ idPartnerVisti.add(c.id); partnershipRilevate.push(c); }
+  });
+  const tutti=tuttiConPartner.filter(c=>!c.partnerNoto);
+  const tuttiClasse=tuttiClasseConPartner.filter(c=>!c.partnerNoto);
 
   // Farmaci e dispositivi sono mercati diversi (v. Orion Pharma: suture
   // chirurgiche vs principi attivi CNS/oncologia) — ordinare/limitare un
@@ -9703,6 +9816,26 @@ async function trovaConcorrenti(companyId){
     // di categorie CND): tutto calcolato dai dati gia' raccolti da
     // raccogli()/raccogliClasse() qui sopra, zero query aggiuntive per il
     // punteggio in se'.
+    //
+    // Corretto ulteriormente l'8/09/2026 (caso Steris, seconda analisi
+    // esterna): anche dopo l'esclusione delle categorie generiche sopra,
+    // Moretti (57 categorie condivise, generalista) restava nettamente sopra
+    // Getinge (6 categorie, la vera specialita' di sterilizzazione condivisa
+    // con Steris) — sqrt(n) senza limite premia comunque l'AMPIEZZA di un
+    // catalogo enorme anche quando le sue categorie non sono individualmente
+    // piu' rare in media. Si contano quindi solo le TOP_K_SOVRAPPOSIZIONI
+    // sovrapposizioni piu' rare (idf piu' alto) per azienda: un catalogo
+    // sterminato non guadagna piu' ampiezza oltre questa soglia, mentre un
+    // vero specialista con poche sovrapposizioni fortissime non viene mai
+    // penalizzato (ne ha comunque meno del tetto). Verificato con dati reali:
+    // a K=10 Getinge saliva solo a 64/100 (Competitor diretto, Moretti
+    // restava a 100); a K=3 Getinge sale a 95/100, nello stesso tier
+    // "Competitor strategico" di Moretti — un tetto piu' stretto pesa meno le
+    // decine di categorie generiche-ma-non-bloccate di un distributore
+    // generalista. K=3 NON altera i punteggi farmaco gia' approvati da Mauro
+    // su Orion (Sandoz/Teva/AstraZeneca condividono al massimo 3 principi
+    // attivi ciascuno, quindi il tetto non li tocca).
+    const TOP_K_SOVRAPPOSIZIONI=3;
     const nAziendePerValore=new Map();
     filtrata.forEach(c=>c.sovrapposizioni.forEach(s=>{
       nAziendePerValore.set(s.valore,(nAziendePerValore.get(s.valore)||0)+1);
@@ -9721,9 +9854,9 @@ async function trovaConcorrenti(companyId){
     }
 
     const conPunteggioGrezzo=conCatalogo.map(c=>{
-      const idfs=c.sovrapposizioni.map(s=>idf(s.valore));
+      const idfs=c.sovrapposizioni.map(s=>idf(s.valore)).sort((a,b)=>b-a).slice(0,TOP_K_SOVRAPPOSIZIONI);
       const mediaIdf=idfs.reduce((a,b)=>a+b,0)/idfs.length;
-      return {...c, _punteggioGrezzo:Math.sqrt(c.sovrapposizioni.length)*mediaIdf};
+      return {...c, _punteggioGrezzo:Math.sqrt(idfs.length)*mediaIdf};
     });
     const massimo=Math.max(...conPunteggioGrezzo.map(c=>c._punteggioGrezzo))||1;
     return conPunteggioGrezzo
@@ -9731,18 +9864,37 @@ async function trovaConcorrenti(companyId){
         const punteggio=Math.round(100*_punteggioGrezzo/massimo);
         return {...c, punteggio, tier:tierPerPunteggio(punteggio)};
       })
-      .sort((a,b)=>b.punteggio-a.punteggio||a.name.localeCompare(b.name));
+      // A parita' di punteggio (frequente nel gruppo classe terapeutica: chi
+      // condivide solo la stessa classe ATC ha per costruzione lo stesso
+      // singolo valore condiviso, quindi lo stesso punteggio per tutti — 6
+      // aziende diverse a "100" nello stesso report) chi ha piu' dipendenti
+      // in Italia sale prima: a parita' di segnale statistico, una struttura
+      // commerciale locale piu' grande e' un rischio competitivo piu'
+      // concreto da presidiare per primo.
+      .sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name));
   }
 
   // I 3 gruppi non condividono aziende (farmaci/dispositivi/classe sono
   // insiemi diversi per costruzione), quindi calcolarli in parallelo è
   // corretto e più veloce che in sequenza (ognuno fa le sue query di
   // catalogoTotale, a lotti, indipendenti dagli altri due gruppi).
-  const [concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica]=await Promise.all([
+  const [concorrentiFarmaci,concorrentiDispositiviGrezzi,concorrentiClasseTerapeutica]=await Promise.all([
     estraiGruppo(tutti,'farmaco'),
     estraiGruppo(tutti,'dispositivo'),
     estraiGruppo(tuttiClasse,'classe_terapeutica'),
   ]);
+
+  // Dimezza il punteggio (mai il tier "Competitor strategico"/"diretto" per
+  // un overlap marginale rispetto al core business) e riordina — vedi
+  // dispositiviMarginaliPerTarget sopra.
+  const concorrentiDispositivi=dispositiviMarginaliPerTarget
+    ?concorrentiDispositiviGrezzi.map(c=>{
+        const punteggio=Math.round(c.punteggio*0.5);
+        return {...c, punteggio, tier:tierPerPunteggio(punteggio)};
+      }).sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name))
+    :concorrentiDispositiviGrezzi;
+
+  const sintesiEsecutiva=await sintetizzaMinacceCompetitive(targetRows[0]?.name||'questa azienda',concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,dispositiviMarginaliPerTarget);
 
   return {
     valori:listaCompiti.map(c=>c.valore),
@@ -9750,9 +9902,12 @@ async function trovaConcorrenti(companyId){
     concorrentiDispositivi,
     concorrentiClasseTerapeutica,
     partnership,
+    partnershipRilevate,
     segnaliTarget,
     sintesiPipelineTarget,
     coperturaOrganico,
+    dispositiviMarginaliPerTarget,
+    sintesiEsecutiva,
   };
 }
 
@@ -9835,6 +9990,48 @@ const SOGLIA_SINTESI_PIPELINE=4;
 // numeri/aree non deducibili dall'elenco fornito. Se la chiamata fallisce
 // (stessa cascata provider di callAIPowerful, puo' fallire), chi chiama
 // ricade sull'elenco completo dei fatti invece di bloccare il report.
+// Riepilogo esecutivo del report concorrenti (Fase D, 8/09/2026): il
+// riepilogo Fase B era solo una tabella di conteggio, "priva di valore
+// analitico immediato" — richiesto un box di sintesi in prosa che dica DOVE
+// si concentra davvero la minaccia. Stesso principio gia' consolidato in
+// narraConfrontoAziende/sintetizzaPipeline: l'AI riceve SOLO i concorrenti e
+// punteggi GIA' calcolati in modo deterministico (mai accesso libero al
+// database), istruita esplicitamente a non aggiungere aziende o aree
+// terapeutiche non presenti nell'elenco. Se la chiamata fallisce (stessa
+// cascata provider di callAIPowerful, puo' fallire), fallback deterministico
+// non bloccante: il report resta comunque utile senza AI.
+function sintesiMinacceFallback(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica){
+  const pezzi=[];
+  if(concorrentiFarmaci.length)pezzi.push(`sui farmaci soprattutto ${concorrentiFarmaci.slice(0,3).map(c=>c.name).join(', ')}`);
+  if(concorrentiClasseTerapeutica.length)pezzi.push(`nella stessa classe terapeutica ${concorrentiClasseTerapeutica.slice(0,3).map(c=>c.name).join(', ')}`);
+  if(concorrentiDispositivi.length)pezzi.push(`sui dispositivi medici soprattutto ${concorrentiDispositivi.slice(0,3).map(c=>c.name).join(', ')}`);
+  if(!pezzi.length)return null;
+  return `La concorrenza rilevata si concentra ${pezzi.join('; ')}. Sintesi generata senza AI (provider non disponibili) direttamente dai punteggi calcolati.`;
+}
+async function sintetizzaMinacceCompetitive(nomeTarget,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,dispositiviMarginaliPerTarget){
+  const top=(lista,mercato)=>lista.slice(0,6).map(c=>`[${mercato}] ${c.name} (punteggio ${c.punteggio}/100, ${c.tier.label}) — in comune su: ${c.sovrapposizioni.map(s=>s.valore).slice(0,4).join(', ')}`);
+  const righe=[...top(concorrentiFarmaci,'Farmaci'),...top(concorrentiDispositivi,'Dispositivi'),...top(concorrentiClasseTerapeutica,'Classe terapeutica')];
+  if(!righe.length)return null;
+  const prompt=`Sei un analista Life Sciences. Ricevi l'elenco REALE (gia' calcolato in modo deterministico, non modificabile) dei concorrenti piu' rilevanti di ${nomeTarget} per mercato, con punteggio di sovrapposizione e SU COSA si sovrappongono (principio attivo, categoria di dispositivo o classe ATC) — non aggiungere aziende, principi attivi, aree terapeutiche o dati che non sono qui elencati, non inventare nulla.
+
+CONCORRENTI (gia' in ordine di punteggio):
+${righe.join('\n')}
+${dispositiviMarginaliPerTarget?`\nNota: i dispositivi medici sono una linea secondaria del business di ${nomeTarget} (azienda a vocazione farmaceutica) — se l'overlap dispositivi e' debole/marginale, dillo in UNA frase breve invece di dargli enfasi.`:''}
+
+Scrivi ESATTAMENTE 3 frasi brevi (una riga ciascuna, stile telegrafico da executive summary, MAI un elenco puntato) in italiano:
+1. Dove si concentra la minaccia principale — raggruppa per TEMA (il principio attivo/classe ATC/categoria di dispositivo condiviso, es. "sulle combinazioni respiratorie", "sull'area SNC"), non per semplice elenco di nomi azienda, citando 2-3 aziende come esempio per tema.
+2. Un secondo fronte di rischio, se presente nei dati (un mercato/area diversa dal primo).
+3. Una valutazione sintetica del rischio complessivo/marginale sugli altri fronti.
+Niente titolo, niente preamboli tipo "La sintesi è", nessun altro commento — SOLO le 3 frasi, citando solo nomi/valori presenti sopra.`;
+  try{
+    const testo=await callAIPowerful(prompt,320);
+    return testo.trim();
+  }catch(e){
+    console.warn('Sintesi minacce competitive non disponibile:',e.message);
+    return sintesiMinacceFallback(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
+  }
+}
+
 async function sintetizzaPipeline(nomeAzienda,fatti){
   const elenco=fatti.map(f=>`[${CORE_TIPO_LABEL[f.tipo]||f.tipo}] ${f.valore}`).join('\n');
   const prompt=`Sei un analista Life Sciences. Ricevi l'elenco REALE di fatti su pipeline regolatoria/studi clinici di ${nomeAzienda}, gia' raccolti e verificati — non aggiungere nulla che non sia qui elencato, non inventare numeri o aree terapeutiche se non li ricavi da questo elenco.
@@ -9859,10 +10056,11 @@ function segnaliPipelineRaggruppati(segnali){
   return TIPI_SEGNALI_PIPELINE.filter(t=>byTipo.has(t)).map(t=>({tipo:t,label:CORE_TIPO_LABEL[t]||t,fatti:byTipo.get(t)}));
 }
 
-function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico){
+function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva){
   concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   segnaliTarget=segnaliTarget||[];
   coperturaOrganico=coperturaOrganico||{nConDati:0,nTotale:0,percentuale:0};
+  partnershipRilevate=partnershipRilevate||[];
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const totale=concorrentiFarmaci.length+concorrentiDispositivi.length+concorrentiClasseTerapeutica.length;
@@ -9883,7 +10081,7 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
       const meta=[
         c.catalogoTotale!=null?`catalogo: ${c.catalogoTotale} prodotti`:null,
         c.sector_v2||null,
-        conAreaTerapeutica&&c.aree_terapeutiche.length?c.aree_terapeutiche.join(', '):null,
+        conAreaTerapeutica&&c.aree_terapeutiche.length?c.aree_terapeutiche.map(areaTerapeuticaLabel).join(', '):null,
         presenza!=='—'?presenza:null,
       ].filter(Boolean).join(' · ');
       const recruiting=c.recruitingRelevance?.persone!=null
@@ -9902,8 +10100,10 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   }
 
   const riepilogo=prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
+  const sintesiEsecutivaHtml=sintesiEsecutiva?`<div class="summary-box" style="border-left-color:#4338ca;font-weight:500;">🎯 ${escHtml(sintesiEsecutiva).replace(/\n+/g,'<br>')}</div>`:'';
   const riepilogoHtml=riepilogo.top10.length?`
     <div class="section-title">Riepilogo esecutivo</div>
+    ${sintesiEsecutivaHtml}
     <table><thead><tr><th>Tier</th>${riepilogo.mercati.map(m=>`<th>${m.label}</th>`).join('')}<th>Totale</th></tr></thead>
     <tbody>${riepilogo.conteggiPerTier.map(r=>`<tr>
       <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.tier.colore};margin-right:6px;"></span>${r.tier.label}</td>
@@ -9917,6 +10117,17 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
     </tr>`).join('')}</tbody></table>`:'';
 
   const partnershipHtml=(partnership&&partnership.length)?`<div class="summary-box" style="border-left-color:#f59e0b;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
+
+  // Aziende escluse dal conteggio concorrenti perche' gia' note come partner
+  // (vedi notaComePartner in trovaConcorrenti) — sezione dedicata invece di
+  // una nota testuale in cima: mostra ANCHE su cosa si sovrappongono, dato
+  // gia' calcolato e altrimenti perso lasciandole fuori dal report.
+  const partnershipRilevateHtml=partnershipRilevate.length?`
+    <div class="section-title">Partnership &amp; Co-Sviluppo (${partnershipRilevate.length})</div>
+    <div class="summary-box" style="border-left-color:#f59e0b;margin-bottom:8px;">Aziende che condividono prodotti/categorie con ${target.name} ma sono gia' note come partner commerciali/co-sviluppo (vedi nota sopra): escluse dal conteggio concorrenti, non sono una minaccia competitiva.</div>
+    <table><colgroup><col style="width:22%;"><col></colgroup>
+    <thead><tr><th>Azienda</th><th>In comune su</th></tr></thead>
+    <tbody>${partnershipRilevate.map(c=>`<tr><td>${c.name}</td><td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td></tr>`).join('')}</tbody></table>`:'';
 
   const gruppiPipelineTarget=segnaliPipelineRaggruppati(segnaliTarget);
   const segnaliTargetHtml=gruppiPipelineTarget.length?`<div class="summary-box">
@@ -9932,13 +10143,16 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Georgia,serif;background:#fff;color:${DARK};}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.kpi-grid,.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
 .page{max-width:900px;margin:0 auto;padding:40px 48px;}
 .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
 .summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
-th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};}
-td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};overflow-wrap:break-word;}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
 .footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
 </style></head><body>
 <div class="page">
@@ -9955,8 +10169,10 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.${coperturaOrganico.nTotale?` <strong>🎯 Recruiting Relevance</strong>: organico per funzione disponibile per ${coperturaOrganico.nConDati} concorrenti su ${coperturaOrganico.nTotale} (${coperturaOrganico.percentuale}% del campione) — mostrato come numero di persone in ruoli commerciali/clinici, mai un punteggio calcolato solo sui pochi dati presenti; per le aziende senza questo dato non compare alcuna indicazione, non significa assenza di organico nella realtà.`:''}</div>
   ${riepilogoHtml}
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
+  ${dispositiviMarginaliPerTarget&&concorrentiDispositivi.length?`<div style="font-size:10px;color:#aaa;font-style:italic;margin:-14px 0 8px;">I dispositivi medici sono una linea marginale del catalogo di ${target.name} (meno del 25% dei prodotti commercializzati): i punteggi sottostanti sono dimezzati rispetto al calcolo standard, non possono superare il tier "Competitor indiretto".</div>`:''}
   ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
   ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
+  ${partnershipRilevateHtml}
   ${notaCoperturaPipeline}
   <div class="footer">
     Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
@@ -10008,13 +10224,16 @@ function renderCompanyListReportHTML(plan,aziende){
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Georgia,serif;background:#fff;color:${DARK};}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
 .page{max-width:900px;margin:0 auto;padding:40px 48px;}
 .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
 .summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
-th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};}
-td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};overflow-wrap:break-word;}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
 .footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
 </style></head><body>
 <div class="page">
@@ -10125,7 +10344,7 @@ function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
     ['Stato assunzioni',d=>d.scheda?.stato_assunzioni?STATO_ASSUNZIONI_LABEL[d.scheda.stato_assunzioni]:'—'],
     ['Annunci (30/90/tot)',d=>d.scheda?`${nf(d.scheda.annunci_30gg)} / ${nf(d.scheda.annunci_90gg)} / ${nf(d.scheda.annunci_totali)}`:'—'],
     ['RAL mediana',d=>d.scheda?.ral_mediana?eur(Math.round(d.scheda.ral_mediana)):'—'],
-    ['Aree terapeutiche',d=>(d.scheda?.aree_terapeutiche||[]).join(', ')||'—'],
+    ['Aree terapeutiche',d=>(d.scheda?.aree_terapeutiche||[]).map(areaTerapeuticaLabel).join(', ')||'—'],
     ['Prodotti commercializzati',d=>nf(nProdottiPerCategoria(d.prodotti,'commercializzato')+ (d.totaleProdotti>d.prodotti.length?d.totaleProdotti-d.prodotti.length:0))],
     ['Principi attivi prodotti',d=>nf(nProdottiPerCategoria(d.prodotti,'principio_attivo'))],
     ['Decision maker noti',d=>nf(d.scheda?.decisori_noti??d.contatti.length)],
@@ -10152,13 +10371,16 @@ function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Georgia,serif;background:#fff;color:${DARK};}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
 .page{max-width:${Math.max(900,300+datiAziende.length*220)}px;margin:0 auto;padding:40px 48px;}
 .header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
 .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
 .summary-box{background:#faf9f6;border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:16px;}
-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
-th{text-align:left;padding:10px;font-size:12px;color:${DARK};border-bottom:2px solid ${BORDER};background:#faf9f6;}
-td{padding:10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:10px;font-size:12px;color:${DARK};border-bottom:2px solid ${BORDER};background:#faf9f6;overflow-wrap:break-word;}
+td{padding:10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
 .footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
 </style></head><body>
 <div class="page">
@@ -10311,7 +10533,7 @@ async function loadEnrichedData(companyId){
     const taEl=document.getElementById('enriched-ta-badges');
     if(taEl){
       if(company.aree_terapeutiche&&company.aree_terapeutiche.length>0){
-        taEl.innerHTML=company.aree_terapeutiche.map(ta=>`<span class="badge badge-accent" style="margin:4px 4px 0 0;">${ta}</span>`).join('');
+        taEl.innerHTML=company.aree_terapeutiche.map(ta=>`<span class="badge badge-accent" style="margin:4px 4px 0 0;">${areaTerapeuticaLabel(ta)}</span>`).join('');
       }else{
         taEl.innerHTML='<span style="color:var(--text2);font-size:13px;">—</span>';
       }
