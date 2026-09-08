@@ -8839,10 +8839,15 @@ FILTRI DISPONIBILI (tutti opzionali, null se non specificati dalla richiesta):
 - core_fact_tipo: uno tra questi (usa la chiave a sinistra dell'uguale, mai l'etichetta): ${tipiCore} — solo se la richiesta chiede esplicitamente una di queste caratteristiche, altrimenti null
 - prodotto_categoria: "principio_attivo" se la richiesta chiede aziende che PRODUCONO una materia prima/principio attivo, "commercializzato" se chiede aziende che vendono farmaci/dispositivi finiti, altrimenti null
 
-MODALITA': se la richiesta chiede esplicitamente di CONFRONTARE, mettere a confronto, vedere le DIFFERENZE tra due o piu' aziende NOMINATE per nome (es. "confronta Steris e Stryker", "differenze tra Bayer e Menarini"), imposta modalita="confronto" e riporta in aziende_da_confrontare i nomi ESATTAMENTE come scritti dall'utente (non correggerli, non completarli, non inventare la ragione sociale — verranno cercati nel database separatamente). In ogni altro caso (ricerca per criteri, anche su piu' aziende ma non nominate una per una) usa modalita="lista" e lascia aziende_da_confrontare vuoto.
+MODALITA' — scegli UNA tra queste tre, guardando cosa chiede davvero la richiesta:
+- "confronto": la richiesta chiede esplicitamente di CONFRONTARE, mettere a confronto, vedere le DIFFERENZE tra DUE O PIU' aziende NOMINATE per nome (es. "confronta Steris e Stryker", "differenze tra Bayer e Menarini"). Riporta in aziende_da_confrontare i nomi ESATTAMENTE come scritti dall'utente (non correggerli, non completarli, non inventare la ragione sociale — verranno cercati nel database separatamente). azienda_target resta null.
+- "concorrenti": la richiesta chiede i CONCORRENTI/COMPETITOR di UNA SOLA azienda NOMINATA (es. "concorrenti di Orion Pharma", "chi compete con Bracco", "trovami i primi 3 concorrenti di Steris in Italia") — anche se nomina un paese/regione genericamente (es. "in Italia": il database e' gia' solo Italia, ignora questa parte). Riporta in azienda_target il nome ESATTAMENTE come scritto (verra' cercato nel database separatamente). Se la richiesta specifica un numero massimo di risultati ("primi 3", "top 5"), riportalo in limite_risultati (numero intero), altrimenti null. aziende_da_confrontare resta vuoto.
+- "lista": ogni altra richiesta — ricerca per criteri generali (settore, regione, gruppo, ecc.), anche su piu' aziende ma NON per trovare concorrenti di una nominata ne' per confrontarne di nominate esplicitamente.
+
+Attenzione a non confondere "concorrenti" con "lista": una richiesta che nomina un'azienda specifica e chiede chi le fa concorrenza e' SEMPRE modalita="concorrenti", mai un filtro di settore (il nome dell'azienda spesso contiene parole che assomigliano a un settore, es. "Orion Pharma" contiene "Pharma", ma non significa impostare sector_v2="Pharma" — significa cercare i concorrenti di quella azienda specifica).
 
 Rispondi SOLO con questo JSON, nessun altro testo:
-{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
+{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"azienda_target":null,"limite_risultati":null,"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
 
   const raw=await callAIPowerful(planPrompt,400);
   const clean=raw.replace(/```json|```/g,'').trim();
@@ -8860,11 +8865,16 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   if(f.hiring_attivo!==true&&f.hiring_attivo!==false)f.hiring_attivo=null;
   plan._dropped_filters=dropped;
 
-  plan.modalita=plan.modalita==='confronto'?'confronto':'lista';
+  plan.modalita=['confronto','concorrenti'].includes(plan.modalita)?plan.modalita:'lista';
   plan.aziende_da_confrontare=Array.isArray(plan.aziende_da_confrontare)?plan.aziende_da_confrontare.filter(n=>typeof n==='string'&&n.trim()).slice(0,6):[];
   if(plan.modalita==='confronto'&&plan.aziende_da_confrontare.length<2){
     plan.modalita='lista'; // un confronto con meno di 2 nomi non e' un confronto
   }
+  plan.azienda_target=typeof plan.azienda_target==='string'&&plan.azienda_target.trim()?plan.azienda_target.trim():null;
+  if(plan.modalita==='concorrenti'&&!plan.azienda_target){
+    plan.modalita='lista'; // "concorrenti" senza un nome d'azienda non e' eseguibile
+  }
+  plan.limite_risultati=Number.isInteger(plan.limite_risultati)&&plan.limite_risultati>0?plan.limite_risultati:null;
   return plan;
 }
 
@@ -8995,6 +9005,18 @@ async function searchCompaniesFromPrompt(){
       resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca delle aziende da confrontare...</div>';
       const risolte=await risolviAziendePerConfronto(plan.aziende_da_confrontare);
       await renderComparisonResolutionResults(risolte);
+    }else if(plan.modalita==='concorrenti'){
+      resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca di "${plan.azienda_target}" e dei suoi concorrenti...</div>`;
+      const [risolta]=await risolviAziendePerConfronto([plan.azienda_target]);
+      if(risolta.stato==='non_trovata'){
+        resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">❌ Nessuna azienda trovata con il nome "${plan.azienda_target}".</div>`;
+      }else if(risolta.stato==='ambigua'){
+        resultsEl.innerHTML=`<div style="color:#f59e0b;font-size:12px;padding:12px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`;
+      }else{
+        const {valori,concorrenti}=await trovaConcorrenti(risolta.azienda.id);
+        const concorrentiMostrati=plan.limite_risultati?concorrenti.slice(0,plan.limite_risultati):concorrenti;
+        renderCompetitorResults(risolta.azienda,valori,concorrentiMostrati);
+      }
     }else{
       const aziende=await executeCompanySearchPlan(plan);
       renderCompanySearchResults(plan,aziende);
