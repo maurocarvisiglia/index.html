@@ -9290,6 +9290,19 @@ td.num{text-align:right;}
 </body></html>`;
 }
 
+// Bande di tier sul punteggio di concorrenza normalizzato 0-100 (vedi
+// estraiGruppo() dentro trovaConcorrenti). Bande proposte da Mauro l'8/09/2026
+// sul caso Steris — qui l'arbitrarietà è dichiarata e minima (soglie su un
+// punteggio già calcolato), a differenza di pesare a mano ogni categoria.
+const COMPETITOR_TIER=[
+  {min:81,id:'strategico',label:'Competitor strategico',colore:'#dc2626'},
+  {min:61,id:'diretto',label:'Competitor diretto',colore:'#ea580c'},
+  {min:41,id:'indiretto',label:'Competitor indiretto',colore:'#ca8a04'},
+  {min:21,id:'debole',label:'Overlap debole',colore:'#6b7280'},
+  {min:0,id:'marginale',label:'Overlap marginale',colore:'#9ca3af'},
+];
+function tierPerPunteggio(punteggio){ return COMPETITOR_TIER.find(t=>punteggio>=t.min); }
+
 // ── Concorrenza per prodotto: trova altre aziende che vendono lo stesso
 // principio attivo (active_ingredients_norm, farmaci) o la stessa categoria
 // di dispositivo (device_category, dispositivi medici — db/PARTE_20), e per
@@ -9476,18 +9489,95 @@ async function trovaConcorrenti(companyId){
   // Teva, AstraZeneca...) sotto chi condivide tante sotto-categorie CND di
   // dispositivo (la nomenclatura CND e' molto piu' granulare per prodotto).
   // Un'azienda che compete su entrambi i fronti compare in entrambe le liste.
-  function estraiGruppo(lista,tipo){
-    return lista
-      .map(c=>({...c, sovrapposizioni:c.sovrapposizioni.filter(s=>s.tipo===tipo)}))
-      .filter(c=>c.sovrapposizioni.length>0)
-      .sort((a,b)=>b.sovrapposizioni.length-a.sovrapposizioni.length||a.name.localeCompare(b.name));
+  // Conteggio esatto (Prefer: count=exact, Range 0-0 — zero righe trasferite,
+  // solo l'header content-range) del catalogo TOTALE di un'azienda in questo
+  // mercato, non solo i prodotti che si sovrappongono col target. Richiesto
+  // da Mauro l'8/09/2026 dopo aver visto Moretti in cima al punteggio
+  // dispositivi di Steris: un punteggio alto puo' nascondere che
+  // quell'azienda ha semplicemente un catalogo enorme e generalista (Moretti:
+  // 60 categorie condivise su 888 prodotti totali) mentre un concorrente piu'
+  // piccolo e focalizzato (Getinge: 170 prodotti totali) puo' avere meno
+  // overlap ma un business piu' sovrapponibile — il dato lo mostra accanto al
+  // punteggio, non lo nasconde dentro un unico numero.
+  async function catalogoTotale(companyId,filtro){
+    const r=await fetch(`${SB_URL}/rest/v1/company_products?select=id&company_id=eq.${companyId}&${filtro}`,
+      {headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,Prefer:'count=exact',Range:'0-0'}});
+    const cr=r.headers.get('content-range');
+    return cr?Number(cr.split('/')[1])||0:0;
   }
+
+  async function estraiGruppo(lista,tipo){
+    const filtrata=lista
+      .map(c=>({...c, sovrapposizioni:c.sovrapposizioni.filter(s=>s.tipo===tipo)}))
+      .filter(c=>c.sovrapposizioni.length>0);
+    if(!filtrata.length)return filtrata;
+
+    // Punteggio che combina AMPIEZZA e RARITA' dell'overlap, non l'una o
+    // l'altra da sola — verificato con Mauro su casi reali l'8/09/2026:
+    // - solo conteggio grezzo (versione precedente di questa pagina):
+    //   Ergon Sutramed/Lotus (poche categorie suture) battevano Sandoz/Teva
+    //   (farmaci veri) — gia' corretto separando farmaci/dispositivi, ma
+    //   dentro un gruppo il conteggio da solo resta grezzo
+    // - solo somma di rarita' (IDF): Moretti (60 categorie, quasi tutte rare
+    //   nel nostro DB) batteva Getinge (6 categorie, la vera specialita' di
+    //   Steris) — la rarita' non basta a "battere" la quantita'
+    // - solo cosine similarity sui vettori pesati per conteggio prodotto:
+    //   Altan Pharma (1 sola molecola condivisa) batteva Sandoz/Teva (3
+    //   molecole) — punisce troppo l'ampiezza
+    // Formula scelta, sqrt(numero valori condivisi) * media_idf(valori
+    // condivisi): riproduce quasi esattamente l'ordine indicato da Mauro sul
+    // caso Orion (Sandoz 100, Teva 96, AstraZeneca 86 vs Sandoz 95/Teva
+    // 93/AstraZeneca 86 attesi) — mai una tabella di pesi manuali per
+    // categoria (richiederebbe inventare un numero per ognuna delle centinaia
+    // di categorie CND): tutto calcolato dai dati gia' raccolti da
+    // raccogli()/raccogliClasse() qui sopra, zero query aggiuntive per il
+    // punteggio in se'.
+    const nAziendePerValore=new Map();
+    filtrata.forEach(c=>c.sovrapposizioni.forEach(s=>{
+      nAziendePerValore.set(s.valore,(nAziendePerValore.get(s.valore)||0)+1);
+    }));
+    const N=filtrata.length;
+    const idf=valore=>Math.log((N+1)/((nAziendePerValore.get(valore)||1)+1))+1; // smussato: mai zero/negativo
+
+    const filtroCatalogo=tipo==='dispositivo'
+      ?'device_category=not.is.null'
+      :'category=eq.commercializzato&active_ingredients_norm=not.is.null';
+    const conCatalogo=[];
+    for(let i=0;i<filtrata.length;i+=CONCORRENZA){
+      const lotto=filtrata.slice(i,i+CONCORRENZA);
+      const conteggi=await Promise.all(lotto.map(c=>catalogoTotale(c.id,filtroCatalogo)));
+      lotto.forEach((c,idx)=>conCatalogo.push({...c, catalogoTotale:conteggi[idx]}));
+    }
+
+    const conPunteggioGrezzo=conCatalogo.map(c=>{
+      const idfs=c.sovrapposizioni.map(s=>idf(s.valore));
+      const mediaIdf=idfs.reduce((a,b)=>a+b,0)/idfs.length;
+      return {...c, _punteggioGrezzo:Math.sqrt(c.sovrapposizioni.length)*mediaIdf};
+    });
+    const massimo=Math.max(...conPunteggioGrezzo.map(c=>c._punteggioGrezzo))||1;
+    return conPunteggioGrezzo
+      .map(({_punteggioGrezzo,...c})=>{
+        const punteggio=Math.round(100*_punteggioGrezzo/massimo);
+        return {...c, punteggio, tier:tierPerPunteggio(punteggio)};
+      })
+      .sort((a,b)=>b.punteggio-a.punteggio||a.name.localeCompare(b.name));
+  }
+
+  // I 3 gruppi non condividono aziende (farmaci/dispositivi/classe sono
+  // insiemi diversi per costruzione), quindi calcolarli in parallelo è
+  // corretto e più veloce che in sequenza (ognuno fa le sue query di
+  // catalogoTotale, a lotti, indipendenti dagli altri due gruppi).
+  const [concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica]=await Promise.all([
+    estraiGruppo(tutti,'farmaco'),
+    estraiGruppo(tutti,'dispositivo'),
+    estraiGruppo(tuttiClasse,'classe_terapeutica'),
+  ]);
 
   return {
     valori:listaCompiti.map(c=>c.valore),
-    concorrentiFarmaci:estraiGruppo(tutti,'farmaco'),
-    concorrentiDispositivi:estraiGruppo(tutti,'dispositivo'),
-    concorrentiClasseTerapeutica:estraiGruppo(tuttiClasse,'classe_terapeutica'),
+    concorrentiFarmaci,
+    concorrentiDispositivi,
+    concorrentiClasseTerapeutica,
     partnership,
     segnaliTarget,
   };
@@ -9515,6 +9605,15 @@ function formattaSovrapposizione(s){
   const regimi=(s.regimi||[]).map(r=>REGIME_FARMACO_LABEL[r]||r);
   const suffisso=regimi.length?` (${regimi.join('/')})`:'';
   return `<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${suffisso}${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`;
+}
+
+// Badge punteggio+tier calcolato da estraiGruppo() dentro trovaConcorrenti.
+// Colori inline (non var(--...)): riusabile identico sia nella pagina viva
+// sia nel documento stampabile a se' stante (che non ha le variabili CSS
+// dell'app), stesso principio gia' seguito per fattoPipelineHtml.
+function tierBadgeHtml(c){
+  if(c.punteggio==null||!c.tier)return '';
+  return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${c.tier.colore};border-radius:10px;padding:2px 8px;white-space:nowrap;">${c.punteggio} · ${c.tier.label}</span>`;
 }
 
 // Fatti CORE di pipeline/studi clinici raggruppati per tipo, stesso ordine di
@@ -9554,7 +9653,8 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
     if(!concorrenti.length)return '';
     const conPipeline=concorrenti.some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
     const righe=concorrenti.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
-      <td style="color:var(--accent2);text-decoration:underline;">${c.name}</td>
+      <td>${tierBadgeHtml(c)}</td>
+      <td style="color:var(--accent2);text-decoration:underline;">${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:var(--text2);text-decoration:none;font-weight:400;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
       <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
       ${conAreaTerapeutica?`<td style="color:var(--text2);">${c.aree_terapeutiche.join(', ')||'—'}</td>`:''}
       <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
@@ -9563,7 +9663,7 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
     return `<div style="font-size:12px;color:var(--text2);margin:14px 0 6px;font-weight:700;">${titolo} (${concorrenti.length})</div>
     <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">In comune su</th>${conPipeline?'<th style="text-align:left;padding:8px 10px;">Pipeline / studi clinici</th>':''}</tr></thead>
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Punteggio</th><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">In comune su</th>${conPipeline?'<th style="text-align:left;padding:8px 10px;">Pipeline / studi clinici</th>':''}</tr></thead>
         <tbody>${righe}</tbody>
       </table>
     </div>`;
@@ -9571,6 +9671,7 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
   const notaCoperturaPipeline=(gruppiPipelineTarget.length||[...concorrentiFarmaci,...concorrentiDispositivi,...concorrentiClasseTerapeutica].some(c=>c.segnaliPipeline&&c.segnaliPipeline.length))?`<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:6px;">Segnali di pipeline/studi clinici mostrati solo per le aziende con fatti CORE già raccolti in archivio: l'assenza non significa assenza di studi clinici nella realtà.</div>`:'';
   resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}
     <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Concorrenti per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
+    <div style="font-size:11px;color:var(--text2);font-style:italic;margin-bottom:8px;">Il punteggio combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato — un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.</div>
     ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
     ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
     ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
@@ -9609,14 +9710,15 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
     if(!concorrenti.length)return '';
     const conPipeline=concorrenti.some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
     const righe=concorrenti.map(c=>`<tr>
-      <td>${c.name}</td>
+      <td>${tierBadgeHtml(c)}</td>
+      <td>${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:#aaa;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
       <td style="color:#888;">${c.sector_v2||''}</td>
       ${conAreaTerapeutica?`<td style="color:#888;">${c.aree_terapeutiche.join(', ')}</td>`:''}
       <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
       ${conPipeline?`<td style="color:#333;font-size:11px;">${(c.segnaliPipeline||[]).map(fattoPipelineHtml).join('')}</td>`:''}
     </tr>`).join('');
     return `<div class="section-title">${titolo} (${concorrenti.length})</div>
-    <table><thead><tr><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
+    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
   }
 
   const partnershipHtml=(partnership&&partnership.length)?`<div class="summary-box" style="border-left-color:#f59e0b;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
@@ -9655,7 +9757,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   </div>
   ${partnershipHtml}
   ${segnaliTargetHtml}
-  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati.</div>
+  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.</div>
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
   ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
   ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
