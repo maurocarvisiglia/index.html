@@ -27,14 +27,26 @@
  *      token: e' il bug reale trovato e corretto l'8/09/2026, vedi commenti in
  *      dispositivi-medici-registro.mjs/aifa-registro-prodotti.mjs)
  *
- * NESSUNA AZIENDA NUOVA CREATA — come dispositivi-medici-registro.mjs, non
- * come aifa-registro-prodotti.mjs: il farmaco veterinario e' un settore di
- * nicchia per il recruiting Life Sciences che questo progetto segue, e la
- * scala e' comunque piccola (~11.000 prodotti, poche centinaia di titolari
- * distinti) — si riportano solo i titolari orfani piu' frequenti per decidere
- * caso per caso, invece di espandere l'anagrafica in automatico come fatto per
- * gli integratori (dove la scala e la richiesta esplicita giustificavano la
- * creazione automatica).
+ * CREAZIONE AZIENDE — decisione di Mauro (8/09/2026): creare nuove aziende
+ * SOLO se la forma legale nel CSV e' italiana (S.p.A./S.r.l./S.a.s./S.n.c. —
+ * MAI forme estere come B.V./Ltd/GmbH/SA/NV, "non importiamo aziende
+ * estere. solo aziende che hanno una sede in italia"), e solo con almeno
+ * SOGLIA_PRODOTTI_NUOVA_AZIENDA prodotti (stesso principio soglia gia' usato
+ * in integratori-registro.mjs, per non popolare l'anagrafica di titolari
+ * marginali). Stesso pattern di raggruppamento-per-nome-pulito-prima-di-
+ * creare + retry riga-per-riga gia' costruito per gli integratori (evita il
+ * conflitto HTTP 409 sull'indice unico su lower(btrim(name))).
+ *
+ * ABBINAMENTI MANUALI NOTI — verificati con query dirette sull'8/09/2026:
+ * l'algoritmo di contenimento richiede token di almeno 4 caratteri, quindi
+ * nomi corti ("Ceva", "Izo", "Msd") non vengono mai abbinati per
+ * contenimento anche quando l'azienda esiste gia' in anagrafica (stesso bug
+ * di fondo gia' noto in questa sessione, qui non risolto in generale ma
+ * aggirato con una mappa esplicita per i 4 casi reali trovati in questo
+ * registro — MANUAL_MATCH sotto). Senza questa mappa, questi 4 titolari
+ * sarebbero stati creati come aziende duplicate (Ceva/Chemifarma/Izo) o
+ * scartati silenziosamente per conflitto sull'indice univoco (Msd, nome
+ * letteralmente identico a un'azienda gia' esistente).
  *
  * active_ingredients_norm lasciato SEMPRE NULL (a differenza dei farmaci
  * umani): mischiare principi attivi veterinari nello stesso campo usato da
@@ -81,6 +93,29 @@ const norm = (s) => (s || '')
   .trim();
 function tokenSet(nomeNorm) {
   return new Set(nomeNorm.split(' ').filter((t) => t.length >= 4));
+}
+
+// forma legale ITALIANA soltanto — mai B.V./Ltd/Limited/GmbH/SA/NV estere
+const FORMA_LEGALE_ITALIANA = /\b(s\.?\s?p\.?\s?a\.?|s\.?\s?r\.?\s?l\.?|s\.?\s?a\.?\s?s\.?|s\.?\s?n\.?\s?c\.?)\b/i;
+const SOGLIA_PRODOTTI_NUOVA_AZIENDA = 10;
+
+// vedi commento in testa al file — abbinamenti verificati con query dirette,
+// l'algoritmo di contenimento (token >=4 caratteri) non li trova da solo
+const MANUAL_MATCH = {
+  'CEVA SALUTE ANIMALE S.p.A.': 'e379961f-0ac0-42e7-8798-6fdf01085e62', // Ceva
+  'CHEMIFARMA S.P.A.': '972bc2de-425d-48ec-ba8a-c006db05cf68', // CHEMIFARMA S.P.A. CON SOCIO UNICO
+  'MSD ANIMAL HEALTH S.R.L.': '794b9829-5778-4f48-888a-5565d9bdb28c', // stesso nome letterale
+  'IZO S.r.l. a socio unico': 'ff6b67eb-aca5-4faf-b294-92f35ce5e9fa', // IZO SRL
+};
+
+function ripulisciNomeAzienda(titolare) {
+  const t = (titolare || '').trim().replace(/\s+/g, ' ');
+  const tuttoMaiuscolo = t === t.toUpperCase() && /[A-Z]/.test(t);
+  if (!tuttoMaiuscolo) return t;
+  return t.split(' ').map((w) => {
+    if (/^(s\.?p\.?a\.?|s\.?r\.?l\.?|s\.?a\.?s\.?|s\.?n\.?c\.?)$/i.test(w)) return w;
+    return w.length > 1 ? w[0] + w.slice(1).toLowerCase() : w;
+  }).join(' ');
 }
 
 async function trovaUrlCsv() {
@@ -148,23 +183,70 @@ async function main() {
 
   const aziendaPerTitolare = new Map();
   const cacheMatch = new Map();
-  let matchEsatto = 0, matchContenimento = 0;
+  let matchEsatto = 0, matchContenimento = 0, matchManuale = 0;
   for (const tit of titolareRaw.keys()) {
     if (cacheMatch.has(tit)) continue;
-    let az = accoppiaEsatto(tit);
-    if (az) matchEsatto++;
-    else { az = accoppiaPerContenimento(tit); if (az) matchContenimento++; }
+    let az = null;
+    if (MANUAL_MATCH[tit]) { az = { id: MANUAL_MATCH[tit] }; matchManuale++; }
+    else {
+      az = accoppiaEsatto(tit);
+      if (az) matchEsatto++;
+      else { az = accoppiaPerContenimento(tit); if (az) matchContenimento++; }
+    }
     cacheMatch.set(tit, az);
     if (az) aziendaPerTitolare.set(tit, az);
   }
-  push(`${G}  abbinati ad aziende esistenti: ${aziendaPerTitolare.size}${Z} ${D}(${matchEsatto} esatto, ${matchContenimento} per contenimento) su ${titolareRaw.size} titolari distinti${Z}`);
+  push(`${G}  abbinati ad aziende esistenti: ${aziendaPerTitolare.size}${Z} ${D}(${matchEsatto} esatto, ${matchContenimento} per contenimento, ${matchManuale} manuale) su ${titolareRaw.size} titolari distinti${Z}`);
 
   const orfani = [...titolareRaw.keys()].filter((t) => !aziendaPerTitolare.has(t));
   const orfaniOrdinati = orfani.map((t) => ({ titolare: t, n: titolareRaw.get(t).length })).sort((a, b) => b.n - a.n);
-  push(`${D}  titolari orfani: ${orfani.length} (${orfani.reduce((s, t) => s + titolareRaw.get(t).length, 0)} prodotti non importati) — nessuna azienda nuova creata, vedi commento in testa al file${Z}`);
-  if (orfaniOrdinati.length) {
-    push(`${D}  i 10 piu' frequenti (per decidere caso per caso se aggiungerli a mano):${Z}`);
-    orfaniOrdinati.slice(0, 10).forEach((o) => push(`${D}    - ${o.titolare} (${o.n} prodotti)${Z}`));
+  push(`${D}  titolari orfani: ${orfani.length} (${orfani.reduce((s, t) => s + titolareRaw.get(t).length, 0)} prodotti)${Z}`);
+
+  // Candidate a nuova azienda: SOLO forma legale italiana (mai estera), soglia prodotti
+  const candidateNuove = orfani
+    .filter((t) => FORMA_LEGALE_ITALIANA.test(t))
+    .filter((t) => titolareRaw.get(t).length >= SOGLIA_PRODOTTI_NUOVA_AZIENDA);
+  const prodottiCandidateNuove = candidateNuove.reduce((s, t) => s + titolareRaw.get(t).length, 0);
+  push(`${D}  candidate a nuova azienda (forma legale italiana, >=${SOGLIA_PRODOTTI_NUOVA_AZIENDA} prodotti, aziende estere escluse): ${candidateNuove.length} (${prodottiCandidateNuove} prodotti)${Z}`);
+  candidateNuove.sort((a, b) => titolareRaw.get(b).length - titolareRaw.get(a).length)
+    .forEach((t) => push(`${D}    - ${ripulisciNomeAzienda(t)} (${titolareRaw.get(t).length} prodotti)${Z}`));
+
+  if (CLI_APPLY && candidateNuove.length) {
+    const gruppiPerNomePulito = new Map();
+    for (const t of candidateNuove) {
+      const chiave = ripulisciNomeAzienda(t).trim().toLowerCase();
+      if (!gruppiPerNomePulito.has(chiave)) gruppiPerNomePulito.set(chiave, []);
+      gruppiPerNomePulito.get(chiave).push(t);
+    }
+    const daCreare = [...gruppiPerNomePulito.entries()].map(([chiave, varianti]) => ({
+      chiave,
+      nome: ripulisciNomeAzienda(varianti.sort((a, b) => titolareRaw.get(b).length - titolareRaw.get(a).length)[0]),
+      varianti,
+    }));
+    if (daCreare.length < candidateNuove.length) push(`${D}  ${candidateNuove.length - daCreare.length} varianti duplicate sullo stesso nome ripulito, unificate${Z}`);
+
+    push(`\n${D}Creo ${daCreare.length} aziende nuove (Veterinary, Italia)...${Z}`);
+    let aziendeCreate = 0, aziendeScartate = 0;
+    const creaUna = async (d) => {
+      const creati = await sb('companies', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify([{ name: d.nome, sector_v2: 'Veterinary', entity_type: 'life_sciences', is_active: true }]) });
+      return creati[0];
+    };
+    for (let i = 0; i < daCreare.length; i += 100) {
+      const lotto = daCreare.slice(i, i + 100);
+      const corpo = lotto.map((d) => ({ name: d.nome, sector_v2: 'Veterinary', entity_type: 'life_sciences', is_active: true }));
+      try {
+        const creati = await sb('companies', { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(corpo) });
+        creati.forEach((c, idx) => lotto[idx].varianti.forEach((t) => aziendaPerTitolare.set(t, c)));
+        aziendeCreate += creati.length;
+      } catch (e) {
+        push(`${D}  lotto rifiutato (${String(e.message).slice(0, 70)}) - riprovo riga per riga${Z}`);
+        for (const d of lotto) {
+          try { const c = await creaUna(d); d.varianti.forEach((t) => aziendaPerTitolare.set(t, c)); aziendeCreate++; }
+          catch (e2) { aziendeScartate++; push(`${D}    scartata "${d.nome}": ${String(e2.message).slice(0, 88)}${Z}`); }
+        }
+      }
+    }
+    push(`${G}  create ${aziendeCreate} aziende${Z}${aziendeScartate ? ` ${D}(${aziendeScartate} scartate per conflitto residuo)${Z}` : ''}`);
   }
 
   const daScrivere = [];
