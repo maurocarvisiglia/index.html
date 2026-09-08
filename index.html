@@ -1788,13 +1788,25 @@ async function importVocationsCSV(event){
     'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health',
     'pharmaceutical':'Pharma','medical':'Medical Devices','healthHygiene':'Healthcare Services','consumerGoods':'Consumer Health','biomedical':'Biotech','chemical':'Chimico','technologyScienceData':'Digital Health','manufacturingIndustrial':'Altro','environmentSustainabilityEcology':'EHS/HSE Consulting','consultingITConsulting':'Consulenza','multiservices':'Altro','retail':'Farmacia/Retail','cosmetic':'Cosmetics','nutraceutical':'Nutraceutical','veterinary':'Veterinary'
   };
-  let ok=0,skip=0,errors=0;
+  let ok=0,skip=0,errors=0,blocked=0;
   await loadTaxonomy(); // dizionario alias/tassonomia — una sola volta, poi solo regex in memoria
+  // companies_blocklist finora impediva solo la CREAZIONE dell'azienda dentro
+  // findOrCreateCompany (l'annuncio in job_listings veniva comunque inserito
+  // con solo company_name testuale, prima che la blocklist entrasse in
+  // gioco). Richiesto da Mauro l'8/09/2026: gli annunci di un'azienda in
+  // blacklist non vanno importati affatto — controllo qui, PRIMA
+  // dell'inserimento, non dopo.
+  await loadBlocklist();
   for(let idx=0;idx<rows.length;idx++){
     const row=rows[idx];
     const title=(row['Nome posizione']||'').trim();
     const company=(row['Nome azienda']||'').trim();
     if(!title||title.length<3||!company)continue;
+    const ragioneSocialeRaw=(row['Ragione sociale']||'').trim();
+    if(_blocklistCache.has(normalizeCompanyName(company))||(ragioneSocialeRaw&&_blocklistCache.has(normalizeCompanyName(ragioneSocialeRaw)))){
+      blocked++;
+      continue;
+    }
     // Ruolo risolto SUBITO in import, non in un passaggio manuale successivo:
     // stesso identico motore deterministico (alias/tassonomia, zero IA) usato da
     // runMassReclassify. Diagnosticato il 01/09/2026: canonical_role restava
@@ -1815,9 +1827,20 @@ async function importVocationsCSV(event){
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
     const sector_v2=sectorMap[settoreRaw]||null;
     const contractRaw=(row['Contratto']||'').toLowerCase().trim();
-    const contract_type=contractMap[contractRaw]||null;
-    const isAgenzia=contract_type==='Agenzia';
+    let contract_type=contractMap[contractRaw]||null;
     const tl=title.toLowerCase();
+    // Richiesto da Mauro l'8/09/2026: un annuncio per un ruolo di agente di
+    // commercio (rete agenti, non dipendente) deve avere SEMPRE
+    // contract_type="Agenti", qualunque cosa dica la colonna Contratto del
+    // CSV (che su questo tipo di ruolo spesso non e' popolata/e' generica).
+    // \bagent[ei]\b (non \bagent\b) evita falsi positivi su testo inglese
+    // tipo "Agentic AI"/"multi-agent" che compaiono nei CSV IT/AI.
+    const isAgente=/\bagent[ei]\b/.test(tl+' '+contractRaw);
+    if(isAgente)contract_type='Agenti';
+    // Stesso trattamento retributivo gia' in uso per "Agenzia" (freelance):
+    // un agente e' pagato a provvigione/fisso mensile, mai con un pacchetto
+    // RAL annuo stimabile con gli stessi coefficienti di un dipendente.
+    const isAgenzia=contract_type==='Agenzia'||isAgente;
     // functional_area_v2: PRIMA il dizionario alias/tassonomia (roleInfo, deterministico
     // e coerente con canonical_role appena risolto), poi — solo se il titolo non e'
     // ancora in dizionario — il regex sotto come ripiego. Nessun passaggio successivo
@@ -1956,7 +1979,7 @@ async function importVocationsCSV(event){
     // Calcola range RAL da mediana
     setTimeout(()=>calcAllRalRanges(),2000);
   },1000);
-  const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(errors?' | '+errors+' errori':'');
+  const msg='Vocations CSV: '+ok+' importati, '+skip+' già presenti'+(blocked?' | '+blocked+' esclusi (blacklist aziende)':'')+(errors?' | '+errors+' errori':'');
   toast(msg,ok>0?'success':'warning');
   loadListings();refreshPendingBadges();
   // Ruolo/area/seniority sono gia' corretti a questo punto (vedi sopra): nessun
