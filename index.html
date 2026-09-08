@@ -9027,12 +9027,12 @@ async function searchCompaniesFromPrompt(){
       }else if(risolta.stato==='ambigua'){
         resultsEl.innerHTML=`<div style="color:#f59e0b;font-size:12px;padding:12px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`;
       }else{
-        const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget}=await trovaConcorrenti(risolta.azienda.id);
+        const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget,sintesiPipelineTarget}=await trovaConcorrenti(risolta.azienda.id);
         // "primi N" si applica per gruppo, non sul totale misto — altrimenti
         // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
         // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
         const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
-        renderCompetitorResults(risolta.azienda,valori,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget);
+        renderCompetitorResults(risolta.azienda,valori,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget);
       }
     }else{
       const aziende=await executeCompanySearchPlan(plan);
@@ -9326,6 +9326,13 @@ async function trovaConcorrenti(companyId){
   // non si perde mai anche se non si trovano concorrenti di prodotto.
   const segnaliTargetRows=await api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${companyId}&tipo=in.(${TIPI_SEGNALI_PIPELINE.join(',')})&order=rilevato_il.desc`);
   const segnaliTarget=segnaliTargetRows;
+  let sintesiPipelineTarget=null;
+  if(segnaliTarget.length>SOGLIA_SINTESI_PIPELINE){
+    try{
+      const [nomeRow]=await api(`companies?select=name&id=eq.${companyId}`);
+      sintesiPipelineTarget=await sintetizzaPipeline(nomeRow?.name||'questa azienda',segnaliTarget);
+    }catch(e){ console.warn('Sintesi pipeline target non disponibile:',e.message); }
+  }
 
   const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category,regime_farmaco,atc_code&company_id=eq.${companyId}`);
 
@@ -9348,7 +9355,7 @@ async function trovaConcorrenti(companyId){
     (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
     if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget, sintesiPipelineTarget};
 
   // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
   // + regime farmaco, per poter mostrare "in comune su" con contesto invece
@@ -9417,7 +9424,7 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogliClasse));
   }
 
-  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget};
+  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, segnaliTarget, sintesiPipelineTarget};
 
   const idsConcorrenti=[...new Set([...perAzienda.keys(),...perAziendaClasse.keys()])];
   const aziende=[];
@@ -9455,12 +9462,32 @@ async function trovaConcorrenti(companyId){
     });
   }
 
+  // Sintesi AI dei fatti pipeline/studi clinici per i concorrenti che ne
+  // hanno troppi da elencare per intero (stesso principio del target sopra)
+  // — solo per le aziende NON dello stesso gruppo del target (verranno
+  // comunque escluse più sotto, non ha senso spendere una chiamata AI su
+  // di loro). Concorrenza bassa (3 alla volta): sono chiamate AI, non query
+  // al database, e non serve saturarle.
+  const sintesiPipelinePerAzienda=new Map(); // company_id -> stringa|null
+  const aziendaPerId=new Map(aziende.map(a=>[a.id,a]));
+  const idsConSintesiNecessaria=[...segnaliPipelinePerAzienda.entries()]
+    .filter(([id,fatti])=>fatti.length>SOGLIA_SINTESI_PIPELINE && !(gruppoTarget&&aziendaPerId.get(id)?.company_group_id===gruppoTarget));
+  for(let i=0;i<idsConSintesiNecessaria.length;i+=3){
+    const lotto=idsConSintesiNecessaria.slice(i,i+3);
+    const risultati=await Promise.all(lotto.map(async([id,fatti])=>{
+      try{ return [id, await sintetizzaPipeline(aziendaPerId.get(id)?.name||'azienda',fatti)]; }
+      catch(e){ console.warn('Sintesi pipeline non disponibile per',id,':',e.message); return [id, null]; }
+    }));
+    risultati.forEach(([id,s])=>sintesiPipelinePerAzienda.set(id,s));
+  }
+
   function infoAzienda(a){
     return {
       id:a.id, name:a.name, sector_v2:a.sector_v2,
       aree_terapeutiche:[...(areeTerapeuticePerAzienda.get(a.id)||[])],
       stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
       segnaliPipeline:segnaliPipelinePerAzienda.get(a.id)||[],
+      sintesiPipeline:sintesiPipelinePerAzienda.get(a.id)||null,
       region:a.region||null, dipendenti:a.dipendenti||null, fatturatoRange:a.fatturato_range||null,
     };
   }
@@ -9581,6 +9608,7 @@ async function trovaConcorrenti(companyId){
     concorrentiClasseTerapeutica,
     partnership,
     segnaliTarget,
+    sintesiPipelineTarget,
   };
 }
 
@@ -9591,8 +9619,8 @@ async function trovaConcorrentiDiSelezionata(){
   btn.disabled=true;
   resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca concorrenti in corso...</div>';
   try{
-    const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget}=await trovaConcorrenti(_raSelectedCompany.id);
-    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget);
+    const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget,sintesiPipelineTarget}=await trovaConcorrenti(_raSelectedCompany.id);
+    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget);
   }catch(e){
     resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
   }finally{
@@ -9627,6 +9655,17 @@ function presenzaItaliaTesto(c){
   return pezzi.length?pezzi.join(' · '):'—';
 }
 
+// Cella pipeline/studi clinici di un concorrente: sintesi AI se disponibile
+// (sopra SOGLIA_SINTESI_PIPELINE fatti), altrimenti l'elenco completo dei
+// fatti col formattatore del contesto (coreFattoHtml a schermo,
+// fattoPipelineHtml nel report stampabile — quest'ultimo locale a
+// renderCompetitorReportHTML, passato come parametro).
+function pipelineCellTesto(c,formatterFatto){
+  if(!c.segnaliPipeline||!c.segnaliPipeline.length)return '';
+  if(c.sintesiPipeline)return `<div>${escHtml(c.sintesiPipeline)} <span style="opacity:.6;font-size:9px;font-style:italic;">(sintesi AI di ${c.segnaliPipeline.length} fatti)</span></div>`;
+  return c.segnaliPipeline.map(formatterFatto).join('');
+}
+
 // Dati aggregati per il riepilogo esecutivo (Fase B, richiesta dopo le
 // analisi esterne su Steris/Orion: "41 pagine per dire 215 aziende hanno
 // overlap" — un riepilogo in cima evita di dover scorrere tutto per capire
@@ -9653,6 +9692,33 @@ function prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,conc
   return {mercati, conteggiPerTier, top10};
 }
 
+// Sopra questa soglia di fatti pipeline/studi clinici, elencarli tutti per
+// intero rende il report illeggibile (caso reale: AstraZeneca nel report
+// Orion, 14+ studi clinici, 3 pagine di solo elenco) — richiesto da Mauro
+// l'8/09/2026: "farei una lettura e una sintesi degli studi clinici senza
+// riportarli tutti". Sotto la soglia si continuano a mostrare i fatti
+// singoli con link e citazione (coreFattoHtml/fattoPipelineHtml) — la
+// sintesi serve solo quando la lista sarebbe illeggibile.
+const SOGLIA_SINTESI_PIPELINE=4;
+
+// L'AI riceve SOLO i fatti REALI gia' raccolti e verificati (stesso identico
+// principio di narraConfrontoAziende: riassume quanto e' gia' li', non
+// scopre/inventa nulla di nuovo) — istruita esplicitamente a non aggiungere
+// numeri/aree non deducibili dall'elenco fornito. Se la chiamata fallisce
+// (stessa cascata provider di callAIPowerful, puo' fallire), chi chiama
+// ricade sull'elenco completo dei fatti invece di bloccare il report.
+async function sintetizzaPipeline(nomeAzienda,fatti){
+  const elenco=fatti.map(f=>`[${CORE_TIPO_LABEL[f.tipo]||f.tipo}] ${f.valore}`).join('\n');
+  const prompt=`Sei un analista Life Sciences. Ricevi l'elenco REALE di fatti su pipeline regolatoria/studi clinici di ${nomeAzienda}, gia' raccolti e verificati — non aggiungere nulla che non sia qui elencato, non inventare numeri o aree terapeutiche se non li ricavi da questo elenco.
+
+FATTI (${fatti.length} totali):
+${elenco}
+
+Scrivi una sintesi di massimo 2 frasi in italiano: quante iniziative/studi in totale e i temi/aree terapeutiche principali che ricorrono, dedotti SOLO dai testi sopra. Rispondi SOLO con il testo della sintesi, nessun altro commento.`;
+  const testo=await callAIPowerful(prompt,220);
+  return testo.trim();
+}
+
 // Fatti CORE di pipeline/studi clinici raggruppati per tipo, stesso ordine di
 // CORE_TIPO_ORDINE — usato sia per il target sia per ogni concorrente, sia a
 // schermo sia nel report stampabile.
@@ -9665,18 +9731,18 @@ function segnaliPipelineRaggruppati(segnali){
   return TIPI_SEGNALI_PIPELINE.filter(t=>byTipo.has(t)).map(t=>({tipo:t,label:CORE_TIPO_LABEL[t]||t,fatti:byTipo.get(t)}));
 }
 
-let _ultimiConcorrenti=null; // {target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,segnaliTarget}, per il pulsante "genera report"
+let _ultimiConcorrenti=null; // {target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,segnaliTarget,sintesiPipelineTarget}, per il pulsante "genera report"
 
-function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget){
+function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget){
   concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   segnaliTarget=segnaliTarget||[];
-  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget};
+  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget};
   const resultsEl=document.getElementById('ra-search-results');
   const partnershipHtml=(partnership&&partnership.length)?`<div style="font-size:12px;color:#f59e0b;background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:8px 12px;margin-bottom:12px;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
   const gruppiPipelineTarget=segnaliPipelineRaggruppati(segnaliTarget);
   const segnaliTargetHtml=gruppiPipelineTarget.length?`<div style="font-size:12px;background:var(--surface2);border-left:3px solid #8b5cf6;padding:8px 12px;margin-bottom:12px;border-radius:0 6px 6px 0;">
     <div style="font-weight:700;color:var(--text);margin-bottom:6px;">🧬 Pipeline regolatoria e studi clinici — ${target.name}</div>
-    ${gruppiPipelineTarget.map(g=>`<div style="margin-bottom:4px;"><span style="color:var(--text2);font-size:11px;">${g.label}:</span> ${g.fatti.map(coreFattoHtml).join('')}</div>`).join('')}
+    ${sintesiPipelineTarget?`<div style="color:var(--text);margin-bottom:4px;">${escHtml(sintesiPipelineTarget)} <span style="color:var(--text2);font-size:10px;font-style:italic;">(sintesi AI di ${segnaliTarget.length} fatti raccolti)</span></div>`:gruppiPipelineTarget.map(g=>`<div style="margin-bottom:4px;"><span style="color:var(--text2);font-size:11px;">${g.label}:</span> ${g.fatti.map(coreFattoHtml).join('')}</div>`).join('')}
   </div>`:'';
   if(!valori.length){
     resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
@@ -9696,7 +9762,7 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
       ${conAreaTerapeutica?`<td style="color:var(--text2);">${c.aree_terapeutiche.join(', ')||'—'}</td>`:''}
       <td style="color:var(--text2);">${presenzaItaliaTesto(c)}</td>
       <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
-      ${conPipeline?`<td style="color:var(--text2);font-size:11px;">${(c.segnaliPipeline||[]).map(coreFattoHtml).join('')}</td>`:''}
+      ${conPipeline?`<td style="color:var(--text2);font-size:11px;">${pipelineCellTesto(c,coreFattoHtml)}</td>`:''}
     </tr>`).join('');
     return `<div style="font-size:12px;color:var(--text2);margin:14px 0 6px;font-weight:700;">${titolo} (${concorrenti.length})</div>
     <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
@@ -9746,13 +9812,13 @@ function generaReportConcorrenti(){
   if(!_ultimiConcorrenti)return;
   const win=window.open('','_blank');
   if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget}=_ultimiConcorrenti;
-  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget);
+  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget}=_ultimiConcorrenti;
+  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget);
   win.document.open(); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(),1000);
 }
 
-function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget){
+function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget){
   concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   segnaliTarget=segnaliTarget||[];
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
@@ -9779,7 +9845,7 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
       ${conAreaTerapeutica?`<td style="color:#888;">${c.aree_terapeutiche.join(', ')}</td>`:''}
       <td style="color:#888;">${presenzaItaliaTesto(c)}</td>
       <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
-      ${conPipeline?`<td style="color:#333;font-size:11px;">${(c.segnaliPipeline||[]).map(fattoPipelineHtml).join('')}</td>`:''}
+      ${conPipeline?`<td style="color:#333;font-size:11px;">${pipelineCellTesto(c,fattoPipelineHtml)}</td>`:''}
     </tr>`).join('');
     return `<div class="section-title">${titolo} (${concorrenti.length})</div>
     <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>Presenza Italia</th><th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
@@ -9805,7 +9871,7 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   const gruppiPipelineTarget=segnaliPipelineRaggruppati(segnaliTarget);
   const segnaliTargetHtml=gruppiPipelineTarget.length?`<div class="summary-box">
     <div style="font-weight:700;margin-bottom:6px;">🧬 Pipeline regolatoria e studi clinici — ${target.name}</div>
-    ${gruppiPipelineTarget.map(g=>`<div style="margin-bottom:4px;"><span style="color:#888;font-size:11px;">${g.label}:</span> ${g.fatti.map(fattoPipelineHtml).join('')}</div>`).join('')}
+    ${sintesiPipelineTarget?`<div>${escHtml(sintesiPipelineTarget)} <span style="color:#aaa;font-size:10px;font-style:italic;">(sintesi AI di ${segnaliTarget.length} fatti raccolti)</span></div>`:gruppiPipelineTarget.map(g=>`<div style="margin-bottom:4px;"><span style="color:#888;font-size:11px;">${g.label}:</span> ${g.fatti.map(fattoPipelineHtml).join('')}</div>`).join('')}
   </div>`:'';
   const haSegnaliAlcuno=gruppiPipelineTarget.length||[...concorrentiFarmaci,...concorrentiDispositivi,...concorrentiClasseTerapeutica].some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
   const notaCoperturaPipeline=haSegnaliAlcuno?`<div style="font-size:10px;color:#aaa;font-style:italic;margin:-10px 0 20px;">Segnali di pipeline/studi clinici mostrati solo per le aziende con fatti CORE già raccolti in archivio: l'assenza non significa assenza di studi clinici nella realtà.</div>`:'';
