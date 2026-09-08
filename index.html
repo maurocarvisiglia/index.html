@@ -9491,6 +9491,11 @@ function categoriaDispositivoGenerica(valore){
 // ricerche di questa pagina, stesso principio di isolamento gia' in uso qui. ──
 
 async function trovaConcorrenti(companyId){
+  // Caricato una sola volta per sessione (cache interna) — serve a
+  // formattaNomeIngrediente() per mostrare "budesonide + formoterolo" invece
+  // del valore grezzo di matching "budesonideformoterolo".
+  await loadIngredientiVocabolario();
+
   // Partnership commerciali note (co-sviluppo/co-marketing) — trovaConcorrenti
   // non puo' scoprirle da sola: il registro AIFA registra chi detiene l'AIC
   // in Italia, non chi ha co-sviluppato il farmaco altrove (caso reale:
@@ -9734,7 +9739,8 @@ async function trovaConcorrenti(companyId){
     const perValore=perAzienda.get(a.id);
     const sovrapposizioni=perValore?[...perValore.entries()]
       .map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
-        valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
+        valore: campo==='active_ingredients_norm'?formattaNomeIngrediente(valore):valore,
+        tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
         nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
         regimi:[...new Set([...regimiPropri,...regimiLoro])],
       }))
@@ -9859,18 +9865,34 @@ async function trovaConcorrenti(companyId){
       return {...c, _punteggioGrezzo:Math.sqrt(idfs.length)*mediaIdf};
     });
     const massimo=Math.max(...conPunteggioGrezzo.map(c=>c._punteggioGrezzo))||1;
+    // Nel gruppo classe terapeutica ogni azienda condivide per costruzione UN
+    // SOLO valore col target (la classe ATC stessa, es. "Classe ATC R03AK") —
+    // il punteggio grezzo e' quindi identico per tutte, sempre normalizzato a
+    // 100: nessuna differenza reale da mostrare (caso reale segnalato da
+    // Mauro l'8/09/2026: Chiesi, 1795 dipendenti, e Promedica, 8 prodotti in
+    // catalogo totale, risultavano entrambe a "100"). La dimensione del
+    // catalogo farmaci dell'azienda (gia' nota qui sotto, zero query
+    // aggiuntive, copertura 100% a differenza di dipendenti/fatturato — dato
+    // presente solo per una minoranza) e' un proxy di quanto un'azienda sia
+    // un vero player di mercato vs chi detiene solo l'AIC per quella singola
+    // combinazione: scala logaritmica (un catalogo 10 volte piu' grande non
+    // deve valere 10 volte il punteggio), fattore 0.5-1.0 — mai sotto meta',
+    // un catalogo piccolo non prova l'irrilevanza del competitor, solo un
+    // peso relativo minore nel confronto con gli altri trovati qui.
+    const massimoCatalogo=tipo==='classe_terapeutica'?Math.max(...conPunteggioGrezzo.map(c=>c.catalogoTotale||0),1):null;
     return conPunteggioGrezzo
       .map(({_punteggioGrezzo,...c})=>{
-        const punteggio=Math.round(100*_punteggioGrezzo/massimo);
+        let punteggio=Math.round(100*_punteggioGrezzo/massimo);
+        if(tipo==='classe_terapeutica'&&massimoCatalogo>0){
+          const fattoreCatalogo=0.5+0.5*Math.log(1+(c.catalogoTotale||0))/Math.log(1+massimoCatalogo);
+          punteggio=Math.round(punteggio*fattoreCatalogo);
+        }
         return {...c, punteggio, tier:tierPerPunteggio(punteggio)};
       })
-      // A parita' di punteggio (frequente nel gruppo classe terapeutica: chi
-      // condivide solo la stessa classe ATC ha per costruzione lo stesso
-      // singolo valore condiviso, quindi lo stesso punteggio per tutti — 6
-      // aziende diverse a "100" nello stesso report) chi ha piu' dipendenti
-      // in Italia sale prima: a parita' di segnale statistico, una struttura
-      // commerciale locale piu' grande e' un rischio competitivo piu'
-      // concreto da presidiare per primo.
+      // A parita' di punteggio residua, chi ha piu' dipendenti in Italia sale
+      // prima: a parita' di segnale statistico, una struttura commerciale
+      // locale piu' grande e' un rischio competitivo piu' concreto da
+      // presidiare per primo.
       .sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name));
   }
 
@@ -9878,7 +9900,7 @@ async function trovaConcorrenti(companyId){
   // insiemi diversi per costruzione), quindi calcolarli in parallelo è
   // corretto e più veloce che in sequenza (ognuno fa le sue query di
   // catalogoTotale, a lotti, indipendenti dagli altri due gruppi).
-  const [concorrentiFarmaci,concorrentiDispositiviGrezzi,concorrentiClasseTerapeutica]=await Promise.all([
+  const [concorrentiFarmaci,concorrentiDispositiviGrezzi,concorrentiClasseTerapeuticaGrezzi]=await Promise.all([
     estraiGruppo(tutti,'farmaco'),
     estraiGruppo(tutti,'dispositivo'),
     estraiGruppo(tuttiClasse,'classe_terapeutica'),
@@ -9893,6 +9915,22 @@ async function trovaConcorrenti(companyId){
         return {...c, punteggio, tier:tierPerPunteggio(punteggio)};
       }).sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name))
     :concorrentiDispositiviGrezzi;
+
+  // Bonus "stessa molecola": un'azienda della classe terapeutica che compete
+  // ANCHE su un principio attivo ESATTO col target (quindi gia' presente nel
+  // gruppo farmaci, su un prodotto diverso) non e' una coincidenza isolata
+  // sulla classe ATC — e' un concorrente su piu' fronti, un segnale piu'
+  // solido che merita di emergere. Richiesto da Mauro l'8/09/2026 per rendere
+  // i punteggi piu' eterogenei: +15%, mai oltre 100 (resta un punteggio
+  // relativo 0-100, non un moltiplicatore libero). Riordina di conseguenza.
+  const idsInFarmaci=new Set(concorrentiFarmaci.map(c=>c.id));
+  const concorrentiClasseTerapeutica=concorrentiClasseTerapeuticaGrezzi
+    .map(c=>{
+      if(!idsInFarmaci.has(c.id))return c;
+      const punteggio=Math.min(100,Math.round(c.punteggio*1.15));
+      return {...c, punteggio, tier:tierPerPunteggio(punteggio), stessaMolecolaAncheInFarmaci:true};
+    })
+    .sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name));
 
   const sintesiEsecutiva=await sintetizzaMinacceCompetitive(targetRows[0]?.name||'questa azienda',concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,dispositiviMarginaliPerTarget);
 
@@ -9912,6 +9950,63 @@ async function trovaConcorrenti(companyId){
 }
 
 const REGIME_FARMACO_LABEL={ospedaliero:'ospedaliero',rimborsato_ssn:'rimborsato SSN'};
+
+// company_products.active_ingredients_norm concatena i principi attivi di un
+// farmaco combinazione SENZA separatore ("budesonideformoterolo") — e' una
+// chiave di normalizzazione per il matching (insensibile a "+"/"/"/" E " nel
+// nome AIFA originale), mai pensata per essere mostrata a un lettore. Trovato
+// l'8/09/2026 sul report concorrenti ("budesonideformoterolo",
+// "levodopacarbidopaentacapone" illeggibili in stampa). Anziche' un
+// dizionario INN scritto a mano, si scompone usando il vocabolario STESSO
+// gia' presente nella colonna: ogni principio attivo singolo (es.
+// "budesonide") esiste gia' come proprio valore atomico altrove nella stessa
+// colonna, quindi un valore composto si scompone sempre nei prefissi piu'
+// lunghi possibile gia' noti (stesso principio del classico "word break").
+// Caricato una sola volta per sessione (come _taxonomyCache), non per report.
+let _ingredientiVocabolario=null;
+async function loadIngredientiVocabolario(){
+  if(_ingredientiVocabolario)return _ingredientiVocabolario;
+  // Mai bloccante: se la query va in timeout (colonna array, nessun indice
+  // dedicato) il report deve comunque generarsi — formattaNomeIngrediente()
+  // torna semplicemente al valore grezzo di oggi, non un errore.
+  try{
+    const righe=await api('company_products?select=active_ingredients_norm&active_ingredients_norm=not.is.null&limit=10000');
+    const insieme=new Set();
+    righe.forEach(r=>(r.active_ingredients_norm||[]).forEach(i=>{ if(i)insieme.add(i); }));
+    _ingredientiVocabolario=insieme;
+    return insieme;
+  }catch(e){
+    console.warn('Vocabolario ingredienti non disponibile (report generato comunque):',e.message);
+    return null;
+  }
+}
+const _scomposizioneIngredientiCache=new Map();
+function scomponiIngrediente(valore){
+  if(_scomposizioneIngredientiCache.has(valore))return _scomposizioneIngredientiCache.get(valore);
+  const vocabolario=_ingredientiVocabolario;
+  let risultato=null;
+  if(vocabolario){
+    // Prefisso piu' lungo possibile (minimo 4 caratteri, evita frammenti
+    // spuri su nomi brevi) gia' presente come valore atomico nel vocabolario.
+    for(let i=valore.length-1;i>=4;i--){
+      const prefisso=valore.slice(0,i);
+      if(prefisso===valore||!vocabolario.has(prefisso))continue;
+      const resto=valore.slice(i);
+      const restoScomposto=resto.length?scomponiIngrediente(resto):[];
+      if(restoScomposto){ risultato=[prefisso,...restoScomposto]; break; }
+    }
+    if(!risultato&&vocabolario.has(valore))risultato=[valore];
+  }
+  _scomposizioneIngredientiCache.set(valore,risultato);
+  return risultato;
+}
+// Nome principio attivo leggibile per la stampa — invariato se il
+// vocabolario non e' ancora caricato o se il valore non si scompone (mai un
+// errore, al massimo resta il valore grezzo gia' visto oggi).
+function formattaNomeIngrediente(valore){
+  const pezzi=scomponiIngrediente(valore);
+  return pezzi&&pezzi.length>1?pezzi.join(' + '):valore;
+}
 
 function formattaSovrapposizione(s){
   const regimi=(s.regimi||[]).map(r=>REGIME_FARMACO_LABEL[r]||r);
@@ -10108,11 +10203,14 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
       const recruiting=c.recruitingRelevance?.persone!=null
         ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:8px;padding:1px 6px;">🎯 ${c.recruitingRelevance.persone} persone in ruoli commerciali/clinici</span>`
         :'';
+      const moleco=c.stessaMolecolaAncheInFarmaci
+        ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#166534;background:#f0fdf4;border-radius:8px;padding:1px 6px;">🧪 compete anche su un principio attivo esatto (vedi tabella Farmaci) — punteggio pesato</span>`
+        :'';
       const overlapAccennato=c.tier.id==='debole'||c.tier.id==='marginale';
       const overlapHtml=overlapAccennato?formattaSovrapposizioneCompatta(c.sovrapposizioni):c.sovrapposizioni.map(formattaSovrapposizione).join('');
       return `<tr>
       <td>${tierBadgeHtml(c)}</td>
-      <td>${c.name}${meta?`<div style="font-size:9px;color:#aaa;">${meta}</div>`:''}${recruiting?`<div>${recruiting}</div>`:''}</td>
+      <td>${c.name}${meta?`<div style="font-size:9px;color:#aaa;">${meta}</div>`:''}${recruiting?`<div>${recruiting}</div>`:''}${moleco?`<div>${moleco}</div>`:''}</td>
       <td style="color:#333;font-size:11px;">${overlapHtml}</td>
       ${conPipeline?`<td style="color:#333;font-size:11px;">${pipelineCellTesto(c,fattoPipelineHtml)}</td>`:''}
     </tr>`;
@@ -10127,14 +10225,16 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   const riepilogoHtml=riepilogo.top10.length?`
     <div class="section-title">Riepilogo esecutivo</div>
     ${sintesiEsecutivaHtml}
-    <table><thead><tr><th>Tier</th>${riepilogo.mercati.map(m=>`<th>${m.label}</th>`).join('')}<th>Totale</th></tr></thead>
+    <table><colgroup><col style="width:34%;">${riepilogo.mercati.map(()=>'<col style="width:16.5%;">').join('')}<col style="width:16%;"></colgroup>
+    <thead><tr><th>Tier</th>${riepilogo.mercati.map(m=>`<th>${m.label}</th>`).join('')}<th>Totale</th></tr></thead>
     <tbody>${riepilogo.conteggiPerTier.map(r=>`<tr>
       <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.tier.colore};margin-right:6px;"></span>${r.tier.label}</td>
       ${r.perMercato.map(n=>`<td>${n||'—'}</td>`).join('')}
       <td style="font-weight:700;">${r.totale}</td>
     </tr>`).join('')}</tbody></table>
     <div class="section-title">Top 10 per punteggio (tutti i mercati)</div>
-    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Mercato</th><th>Presenza Italia</th><th>Recruiting</th></tr></thead>
+    <table><colgroup><col style="width:19%;"><col style="width:27%;"><col style="width:16%;"><col style="width:22%;"><col style="width:16%;"></colgroup>
+    <thead><tr><th>Punteggio</th><th>Azienda</th><th>Mercato</th><th>Presenza Italia</th><th>Recruiting</th></tr></thead>
     <tbody>${riepilogo.top10.map(c=>`<tr>
       <td>${tierBadgeHtml(c)}</td><td>${c.name}</td><td style="color:#888;">${c.mercato}</td><td style="color:#888;">${presenzaItaliaTesto(c)}</td><td style="color:#888;">${c.recruitingRelevance?.persone!=null?`🎯 ${c.recruitingRelevance.persone}`:'—'}</td>
     </tr>`).join('')}</tbody></table>`:'';
