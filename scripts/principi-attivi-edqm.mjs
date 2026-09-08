@@ -36,6 +36,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { chiaveProdotto, scriviLotti } from './lib/dedup-conflitto.mjs';
+import { costruisciLookupAtc, normalizzaPrincipioAttivo } from './lib/atc-lookup.mjs';
 dotenv.config();
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -132,6 +133,12 @@ async function runPrincipiAttiviEdqmDailyBatch(apply = CLI_APPLY) {
   const push = (m) => { console.log(m); log.push(String(m).replace(/\x1b\[[0-9]+m/g, '')); };
   push(`\n${B}Principi attivi EDQM (CEP) -> company_products${Z} ${D}${apply ? 'SCRIVE' : 'solo misura'} · costo 0,00 $${Z}`);
 
+  // db/PARTE_23: stesso lookup usato da aifa-registro-prodotti.mjs (file
+  // Equivalenti, non scaricato qui altrimenti — costo 0,00 $ anche questo).
+  push(`${D}Costruisco il lookup principio attivo -> ATC dal file Equivalenti AIFA...${Z}`);
+  const lookupAtc = await costruisciLookupAtc().catch((e) => { push(`${Y}  lookup ATC non disponibile: ${e.message} — proseguo senza${Z}`); return new Map(); });
+  push(`${D}  ${lookupAtc.size} principi attivi con ATC noto${Z}`);
+
   const aziende = await sb('companies?select=id,name,is_active,merged_into&limit=4000');
   const attive = aziende.filter((c) => c.is_active && !c.merged_into);
 
@@ -195,6 +202,11 @@ async function runPrincipiAttiviEdqmDailyBatch(apply = CLI_APPLY) {
         brand_name: sostanza.slice(0, 300),
         active_ingredients: [sostanza],
         category: 'principio_attivo',
+        // db/PARTE_23: l'ATC classifica la sostanza chimica, non il canale di
+        // vendita — lo stesso lookup usato per i farmaci finiti (costruito
+        // dal file AIFA Equivalenti) si applica anche qui, verificato il
+        // 08/09/2026 su Furosemide (F.I.S.) -> C03CA01, identico al farmaco finito.
+        atc_code: lookupAtc.get(normalizzaPrincipioAttivo(sostanza)) || null,
         fonte: 'registro_pubblico',
         source_proof: `EDQM — Certificato di Idoneità (CEP) ${r['Certificate (CEP) Number'] || ''} — Titolare: ${r['Certificate (CEP) Holder']}${luogo ? ' (' + luogo + ')' : ''}`.slice(0, 400),
         source_url: 'https://extranet.edqm.eu/publications/recherches_CEP.shtml',

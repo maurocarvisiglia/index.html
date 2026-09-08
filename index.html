@@ -9020,13 +9020,12 @@ async function searchCompaniesFromPrompt(){
       }else if(risolta.stato==='ambigua'){
         resultsEl.innerHTML=`<div style="color:#f59e0b;font-size:12px;padding:12px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`;
       }else{
-        const {valori,concorrentiFarmaci,concorrentiDispositivi,partnership}=await trovaConcorrenti(risolta.azienda.id);
+        const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership}=await trovaConcorrenti(risolta.azienda.id);
         // "primi N" si applica per gruppo, non sul totale misto — altrimenti
         // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
         // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
-        const farmaciMostrati=plan.limite_risultati?concorrentiFarmaci.slice(0,plan.limite_risultati):concorrentiFarmaci;
-        const dispositiviMostrati=plan.limite_risultati?concorrentiDispositivi.slice(0,plan.limite_risultati):concorrentiDispositivi;
-        renderCompetitorResults(risolta.azienda,valori,farmaciMostrati,dispositiviMostrati,partnership);
+        const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
+        renderCompetitorResults(risolta.azienda,valori,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica));
       }
     }else{
       const aziende=await executeCompanySearchPlan(plan);
@@ -9301,7 +9300,7 @@ async function trovaConcorrenti(companyId){
   const partnershipRows=await api(`company_facts?select=valore&tipo=eq.partnership_commerciale&company_id=eq.${companyId}`);
   const partnership=partnershipRows.map(r=>r.valore);
 
-  const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category,regime_farmaco&company_id=eq.${companyId}`);
+  const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category,regime_farmaco,atc_code&company_id=eq.${companyId}`);
 
   // Coppie (campo, valore, categoria di prodotto) uniche — NON solo (campo,
   // valore): lo stesso principio attivo prodotto come materia prima da
@@ -9322,7 +9321,7 @@ async function trovaConcorrenti(companyId){
     (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
     if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], partnership};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership};
 
   // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
   // + regime farmaco, per poter mostrare "in comune su" con contesto invece
@@ -9353,9 +9352,47 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogli));
   }
 
-  if(!perAzienda.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], partnership};
+  // ── Terzo livello: stessa CLASSE terapeutica (ATC a 4 livelli, primi 5
+  // caratteri), molecola diversa — livello a cui aziende come Chiesi
+  // (beclometasone/formoterolo, R03AK08) e Orion (budesonide/formoterolo,
+  // R03AK07) sono concorrenti veri pur non condividendo alcun principio
+  // attivo esatto (verificato l'8/09/2026 con Mauro). Esclude sempre le
+  // righe che condividono gia' un principio attivo ESATTO col target: quelle
+  // sono gia' coperte dal livello "farmaci", non vanno duplicate qui.
+  const propriPerClasse=new Map(); // "prefix|categoria" -> {prefix,categoria,nomiPropri:Set}
+  propri.forEach(p=>{
+    if(!p.atc_code)return;
+    const prefix=p.atc_code.slice(0,5);
+    const chiave=`${prefix}|${p.category}`;
+    if(!propriPerClasse.has(chiave))propriPerClasse.set(chiave,{prefix,categoria:p.category,nomiPropri:new Set()});
+    propriPerClasse.get(chiave).nomiPropri.add(p.brand_name);
+  });
+  const propriIngredientiEsatti=new Set(propri.flatMap(p=>p.active_ingredients_norm||[]));
+  const perAziendaClasse=new Map(); // company_id -> Map(prefix -> {nomiPropri:Set,nomiLoro:Set})
+  async function raccogliClasse({prefix,categoria,nomiPropri}){
+    // atc_class=eq., non atc_code=like.prefix* — verificato che un indice
+    // btree normale non accelera una ricerca per prefisso (LIKE) sotto la
+    // collation di default di Postgres: timeout reale su 8.000+ righe
+    // (db/PARTE_24). Un'uguaglianza su una colonna gia' tagliata e' immediata.
+    const righe=await api(`company_products?select=company_id,brand_name,active_ingredients_norm&atc_class=eq.${encodeURIComponent(prefix)}&category=eq.${encodeURIComponent(categoria)}&company_id=neq.${companyId}&limit=500`);
+    righe.forEach(r=>{
+      const condivideEsatto=(r.active_ingredients_norm||[]).some(i=>propriIngredientiEsatti.has(i));
+      if(condivideEsatto)return;
+      if(!perAziendaClasse.has(r.company_id))perAziendaClasse.set(r.company_id,new Map());
+      const perClasse=perAziendaClasse.get(r.company_id);
+      if(!perClasse.has(prefix))perClasse.set(prefix,{nomiPropri:new Set(nomiPropri),nomiLoro:new Set()});
+      perClasse.get(prefix).nomiLoro.add(r.brand_name);
+    });
+  }
+  const listaClassi=[...propriPerClasse.values()];
+  for(let i=0;i<listaClassi.length;i+=CONCORRENZA){
+    const lotto=listaClassi.slice(i,i+CONCORRENZA);
+    await Promise.all(lotto.map(raccogliClasse));
+  }
 
-  const idsConcorrenti=[...perAzienda.keys()];
+  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership};
+
+  const idsConcorrenti=[...new Set([...perAzienda.keys(),...perAziendaClasse.keys()])];
   const aziende=[];
   for(let i=0;i<idsConcorrenti.length;i+=150){
     const lotto=idsConcorrenti.slice(i,i+150);
@@ -9378,20 +9415,32 @@ async function trovaConcorrenti(companyId){
     });
   }
 
-  const tutti=aziende.map(a=>{
-    const perValore=perAzienda.get(a.id);
-    const sovrapposizioni=[...perValore.entries()].map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
-      valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
-      nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
-      regimi:[...new Set([...regimiPropri,...regimiLoro])],
-    }));
+  function infoAzienda(a){
     return {
       id:a.id, name:a.name, sector_v2:a.sector_v2,
       aree_terapeutiche:[...(areeTerapeuticePerAzienda.get(a.id)||[])],
       stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
-      sovrapposizioni,
     };
+  }
+
+  const tutti=aziende.map(a=>{
+    const perValore=perAzienda.get(a.id);
+    const sovrapposizioni=perValore?[...perValore.entries()].map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
+      valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
+      nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
+      regimi:[...new Set([...regimiPropri,...regimiLoro])],
+    })):[];
+    return {...infoAzienda(a), sovrapposizioni};
   }).filter(c=>!c.stessoGruppo); // integrazione interna, non e' concorrenza di mercato
+
+  const tuttiClasse=aziende.map(a=>{
+    const perClasse=perAziendaClasse.get(a.id);
+    const sovrapposizioni=perClasse?[...perClasse.entries()].map(([prefix,{nomiPropri,nomiLoro}])=>({
+      valore:`Classe ATC ${prefix}`, tipo:'classe_terapeutica',
+      nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3), regimi:[],
+    })):[];
+    return {...infoAzienda(a), sovrapposizioni};
+  }).filter(c=>!c.stessoGruppo);
 
   // Farmaci e dispositivi sono mercati diversi (v. Orion Pharma: suture
   // chirurgiche vs principi attivi CNS/oncologia) — ordinare/limitare un
@@ -9399,8 +9448,8 @@ async function trovaConcorrenti(companyId){
   // Teva, AstraZeneca...) sotto chi condivide tante sotto-categorie CND di
   // dispositivo (la nomenclatura CND e' molto piu' granulare per prodotto).
   // Un'azienda che compete su entrambi i fronti compare in entrambe le liste.
-  function estraiGruppo(tipo){
-    return tutti
+  function estraiGruppo(lista,tipo){
+    return lista
       .map(c=>({...c, sovrapposizioni:c.sovrapposizioni.filter(s=>s.tipo===tipo)}))
       .filter(c=>c.sovrapposizioni.length>0)
       .sort((a,b)=>b.sovrapposizioni.length-a.sovrapposizioni.length||a.name.localeCompare(b.name));
@@ -9408,8 +9457,9 @@ async function trovaConcorrenti(companyId){
 
   return {
     valori:listaCompiti.map(c=>c.valore),
-    concorrentiFarmaci:estraiGruppo('farmaco'),
-    concorrentiDispositivi:estraiGruppo('dispositivo'),
+    concorrentiFarmaci:estraiGruppo(tutti,'farmaco'),
+    concorrentiDispositivi:estraiGruppo(tutti,'dispositivo'),
+    concorrentiClasseTerapeutica:estraiGruppo(tuttiClasse,'classe_terapeutica'),
     partnership,
   };
 }
@@ -9421,8 +9471,8 @@ async function trovaConcorrentiDiSelezionata(){
   btn.disabled=true;
   resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca concorrenti in corso...</div>';
   try{
-    const {valori,concorrentiFarmaci,concorrentiDispositivi,partnership}=await trovaConcorrenti(_raSelectedCompany.id);
-    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership);
+    const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership}=await trovaConcorrenti(_raSelectedCompany.id);
+    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica);
   }catch(e){
     resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
   }finally{
@@ -9440,15 +9490,16 @@ function formattaSovrapposizione(s){
 
 let _ultimiConcorrenti=null; // {target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership}, per il pulsante "genera report"
 
-function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership){
-  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership};
+function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica){
+  concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
+  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica};
   const resultsEl=document.getElementById('ra-search-results');
   const partnershipHtml=(partnership&&partnership.length)?`<div style="font-size:12px;color:#f59e0b;background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:8px 12px;margin-bottom:12px;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
   if(!valori.length){
     resultsEl.innerHTML=`${partnershipHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
     return;
   }
-  if(!concorrentiFarmaci.length&&!concorrentiDispositivi.length){
+  if(!concorrentiFarmaci.length&&!concorrentiDispositivi.length&&!concorrentiClasseTerapeutica.length){
     resultsEl.innerHTML=`${partnershipHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun concorrente trovato su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} di ${target.name}.</div>`;
     return;
   }
@@ -9472,6 +9523,7 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
     <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Concorrenti per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
     ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
     ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
+    ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
     <button class="btn btn-secondary" onclick="generaReportConcorrenti()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report concorrenti</button>`;
 }
 
@@ -9479,16 +9531,17 @@ function generaReportConcorrenti(){
   if(!_ultimiConcorrenti)return;
   const win=window.open('','_blank');
   if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership}=_ultimiConcorrenti;
-  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership);
+  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica}=_ultimiConcorrenti;
+  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica);
   win.document.open(); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(),1000);
 }
 
-function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership){
+function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica){
+  concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
-  const totale=concorrentiFarmaci.length+concorrentiDispositivi.length;
+  const totale=concorrentiFarmaci.length+concorrentiDispositivi.length+concorrentiClasseTerapeutica.length;
 
   function tabella(titolo,concorrenti,conAreaTerapeutica){
     if(!concorrenti.length)return '';
@@ -9532,6 +9585,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati.</div>
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
   ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
+  ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
   <div class="footer">
     Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>

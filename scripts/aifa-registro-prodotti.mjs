@@ -48,6 +48,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { chiaveProdotto, scriviLotti } from './lib/dedup-conflitto.mjs';
+import { costruisciLookupAtc, normalizzaPrincipioAttivo } from './lib/atc-lookup.mjs';
 dotenv.config();
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -185,6 +186,13 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
 
   push(`\n${B}Registri pubblici AIFA -> company_products${Z}  ${D}${apply ? 'SCRIVE' : 'solo misura'} · costo 0,00 $${Z}\n`);
 
+  // db/PARTE_23: il file Equivalenti (uno dei 3 scaricati sotto) ha una
+  // colonna ATC mai letta finora — si scarica una volta qui e si applica a
+  // TUTTE e 3 le fonti (non solo Equivalenti), via il principio attivo.
+  push(`${D}Costruisco il lookup principio attivo -> ATC dal file Equivalenti...${Z}`);
+  const lookupAtc = await costruisciLookupAtc().catch((e) => { push(`${Y}  lookup ATC non disponibile: ${e.message} — proseguo senza${Z}`); return new Map(); });
+  push(`${D}  ${lookupAtc.size} principi attivi con ATC noto${Z}`);
+
   let aziende = await sb('companies?select=id,name,is_active,merged_into&limit=4000');
   let attive = aziende.filter((c) => c.is_active && !c.merged_into);
 
@@ -272,6 +280,7 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
           active_ingredients: principio ? [principio] : null,
           category: 'commercializzato', fonte: 'registro_pubblico',
           regime_farmaco: regimeFarmacoPerLabel(fonte.label),
+          atc_code: principio ? lookupAtc.get(normalizzaPrincipioAttivo(principio)) || null : null,
           source_proof: `${fonte.label} AIFA — Titolare AIC: ${titolare}${viaContenimento ? ' (abbinata per nome simile a "' + lsi.name + '")' : ''} — ${r[fonte.colDenom]}`.slice(0, 400),
           source_url: fonte.paginaFonte,
         });
@@ -388,6 +397,7 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
         active_ingredients: rg.principio ? [rg.principio] : null,
         category: 'commercializzato', fonte: 'registro_pubblico',
         regime_farmaco: regimeFarmacoPerLabel(rg.fonteLabel),
+        atc_code: rg.principio ? lookupAtc.get(normalizzaPrincipioAttivo(rg.principio)) || null : null,
         source_proof: `${rg.fonteLabel} AIFA — Titolare AIC: ${rg.titolare} — ${rg.denomOriginale}`.slice(0, 400),
         source_url: rg.paginaFonte,
       });
