@@ -9084,6 +9084,26 @@ async function generaReportUnico(){
         if(win&&!win.closed)win.close();
         return;
       }
+      // Organico/pipeline devono comparire SEMPRE quando disponibili, non
+      // solo nel report concorrenti (richiesto da Mauro l'8/09/2026) — stesso
+      // pattern batched gia' in uso altrove, qui su fino a 200 aziende.
+      const idsLista=aziende.map(a=>a.id);
+      const [organicoLista,pipelineLista]=await Promise.all([
+        recuperaOrganicoPerAziende(idsLista),
+        (async()=>{
+          const mappa=new Map();
+          for(let i=0;i<idsLista.length;i+=150){
+            const lotto=idsLista.slice(i,i+150);
+            const righe=await api(`company_facts?select=company_id,tipo&company_id=in.(${lotto.join(',')})&tipo=in.(${TIPI_SEGNALI_PIPELINE.join(',')})`);
+            righe.forEach(r=>{ if(!mappa.has(r.company_id))mappa.set(r.company_id,0); mappa.set(r.company_id,mappa.get(r.company_id)+1); });
+          }
+          return mappa;
+        })(),
+      ]);
+      aziende.forEach(a=>{
+        a.recruitingPersone=organicoLista.has(a.id)?personeTrasferibili(organicoLista.get(a.id)):null;
+        a.nSegnaliPipeline=pipelineLista.get(a.id)||0;
+      });
       html=renderCompanyListReportHTML(plan,aziende);
     }
     if(win&&!win.closed){
@@ -9104,14 +9124,15 @@ async function raccogliDatiAzienda(id, fallbackCompany){
   // Fattorizza il fetch gia' scritto per la scheda singola azienda: lo usa
   // anche il confronto tra aziende nominate, per non duplicare la stessa
   // sequenza di query in due posti.
-  const [schedaRows, companyRows, facts, prioritari, countResp, contatti, annunci] = await Promise.all([
+  const [schedaRows, companyRows, facts, prioritari, countResp, contatti, annunci, organico] = await Promise.all([
     api(`v_scheda_azienda?select=*&id=eq.${id}`),
     api(`companies?select=id,name,ragione_sociale,website,sector_v2,region,company_group_id&id=eq.${id}`),
-    api(`company_facts?select=tipo,valore,fonte,rilevato_il&company_id=eq.${id}`),
+    api(`company_facts?select=tipo,valore,fonte,prova,url,rilevato_il&company_id=eq.${id}`),
     api(`company_products?select=${PRODOTTI_CAMPI}&company_id=eq.${id}&fonte=neq.registro_pubblico&order=brand_name.asc`),
     fetch(`${SB_URL}/rest/v1/company_products?select=id&company_id=eq.${id}`,{headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}}),
     api(`company_contacts?select=nome,ruolo,email,telefono&company_id=eq.${id}`),
-    api(`job_listings?select=job_title,seniority_v2,functional_area_v2,therapeutic_area,contract_type,ral_min,ral_max,ral_estimated,region,province,published_date,url&company_id=eq.${id}&order=published_date.desc&limit=50`)
+    api(`job_listings?select=job_title,seniority_v2,functional_area_v2,therapeutic_area,contract_type,ral_min,ral_max,ral_estimated,region,province,published_date,url&company_id=eq.${id}&order=published_date.desc&limit=50`),
+    api(`v_company_workforce_funzioni?select=funzione,ambito,conteggio&company_id=eq.${id}&order=conteggio.desc`)
   ]);
   const scheda=schedaRows[0]||null;
   const company=companyRows[0]||fallbackCompany;
@@ -9131,7 +9152,20 @@ async function raccogliDatiAzienda(id, fallbackCompany){
     if(gruppi[0])gruppo={nome:gruppi[0].name,sorelle};
   }
 
-  return {company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo};
+  // Sintesi AI dei fatti pipeline/studi clinici se troppi da elencare per
+  // intero (stesso principio del report concorrenti, 8/09/2026) — richiesto
+  // da Mauro che questi dati compaiano SEMPRE, non solo li': qui pero' i
+  // "troppi fatti" sono meno probabili (un'azienda vede solo i propri fatti,
+  // non quelli aggregati di decine di concorrenti), ma la soglia resta la
+  // stessa per coerenza.
+  const fattiPipeline=facts.filter(f=>TIPI_SEGNALI_PIPELINE.includes(f.tipo));
+  let sintesiPipeline=null;
+  if(fattiPipeline.length>SOGLIA_SINTESI_PIPELINE){
+    try{ sintesiPipeline=await sintetizzaPipeline(company.name,fattiPipeline); }
+    catch(e){ console.warn('Sintesi pipeline non disponibile:',e.message); }
+  }
+
+  return {company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo,organico,sintesiPipeline};
 }
 
 async function generateCompanyReport(){
@@ -9166,7 +9200,7 @@ async function generateCompanyReport(){
   }
 }
 
-function renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo}){
+function renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,contatti,annunci,gruppo,organico,sintesiPipeline}){
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
@@ -9194,15 +9228,36 @@ function renderCompanyReportHTML({company,scheda,facts,prodotti,totaleProdotti,c
       ${gruppo.sorelle.map(s=>s.name+(s.id===company.id?' (questa azienda)':'')).join(', ')}
     </div>`:'';
 
-  const factsOrdinati=CORE_TIPO_ORDINE.filter(t=>facts.some(f=>f.tipo===t));
+  // Pipeline/studi clinici trattati a parte dal resto dei fatti CORE, con
+  // link+citazione e sintesi AI se sono troppi da elencare per intero —
+  // stesso trattamento gia' costruito per il report concorrenti, richiesto
+  // da Mauro l'8/09/2026 perche' compaia SEMPRE, non solo li'.
+  const factsAltro=facts.filter(f=>!TIPI_SEGNALI_PIPELINE.includes(f.tipo));
+  const factsOrdinati=CORE_TIPO_ORDINE.filter(t=>!TIPI_SEGNALI_PIPELINE.includes(t)&&factsAltro.some(f=>f.tipo===t));
   const coreHtml=factsOrdinati.length?`
     <div class="section-title">Dati CORE</div>
     <table><tbody>
       ${factsOrdinati.map(t=>{
-        const righeTipo=facts.filter(f=>f.tipo===t);
+        const righeTipo=factsAltro.filter(f=>f.tipo===t);
         return righeTipo.map(f=>`<tr><td style="width:220px;color:#888;">${CORE_TIPO_LABEL[t]||t}</td><td>${f.valore}</td><td class="num" style="font-weight:400;color:#aaa;font-size:10px;">${CORE_FONTE_LABEL[f.fonte]||f.fonte||''}</td></tr>`).join('');
       }).join('')}
     </tbody></table>`:'';
+
+  const gruppiPipeline=segnaliPipelineRaggruppati(facts.filter(f=>TIPI_SEGNALI_PIPELINE.includes(f.tipo)));
+  const pipelineHtml=gruppiPipeline.length?`
+    <div class="section-title">Pipeline regolatoria e studi clinici</div>
+    <div class="summary-box">
+      ${sintesiPipeline?`${escHtml(sintesiPipeline)} <span style="color:#aaa;font-size:10px;font-style:italic;">(sintesi AI di ${gruppiPipeline.reduce((s,g)=>s+g.fatti.length,0)} fatti)</span>`
+        :gruppiPipeline.map(g=>`<div style="margin-bottom:4px;"><strong>${g.label}:</strong> ${g.fatti.map(fattoPipelineHtml).join('')}</div>`).join('')}
+    </div>`:'';
+
+  const organicoOrdinato=[...(organico||[])].sort((a,b)=>b.conteggio-a.conteggio);
+  const organicoHtml=organicoOrdinato.length?`
+    <div class="section-title">Organico per funzione</div>
+    <table><tbody>
+      ${organicoOrdinato.map(r=>`<tr><td style="width:260px;color:#888;">${WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione}${WORKFORCE_AMBITO_LABEL[r.ambito]?` <span style="font-size:9px;color:${GOLD};">(${WORKFORCE_AMBITO_LABEL[r.ambito]})</span>`:''}</td><td class="num" style="font-weight:700;">${r.conteggio}</td></tr>`).join('')}
+    </tbody></table>
+    <div style="font-size:10px;color:#aaa;font-style:italic;margin:-14px 0 20px;">Fonte Apollo people search — nessun nome salvato, solo conteggi per funzione.</div>`:'';
 
   const prodottiHtml=prodotti.length?`
     <div class="section-title">Prodotti in commercio ${totaleProdotti>prodotti.length?`<span style="color:#888;text-transform:none;letter-spacing:0;">(mostrati ${prodotti.length} su ${nf(totaleProdotti)})</span>`:''}</div>
@@ -9263,8 +9318,10 @@ td.num{text-align:right;}
   <div class="kpi-grid">${kpiHtml}</div>
 
   ${gruppoHtml}
+  ${pipelineHtml}
   ${coreHtml}
   ${prodottiHtml}
+  ${organicoHtml}
   ${contattiHtml}
   ${annunciHtml}
 
@@ -9306,6 +9363,36 @@ const FUNZIONI_RECRUITING_TRASFERIBILI=new Set([
   'product_management_device','product_management_software','training_clinico',
   'customer_success','customer_service','farmacista','operations_punto_vendita',
 ]);
+function personeTrasferibili(righeOrganico){
+  return (righeOrganico||[]).filter(r=>FUNZIONI_RECRUITING_TRASFERIBILI.has(r.funzione)).reduce((s,r)=>s+r.conteggio,0);
+}
+
+// Fetch batched (150 alla volta) di v_company_workforce_funzioni per piu'
+// aziende insieme — usato dal report elenco (potenzialmente fino a 200
+// aziende), stesso pattern gia' in uso in trovaConcorrenti per aree
+// terapeutiche/segnali pipeline.
+async function recuperaOrganicoPerAziende(ids){
+  const perAzienda=new Map();
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const righe=await api(`v_company_workforce_funzioni?select=company_id,funzione,ambito,conteggio&company_id=in.(${lotto.join(',')})`);
+    righe.forEach(r=>{
+      if(!perAzienda.has(r.company_id))perAzienda.set(r.company_id,[]);
+      perAzienda.get(r.company_id).push(r);
+    });
+  }
+  return perAzienda;
+}
+
+// Formattatore di un fatto CORE (valore + link fonte + citazione in
+// tooltip) per i documenti stampabili a se' stanti (finestra separata,
+// nessuna variabile CSS dell'app disponibile li') — riusato da tutti i
+// report di questa pagina, non solo quello concorrenti.
+function fattoPipelineHtml(f){
+  const fonte=CORE_FONTE_LABEL[f.fonte]||f.fonte||'';
+  const link=f.url?`<a href="${escHtml(f.url)}" target="_blank" title="${escHtml(f.prova||'')}" style="font-size:10px;color:#888;text-decoration:none;margin-left:6px;">↗ ${fonte}</a>`:'';
+  return `<div style="margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
+}
 
 // ── Concorrenza per prodotto: trova altre aziende che vendono lo stesso
 // principio attivo (active_ingredients_norm, farmaci) o la stessa categoria
@@ -9493,15 +9580,7 @@ async function trovaConcorrenti(companyId){
   // su Orion l'8/09/2026: solo ~12% dei concorrenti ha organico catalogato
   // (stessa copertura bassa gia' nota per company_workforce) — "N/D"
   // esplicito per chi non ne ha, mai un punteggio inventato o un 0 travestito.
-  const organicoPerAzienda=new Map(); // company_id -> righe[]
-  for(let i=0;i<idsConcorrenti.length;i+=150){
-    const lotto=idsConcorrenti.slice(i,i+150);
-    const righe=await api(`v_company_workforce_funzioni?select=company_id,funzione,conteggio&company_id=in.(${lotto.join(',')})`);
-    righe.forEach(r=>{
-      if(!organicoPerAzienda.has(r.company_id))organicoPerAzienda.set(r.company_id,[]);
-      organicoPerAzienda.get(r.company_id).push(r);
-    });
-  }
+  const organicoPerAzienda=await recuperaOrganicoPerAziende(idsConcorrenti);
   // NIENTE punteggio 0-100 relativo al sotto-insieme che ha organico: con
   // una copertura cosi' bassa (7/60 su Orion), normalizzare sul massimo dei
   // soli campionati darebbe "100/100" a un'azienda per il solo fatto di
@@ -9513,9 +9592,7 @@ async function trovaConcorrenti(companyId){
   // sempre, a livello di intero report — non nasconde quanto e' incompleto.
   function recruitingRelevancePerAzienda(id){
     if(!organicoPerAzienda.has(id))return {persone:null};
-    const righe=organicoPerAzienda.get(id);
-    const persone=righe.filter(r=>FUNZIONI_RECRUITING_TRASFERIBILI.has(r.funzione)).reduce((s,r)=>s+r.conteggio,0);
-    return {persone};
+    return {persone:personeTrasferibili(organicoPerAzienda.get(id))};
   }
   const coperturaOrganico={
     nConDati:organicoPerAzienda.size,
@@ -9767,15 +9844,6 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const totale=concorrentiFarmaci.length+concorrentiDispositivi.length+concorrentiClasseTerapeutica.length;
 
-  // Formattatore di un fatto CORE per questo documento stampabile a se' stante
-  // (finestra separata, nessuna variabile CSS dell'app disponibile qui) —
-  // stesso contenuto di coreFattoHtml (valore + link fonte + citazione in
-  // tooltip), colori coerenti con lo stile gia' in uso in questo report.
-  function fattoPipelineHtml(f){
-    const fonte=CORE_FONTE_LABEL[f.fonte]||f.fonte||'';
-    const link=f.url?`<a href="${escHtml(f.url)}" target="_blank" title="${escHtml(f.prova||'')}" style="font-size:10px;color:#888;text-decoration:none;margin-left:6px;">↗ ${fonte}</a>`:'';
-    return `<div style="margin-bottom:4px;">${escHtml(f.valore)}${link}</div>`;
-  }
 
   // Settore/area terapeutica/presenza Italia erano 3 colonne separate — con
   // 7 colonne totali il browser schiacciava "In comune su"/"Pipeline" in
@@ -9896,12 +9964,19 @@ function renderCompanyListReportHTML(plan,aziende){
     f.hiring_attivo===false&&'nessun annuncio attivo',
   ].filter(Boolean).join(' · ')||'nessun criterio specifico';
 
+  // Organico/pipeline compaiono SEMPRE quando disponibili (richiesto da
+  // Mauro l'8/09/2026), gia' calcolati dal chiamante (generaReportUnico) su
+  // tutte le aziende dell'elenco — colonne compatte (numero, non paragrafi:
+  // qui le righe possono arrivare a 200, a differenza delle 3 tabelle
+  // concorrenti dove l'elenco e' molto piu' corto).
   const righe=aziende.map(a=>`<tr>
     <td>${a.name}</td>
     <td style="color:#888;">${a.sector_v2||''}</td>
     <td style="color:#888;">${a.regione_sede||''}</td>
     <td style="color:#888;">${STATO_ASSUNZIONI_LABEL[a.stato_assunzioni]||''}</td>
     <td style="color:#888;">${(a.gruppo||[]).join(', ')}</td>
+    <td style="color:#888;">${a.recruitingPersone!=null?`🎯 ${a.recruitingPersone}`:'—'}</td>
+    <td style="color:#888;">${a.nSegnaliPipeline?a.nSegnaliPipeline:'—'}</td>
   </tr>`).join('');
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -9929,7 +10004,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
     </div>
   </div>
   <div class="summary-box"><strong>${aziende.length}</strong> aziend${aziende.length===1?'a trovata':'e trovate'} — criteri: ${criteriTesto}${(plan._dropped_filters||[]).length?`<br><span style="color:#a15c00;">⚠️ filtri ignorati: ${plan._dropped_filters.join('; ')}</span>`:''}</div>
-  <table><thead><tr><th>Azienda</th><th>Settore</th><th>Regione</th><th>Assunzioni</th><th>Gruppo</th></tr></thead><tbody>${righe}</tbody></table>
+  <table><thead><tr><th>Azienda</th><th>Settore</th><th>Regione</th><th>Assunzioni</th><th>Gruppo</th><th>Recruiting</th><th>Pipeline</th></tr></thead><tbody>${righe}</tbody></table>
   <div class="footer">
     Report generato da LS Job Intelligence in base ai criteri di ricerca applicati.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
@@ -10031,6 +10106,18 @@ function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
     ['Prodotti commercializzati',d=>nf(nProdottiPerCategoria(d.prodotti,'commercializzato')+ (d.totaleProdotti>d.prodotti.length?d.totaleProdotti-d.prodotti.length:0))],
     ['Principi attivi prodotti',d=>nf(nProdottiPerCategoria(d.prodotti,'principio_attivo'))],
     ['Decision maker noti',d=>nf(d.scheda?.decisori_noti??d.contatti.length)],
+    ['Organico (funzioni principali)',d=>{
+      const top=[...(d.organico||[])].sort((a,b)=>b.conteggio-a.conteggio).slice(0,3);
+      return top.length?top.map(r=>`${WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione} (${r.conteggio})`).join(', '):'—';
+    }],
+    ['Persone in ruoli commerciali/clinici',d=>{
+      const p=personeTrasferibili(d.organico);
+      return (d.organico&&d.organico.length)?nf(p):'—';
+    }],
+    ['Segnali pipeline/studi clinici',d=>{
+      const n=(d.facts||[]).filter(f=>TIPI_SEGNALI_PIPELINE.includes(f.tipo)).length;
+      return n?`${n} fatt${n===1?'o':'i'}`:'—';
+    }],
   ];
 
   const colonne=datiAziende.map(d=>`<th>${d.company.name}</th>`).join('');
