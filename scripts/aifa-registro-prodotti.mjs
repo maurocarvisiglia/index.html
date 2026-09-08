@@ -125,6 +125,15 @@ const FONTI = [
     label: 'Equivalenti', paginaFonte: 'https://www.aifa.gov.it/liste-di-trasparenza', colTitolare: 'Ditta', colDenom: 'Farmaco', colPrincipio: 'Principio attivo' },
 ];
 
+// db/PARTE_22: Classe H = farmaci ospedalieri, Classe A + Equivalenti = farmaci
+// rimborsati SSN/farmacia. Distinzione diversa da "da banco" (OTC, mai
+// importata: servirebbe la Classe C AIFA, che non scarichiamo).
+function regimeFarmacoPerLabel(label) {
+  if (label === 'Classe H') return 'ospedaliero';
+  if (label === 'Classe A' || label === 'Equivalenti') return 'rimborsato_ssn';
+  return null;
+}
+
 // Parser CSV completo (non un semplice split per riga): un campo tra
 // virgolette puo' contenere un vero a-capo (successo per davvero in
 // Lista_farmaci_equivalenti.csv, 3 righe su 8511 — bug reale del 06/09/2026,
@@ -262,6 +271,7 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
           company_id: lsi.id, brand_name: nome,
           active_ingredients: principio ? [principio] : null,
           category: 'commercializzato', fonte: 'registro_pubblico',
+          regime_farmaco: regimeFarmacoPerLabel(fonte.label),
           source_proof: `${fonte.label} AIFA — Titolare AIC: ${titolare}${viaContenimento ? ' (abbinata per nome simile a "' + lsi.name + '")' : ''} — ${r[fonte.colDenom]}`.slice(0, 400),
           source_url: fonte.paginaFonte,
         });
@@ -377,6 +387,7 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
         company_id: companyId, brand_name: rg.nome,
         active_ingredients: rg.principio ? [rg.principio] : null,
         category: 'commercializzato', fonte: 'registro_pubblico',
+        regime_farmaco: regimeFarmacoPerLabel(rg.fonteLabel),
         source_proof: `${rg.fonteLabel} AIFA — Titolare AIC: ${rg.titolare} — ${rg.denomOriginale}`.slice(0, 400),
         source_url: rg.paginaFonte,
       });

@@ -8561,12 +8561,19 @@ const CORE_TIPO_LABEL={
   // AIFA alla produzione di principi attivi, non un prodotto ma un dato sul tipo
   // di attivita' dell'azienda (produzione/qualita' GMP).
   certificazione_gmp:'Certificazione GMP (officina principi attivi)',
+  // Aggiunto il 08/09/2026: relazioni di co-sviluppo/co-marketing che il
+  // matching per principio attivo/dispositivo (trovaConcorrenti) non puo'
+  // scoprire da solo — l'AIC italiana e' intestata a UN titolare, anche
+  // quando il farmaco e' stato sviluppato insieme a un'altra azienda (caso
+  // reale: Nubeqa/darolutamide, AIC Bayer, co-sviluppato con Orion Pharma).
+  // Solo voci manuali verificate, mai dedotte automaticamente.
+  partnership_commerciale:'Partnership commerciale',
 };
 // 'prodotto' NON e' piu' qui: dal 27/08 i prodotti vengono da company_products
 // (tabella dedicata, con molecole e indice di ricerca), non da company_facts.
 // Le righe tipo='prodotto' restano in company_facts come backup passivo — la
 // card non le legge piu' da li', per non mostrare due volte lo stesso prodotto.
-const CORE_TIPO_ORDINE=['gruppo','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
+const CORE_TIPO_ORDINE=['gruppo','partnership_commerciale','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
 const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci',registro_pubblico:'registro pubblico'};
 
 // Il testo di questa card viene da pagine web esterne e titoli di studi clinici —
@@ -9013,9 +9020,13 @@ async function searchCompaniesFromPrompt(){
       }else if(risolta.stato==='ambigua'){
         resultsEl.innerHTML=`<div style="color:#f59e0b;font-size:12px;padding:12px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`;
       }else{
-        const {valori,concorrenti}=await trovaConcorrenti(risolta.azienda.id);
-        const concorrentiMostrati=plan.limite_risultati?concorrenti.slice(0,plan.limite_risultati):concorrenti;
-        renderCompetitorResults(risolta.azienda,valori,concorrentiMostrati);
+        const {valori,concorrentiFarmaci,concorrentiDispositivi,partnership}=await trovaConcorrenti(risolta.azienda.id);
+        // "primi N" si applica per gruppo, non sul totale misto — altrimenti
+        // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
+        // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
+        const farmaciMostrati=plan.limite_risultati?concorrentiFarmaci.slice(0,plan.limite_risultati):concorrentiFarmaci;
+        const dispositiviMostrati=plan.limite_risultati?concorrentiDispositivi.slice(0,plan.limite_risultati):concorrentiDispositivi;
+        renderCompetitorResults(risolta.azienda,valori,farmaciMostrati,dispositiviMostrati,partnership);
       }
     }else{
       const aziende=await executeCompanySearchPlan(plan);
@@ -9282,7 +9293,15 @@ td.num{text-align:right;}
 // ricerche di questa pagina, stesso principio di isolamento gia' in uso qui. ──
 
 async function trovaConcorrenti(companyId){
-  const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category&company_id=eq.${companyId}`);
+  // Partnership commerciali note (co-sviluppo/co-marketing) — trovaConcorrenti
+  // non puo' scoprirle da sola: il registro AIFA registra chi detiene l'AIC
+  // in Italia, non chi ha co-sviluppato il farmaco altrove (caso reale:
+  // Nubeqa/darolutamide, AIC Bayer, co-sviluppo con Orion Pharma). Mostrata
+  // sempre separata dai concorrenti auto-rilevati, mai mescolata li'.
+  const partnershipRows=await api(`company_facts?select=valore&tipo=eq.partnership_commerciale&company_id=eq.${companyId}`);
+  const partnership=partnershipRows.map(r=>r.valore);
+
+  const propri=await api(`company_products?select=brand_name,active_ingredients_norm,device_category,category,regime_farmaco&company_id=eq.${companyId}`);
 
   // Coppie (campo, valore, categoria di prodotto) uniche — NON solo (campo,
   // valore): lo stesso principio attivo prodotto come materia prima da
@@ -9291,30 +9310,36 @@ async function trovaConcorrenti(companyId){
   // Sandoz/Teva/Mylan). Contano come concorrenti solo le aziende che
   // condividono lo stesso principio/categoria ALLA STESSA categoria di
   // prodotto (entrambe principio_attivo, o entrambe commercializzato).
-  const coppie=new Map(); // "campo|valore|categoria" -> {campo,valore,categoria,nomiPropri:Set}
-  function aggiungi(campo,valore,categoria,nomeProdotto){
+  const coppie=new Map(); // "campo|valore|categoria" -> {campo,valore,categoria,nomiPropri:Set,regimiPropri:Set}
+  function aggiungi(campo,valore,categoria,nomeProdotto,regime){
     const chiave=`${campo}|${valore}|${categoria}`;
-    if(!coppie.has(chiave))coppie.set(chiave,{campo,valore,categoria,nomiPropri:new Set()});
-    coppie.get(chiave).nomiPropri.add(nomeProdotto);
+    if(!coppie.has(chiave))coppie.set(chiave,{campo,valore,categoria,nomiPropri:new Set(),regimiPropri:new Set()});
+    const c=coppie.get(chiave);
+    c.nomiPropri.add(nomeProdotto);
+    if(regime)c.regimiPropri.add(regime);
   }
   propri.forEach(p=>{
-    (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name); });
-    if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name);
+    (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
+    if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrenti:[]};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], partnership};
 
-  // company_id + valore condiviso -> nomi prodotto (propri e del concorrente),
-  // per poter mostrare "in comune su" invece del solo nome azienda.
-  const perAzienda=new Map(); // company_id -> Map(valore -> {nomiPropri:Set, nomiLoro:Set})
+  // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
+  // + regime farmaco, per poter mostrare "in comune su" con contesto invece
+  // del solo nome azienda.
+  const perAzienda=new Map(); // company_id -> Map(valore -> {campo,nomiPropri:Set,nomiLoro:Set,regimiPropri:Set,regimiLoro:Set})
 
-  async function raccogli({campo,valore,categoria,nomiPropri}){
+  async function raccogli({campo,valore,categoria,nomiPropri,regimiPropri}){
     const filtro=campo==='active_ingredients_norm'?`${campo}=cs.{${encodeURIComponent(valore)}}`:`${campo}=eq.${encodeURIComponent(valore)}`;
-    const righe=await api(`company_products?select=company_id,brand_name&${filtro}&category=eq.${encodeURIComponent(categoria)}&company_id=neq.${companyId}&limit=500`);
+    const selectCampi=campo==='active_ingredients_norm'?'company_id,brand_name,regime_farmaco':'company_id,brand_name';
+    const righe=await api(`company_products?select=${selectCampi}&${filtro}&category=eq.${encodeURIComponent(categoria)}&company_id=neq.${companyId}&limit=500`);
     righe.forEach(r=>{
       if(!perAzienda.has(r.company_id))perAzienda.set(r.company_id,new Map());
       const perValore=perAzienda.get(r.company_id);
-      if(!perValore.has(valore))perValore.set(valore,{nomiPropri:new Set(nomiPropri),nomiLoro:new Set()});
-      perValore.get(valore).nomiLoro.add(r.brand_name);
+      if(!perValore.has(valore))perValore.set(valore,{campo,nomiPropri:new Set(nomiPropri),nomiLoro:new Set(),regimiPropri:new Set(regimiPropri),regimiLoro:new Set()});
+      const v=perValore.get(valore);
+      v.nomiLoro.add(r.brand_name);
+      if(r.regime_farmaco)v.regimiLoro.add(r.regime_farmaco);
     });
   }
 
@@ -9328,7 +9353,7 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogli));
   }
 
-  if(!perAzienda.size)return {valori:listaCompiti.map(c=>c.valore), concorrenti:[]};
+  if(!perAzienda.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], partnership};
 
   const idsConcorrenti=[...perAzienda.keys()];
   const aziende=[];
@@ -9339,20 +9364,54 @@ async function trovaConcorrenti(companyId){
   const [targetRows]=await Promise.all([api(`companies?select=company_group_id&id=eq.${companyId}`)]);
   const gruppoTarget=targetRows[0]?.company_group_id||null;
 
-  const concorrenti=aziende.map(a=>{
+  // Area terapeutica DELL'AZIENDA (approssimazione scelta da Mauro l'8/09/2026:
+  // il dato per singolo prodotto non esiste — company_products.therapeutic_area
+  // e' vuota su tutte le 288.784 righe — quello per azienda invece si', ed e'
+  // gia' usato altrove in questa pagina).
+  const areeTerapeuticePerAzienda=new Map();
+  for(let i=0;i<idsConcorrenti.length;i+=150){
+    const lotto=idsConcorrenti.slice(i,i+150);
+    const righe=await api(`company_therapeutic_areas?select=company_id,code&company_id=in.(${lotto.join(',')})`);
+    righe.forEach(r=>{
+      if(!areeTerapeuticePerAzienda.has(r.company_id))areeTerapeuticePerAzienda.set(r.company_id,new Set());
+      areeTerapeuticePerAzienda.get(r.company_id).add(r.code);
+    });
+  }
+
+  const tutti=aziende.map(a=>{
     const perValore=perAzienda.get(a.id);
-    const sovrapposizioni=[...perValore.entries()].map(([valore,{nomiPropri,nomiLoro}])=>({
-      valore, nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
+    const sovrapposizioni=[...perValore.entries()].map(([valore,{campo,nomiPropri,nomiLoro,regimiPropri,regimiLoro}])=>({
+      valore, tipo:campo==='active_ingredients_norm'?'farmaco':'dispositivo',
+      nomiPropri:[...nomiPropri].slice(0,3), nomiLoro:[...nomiLoro].slice(0,3),
+      regimi:[...new Set([...regimiPropri,...regimiLoro])],
     }));
     return {
       id:a.id, name:a.name, sector_v2:a.sector_v2,
+      aree_terapeutiche:[...(areeTerapeuticePerAzienda.get(a.id)||[])],
       stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
       sovrapposizioni,
     };
   }).filter(c=>!c.stessoGruppo); // integrazione interna, non e' concorrenza di mercato
-  concorrenti.sort((a,b)=>b.sovrapposizioni.length-a.sovrapposizioni.length||a.name.localeCompare(b.name));
 
-  return {valori:listaCompiti.map(c=>c.valore), concorrenti:concorrenti.slice(0,100)};
+  // Farmaci e dispositivi sono mercati diversi (v. Orion Pharma: suture
+  // chirurgiche vs principi attivi CNS/oncologia) — ordinare/limitare un
+  // unico elenco misto seppelliva i concorrenti farmaceutici veri (Sandoz,
+  // Teva, AstraZeneca...) sotto chi condivide tante sotto-categorie CND di
+  // dispositivo (la nomenclatura CND e' molto piu' granulare per prodotto).
+  // Un'azienda che compete su entrambi i fronti compare in entrambe le liste.
+  function estraiGruppo(tipo){
+    return tutti
+      .map(c=>({...c, sovrapposizioni:c.sovrapposizioni.filter(s=>s.tipo===tipo)}))
+      .filter(c=>c.sovrapposizioni.length>0)
+      .sort((a,b)=>b.sovrapposizioni.length-a.sovrapposizioni.length||a.name.localeCompare(b.name));
+  }
+
+  return {
+    valori:listaCompiti.map(c=>c.valore),
+    concorrentiFarmaci:estraiGruppo('farmaco'),
+    concorrentiDispositivi:estraiGruppo('dispositivo'),
+    partnership,
+  };
 }
 
 async function trovaConcorrentiDiSelezionata(){
@@ -9362,8 +9421,8 @@ async function trovaConcorrentiDiSelezionata(){
   btn.disabled=true;
   resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca concorrenti in corso...</div>';
   try{
-    const {valori,concorrenti}=await trovaConcorrenti(_raSelectedCompany.id);
-    renderCompetitorResults(_raSelectedCompany,valori,concorrenti);
+    const {valori,concorrentiFarmaci,concorrentiDispositivi,partnership}=await trovaConcorrenti(_raSelectedCompany.id);
+    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership);
   }catch(e){
     resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
   }finally{
@@ -9371,32 +9430,48 @@ async function trovaConcorrentiDiSelezionata(){
   }
 }
 
-let _ultimiConcorrenti=null; // {target,valori,concorrenti}, per il pulsante "genera report"
+const REGIME_FARMACO_LABEL={ospedaliero:'ospedaliero',rimborsato_ssn:'rimborsato SSN'};
 
-function renderCompetitorResults(target,valori,concorrenti){
-  _ultimiConcorrenti={target,valori,concorrenti};
+function formattaSovrapposizione(s){
+  const regimi=(s.regimi||[]).map(r=>REGIME_FARMACO_LABEL[r]||r);
+  const suffisso=regimi.length?` (${regimi.join('/')})`:'';
+  return `<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${suffisso}${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`;
+}
+
+let _ultimiConcorrenti=null; // {target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership}, per il pulsante "genera report"
+
+function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership){
+  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership};
   const resultsEl=document.getElementById('ra-search-results');
+  const partnershipHtml=(partnership&&partnership.length)?`<div style="font-size:12px;color:#f59e0b;background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:8px 12px;margin-bottom:12px;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
   if(!valori.length){
-    resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
+    resultsEl.innerHTML=`${partnershipHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
     return;
   }
-  if(!concorrenti.length){
-    resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun concorrente trovato su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} di ${target.name}.</div>`;
+  if(!concorrentiFarmaci.length&&!concorrentiDispositivi.length){
+    resultsEl.innerHTML=`${partnershipHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun concorrente trovato su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} di ${target.name}.</div>`;
     return;
   }
-  const righe=concorrenti.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
-    <td style="color:var(--accent2);text-decoration:underline;">${c.name}</td>
-    <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
-    <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(s=>`<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`).join('')}</td>
-  </tr>`).join('');
-  resultsEl.innerHTML=`
-    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${concorrenti.length} concorrent${concorrenti.length===1?'e':'i'} trovat${concorrenti.length===1?'o':'i'} per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
-    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+  function tabella(titolo,concorrenti,conAreaTerapeutica){
+    if(!concorrenti.length)return '';
+    const righe=concorrenti.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
+      <td style="color:var(--accent2);text-decoration:underline;">${c.name}</td>
+      <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
+      ${conAreaTerapeutica?`<td style="color:var(--text2);">${c.aree_terapeutiche.join(', ')||'—'}</td>`:''}
+      <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
+    </tr>`).join('');
+    return `<div style="font-size:12px;color:var(--text2);margin:14px 0 6px;font-weight:700;">${titolo} (${concorrenti.length})</div>
+    <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">In comune su</th></tr></thead>
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">In comune su</th></tr></thead>
         <tbody>${righe}</tbody>
       </table>
-    </div>
+    </div>`;
+  }
+  resultsEl.innerHTML=`${partnershipHtml}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Concorrenti per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
+    ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
+    ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
     <button class="btn btn-secondary" onclick="generaReportConcorrenti()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report concorrenti</button>`;
 }
 
@@ -9404,19 +9479,31 @@ function generaReportConcorrenti(){
   if(!_ultimiConcorrenti)return;
   const win=window.open('','_blank');
   if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const html=renderCompetitorReportHTML(_ultimiConcorrenti.target,_ultimiConcorrenti.concorrenti);
+  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership}=_ultimiConcorrenti;
+  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership);
   win.document.open(); win.document.write(html); win.document.close();
   setTimeout(()=>win.print(),1000);
 }
 
-function renderCompetitorReportHTML(target,concorrenti){
+function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership){
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
-  const righe=concorrenti.map(c=>`<tr>
-    <td>${c.name}</td>
-    <td style="color:#888;">${c.sector_v2||''}</td>
-    <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(s=>`<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`).join('')}</td>
-  </tr>`).join('');
+  const totale=concorrentiFarmaci.length+concorrentiDispositivi.length;
+
+  function tabella(titolo,concorrenti,conAreaTerapeutica){
+    if(!concorrenti.length)return '';
+    const righe=concorrenti.map(c=>`<tr>
+      <td>${c.name}</td>
+      <td style="color:#888;">${c.sector_v2||''}</td>
+      ${conAreaTerapeutica?`<td style="color:#888;">${c.aree_terapeutiche.join(', ')}</td>`:''}
+      <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
+    </tr>`).join('');
+    return `<div class="section-title">${titolo} (${concorrenti.length})</div>
+    <table><thead><tr><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>In comune su</th></tr></thead><tbody>${righe}</tbody></table>`;
+  }
+
+  const partnershipHtml=(partnership&&partnership.length)?`<div class="summary-box" style="border-left-color:#f59e0b;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
+
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Concorrenti — ${target.name}</title>
 <style>
@@ -9441,9 +9528,10 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
       <div style="font-size:11px;color:#888;">${date}</div>
     </div>
   </div>
-  <div class="summary-box">${concorrenti.length} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna).</div>
-  <div class="section-title">Concorrenti</div>
-  <table><thead><tr><th>Azienda</th><th>Settore</th><th>In comune su</th></tr></thead><tbody>${righe}</tbody></table>
+  ${partnershipHtml}
+  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati.</div>
+  ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
+  ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
   <div class="footer">
     Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
