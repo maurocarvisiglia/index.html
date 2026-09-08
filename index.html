@@ -9423,7 +9423,7 @@ async function trovaConcorrenti(companyId){
   const aziende=[];
   for(let i=0;i<idsConcorrenti.length;i+=150){
     const lotto=idsConcorrenti.slice(i,i+150);
-    aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null`));
+    aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id,region,dipendenti,fatturato_range&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null`));
   }
   const [targetRows]=await Promise.all([api(`companies?select=company_group_id&id=eq.${companyId}`)]);
   const gruppoTarget=targetRows[0]?.company_group_id||null;
@@ -9461,6 +9461,7 @@ async function trovaConcorrenti(companyId){
       aree_terapeutiche:[...(areeTerapeuticePerAzienda.get(a.id)||[])],
       stessoGruppo:!!(gruppoTarget&&a.company_group_id===gruppoTarget),
       segnaliPipeline:segnaliPipelinePerAzienda.get(a.id)||[],
+      region:a.region||null, dipendenti:a.dipendenti||null, fatturatoRange:a.fatturato_range||null,
     };
   }
 
@@ -9616,6 +9617,42 @@ function tierBadgeHtml(c){
   return `<span style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${c.tier.colore};border-radius:10px;padding:2px 8px;white-space:nowrap;">${c.punteggio} · ${c.tier.label}</span>`;
 }
 
+// Presenza/struttura in Italia di un'azienda (Fase B, richiesta sulle stesse
+// analisi esterne della Fase A) — region/dipendenti/fatturato_range sono
+// colonne native di companies (non la vista v_scheda_azienda, che ha
+// subquery correlate a rischio timeout su lotti larghi), gia' recuperate
+// nella stessa query di infoAzienda senza query aggiuntive.
+function presenzaItaliaTesto(c){
+  const pezzi=[c.region, c.dipendenti?`${c.dipendenti} dip.`:null, c.fatturatoRange].filter(Boolean);
+  return pezzi.length?pezzi.join(' · '):'—';
+}
+
+// Dati aggregati per il riepilogo esecutivo (Fase B, richiesta dopo le
+// analisi esterne su Steris/Orion: "41 pagine per dire 215 aziende hanno
+// overlap" — un riepilogo in cima evita di dover scorrere tutto per capire
+// chi conta davvero). Il punteggio e' normalizzato 0-100 SEPARATAMENTE per
+// gruppo (principio Fase A: farmaci/dispositivi/classe sono mercati
+// diversi) — unire i 3 gruppi in un'unica Top 10 ordinata sui punteggi gia'
+// normalizzati e' una semplificazione dichiarata per la vista d'insieme,
+// con il mercato di provenienza sempre indicato per trasparenza; il
+// dettaglio completo resta comunque nelle 3 tabelle separate sotto.
+function prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica){
+  const mercati=[
+    {label:'Farmaci', lista:concorrentiFarmaci},
+    {label:'Dispositivi', lista:concorrentiDispositivi},
+    {label:'Classe terapeutica', lista:concorrentiClasseTerapeutica},
+  ];
+  const conteggiPerTier=COMPETITOR_TIER.map(t=>({
+    tier:t,
+    perMercato:mercati.map(m=>m.lista.filter(c=>c.tier.id===t.id).length),
+    totale:mercati.reduce((s,m)=>s+m.lista.filter(c=>c.tier.id===t.id).length,0),
+  })).filter(r=>r.totale>0);
+  const top10=mercati.flatMap(m=>m.lista.map(c=>({...c, mercato:m.label})))
+    .sort((a,b)=>b.punteggio-a.punteggio)
+    .slice(0,10);
+  return {mercati, conteggiPerTier, top10};
+}
+
 // Fatti CORE di pipeline/studi clinici raggruppati per tipo, stesso ordine di
 // CORE_TIPO_ORDINE — usato sia per il target sia per ogni concorrente, sia a
 // schermo sia nel report stampabile.
@@ -9657,21 +9694,47 @@ function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDis
       <td style="color:var(--accent2);text-decoration:underline;">${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:var(--text2);text-decoration:none;font-weight:400;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
       <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
       ${conAreaTerapeutica?`<td style="color:var(--text2);">${c.aree_terapeutiche.join(', ')||'—'}</td>`:''}
+      <td style="color:var(--text2);">${presenzaItaliaTesto(c)}</td>
       <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
       ${conPipeline?`<td style="color:var(--text2);font-size:11px;">${(c.segnaliPipeline||[]).map(coreFattoHtml).join('')}</td>`:''}
     </tr>`).join('');
     return `<div style="font-size:12px;color:var(--text2);margin:14px 0 6px;font-weight:700;">${titolo} (${concorrenti.length})</div>
     <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Punteggio</th><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">In comune su</th>${conPipeline?'<th style="text-align:left;padding:8px 10px;">Pipeline / studi clinici</th>':''}</tr></thead>
+        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Punteggio</th><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">Presenza Italia</th><th style="text-align:left;padding:8px 10px;">In comune su</th>${conPipeline?'<th style="text-align:left;padding:8px 10px;">Pipeline / studi clinici</th>':''}</tr></thead>
         <tbody>${righe}</tbody>
       </table>
     </div>`;
   }
+  const riepilogo=prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
+  const righeTier=riepilogo.conteggiPerTier.map(r=>`<tr>
+    <td style="padding:5px 8px;"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.tier.colore};margin-right:6px;"></span>${r.tier.label}</td>
+    ${r.perMercato.map(n=>`<td style="text-align:center;padding:5px 8px;color:var(--text2);">${n||'—'}</td>`).join('')}
+    <td style="text-align:center;padding:5px 8px;font-weight:700;color:var(--text);">${r.totale}</td>
+  </tr>`).join('');
+  const righeTop10=riepilogo.top10.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
+    <td style="padding:5px 8px;">${tierBadgeHtml(c)}</td>
+    <td style="padding:5px 8px;color:var(--accent2);text-decoration:underline;">${c.name}</td>
+    <td style="padding:5px 8px;color:var(--text2);">${c.mercato}</td>
+    <td style="padding:5px 8px;color:var(--text2);">${presenzaItaliaTesto(c)}</td>
+  </tr>`).join('');
+  const riepilogoHtml=riepilogo.top10.length?`<div style="margin:14px 0;">
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">📊 Riepilogo per tier</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+      <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:5px 8px;">Tier</th>${riepilogo.mercati.map(m=>`<th style="text-align:center;padding:5px 8px;">${m.label}</th>`).join('')}<th style="text-align:center;padding:5px 8px;">Totale</th></tr></thead>
+      <tbody>${righeTier}</tbody>
+    </table>
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🏆 Top 10 per punteggio (tutti i mercati — vedi nota sopra)</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+      <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:5px 8px;">Punteggio</th><th style="text-align:left;padding:5px 8px;">Azienda</th><th style="text-align:left;padding:5px 8px;">Mercato</th><th style="text-align:left;padding:5px 8px;">Presenza Italia</th></tr></thead>
+      <tbody>${righeTop10}</tbody>
+    </table>
+  </div>`:'';
   const notaCoperturaPipeline=(gruppiPipelineTarget.length||[...concorrentiFarmaci,...concorrentiDispositivi,...concorrentiClasseTerapeutica].some(c=>c.segnaliPipeline&&c.segnaliPipeline.length))?`<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:6px;">Segnali di pipeline/studi clinici mostrati solo per le aziende con fatti CORE già raccolti in archivio: l'assenza non significa assenza di studi clinici nella realtà.</div>`:'';
   resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}
     <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Concorrenti per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
     <div style="font-size:11px;color:var(--text2);font-style:italic;margin-bottom:8px;">Il punteggio combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato — un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.</div>
+    ${riepilogoHtml}
     ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
     ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
     ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
@@ -9714,12 +9777,28 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
       <td>${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:#aaa;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
       <td style="color:#888;">${c.sector_v2||''}</td>
       ${conAreaTerapeutica?`<td style="color:#888;">${c.aree_terapeutiche.join(', ')}</td>`:''}
+      <td style="color:#888;">${presenzaItaliaTesto(c)}</td>
       <td style="color:#333;font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
       ${conPipeline?`<td style="color:#333;font-size:11px;">${(c.segnaliPipeline||[]).map(fattoPipelineHtml).join('')}</td>`:''}
     </tr>`).join('');
     return `<div class="section-title">${titolo} (${concorrenti.length})</div>
-    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
+    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Settore</th>${conAreaTerapeutica?'<th>Area terapeutica</th>':''}<th>Presenza Italia</th><th>In comune su</th>${conPipeline?'<th>Pipeline / studi clinici</th>':''}</tr></thead><tbody>${righe}</tbody></table>`;
   }
+
+  const riepilogo=prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
+  const riepilogoHtml=riepilogo.top10.length?`
+    <div class="section-title">Riepilogo esecutivo</div>
+    <table><thead><tr><th>Tier</th>${riepilogo.mercati.map(m=>`<th>${m.label}</th>`).join('')}<th>Totale</th></tr></thead>
+    <tbody>${riepilogo.conteggiPerTier.map(r=>`<tr>
+      <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.tier.colore};margin-right:6px;"></span>${r.tier.label}</td>
+      ${r.perMercato.map(n=>`<td>${n||'—'}</td>`).join('')}
+      <td style="font-weight:700;">${r.totale}</td>
+    </tr>`).join('')}</tbody></table>
+    <div class="section-title">Top 10 per punteggio (tutti i mercati)</div>
+    <table><thead><tr><th>Punteggio</th><th>Azienda</th><th>Mercato</th><th>Presenza Italia</th></tr></thead>
+    <tbody>${riepilogo.top10.map(c=>`<tr>
+      <td>${tierBadgeHtml(c)}</td><td>${c.name}</td><td style="color:#888;">${c.mercato}</td><td style="color:#888;">${presenzaItaliaTesto(c)}</td>
+    </tr>`).join('')}</tbody></table>`:'';
 
   const partnershipHtml=(partnership&&partnership.length)?`<div class="summary-box" style="border-left-color:#f59e0b;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
 
@@ -9758,6 +9837,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   ${partnershipHtml}
   ${segnaliTargetHtml}
   <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.</div>
+  ${riepilogoHtml}
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
   ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
   ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
