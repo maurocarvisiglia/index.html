@@ -8770,14 +8770,24 @@ async function loadProductsCard(companyId){
 let _raSelectedCompany=null;
 let _raSearchTimer=null;
 
+// Il bottone unico "Genera Report" si abilita se e' selezionata un'azienda
+// (autocomplete) O se c'e' testo nel prompt libero — mai per la sola
+// combinazione di nessuno dei due. Richiamata da entrambi i campi di input,
+// cosi' digitare nell'uno non lascia il bottone in uno stato incoerente
+// rispetto all'altro.
+function aggiornaBottoneGenera(){
+  const btn=document.getElementById('btn-generate-company-report');
+  if(!btn)return;
+  const haPrompt=!!(document.getElementById('ra-prompt')?.value||'').trim();
+  const abilitato=!!_raSelectedCompany||haPrompt;
+  btn.disabled=!abilitato; btn.style.opacity=abilitato?'1':'.5';
+}
+
 function searchCompanyForReport(term){
   clearTimeout(_raSearchTimer);
   const box=document.getElementById('ra-suggestions');
-  const btn=document.getElementById('btn-generate-company-report');
   _raSelectedCompany=null;
-  btn.disabled=true; btn.style.opacity='.5';
-  const btnConc=document.getElementById('btn-find-competitors');
-  if(btnConc){ btnConc.disabled=true; btnConc.style.opacity='.5'; }
+  aggiornaBottoneGenera();
   const q=(term||'').trim();
   if(q.length<2){box.style.display='none';box.innerHTML='';return;}
   _raSearchTimer=setTimeout(async()=>{
@@ -8803,10 +8813,7 @@ function selectCompanyForReport(company){
   _raSelectedCompany=company;
   document.getElementById('ra-search').value=company.name;
   document.getElementById('ra-suggestions').style.display='none';
-  const btn=document.getElementById('btn-generate-company-report');
-  btn.disabled=false; btn.style.opacity='1';
-  const btnConc=document.getElementById('btn-find-competitors');
-  if(btnConc){ btnConc.disabled=false; btnConc.style.opacity='1'; }
+  aggiornaBottoneGenera();
 }
 
 // Etichette condivise fra la scheda-singola-azienda e i risultati di ricerca
@@ -9006,111 +9013,91 @@ async function executeCompanySearchPlan(plan){
   return aziende;
 }
 
-async function searchCompaniesFromPrompt(){
+// Un solo punto d'ingresso per tutti i report di questa pagina (nome singolo
+// via autocomplete, oppure prompt libero per lista/confronto/concorrenti) —
+// richiesto da Mauro l'8/09/2026 per rispecchiare il Report Builder degli
+// annunci di lavoro (view-report, generateCustomReport): un campo, un
+// bottone, mai una tabella intermedia da rivedere prima del report vero e
+// proprio. Le funzioni di raccolta dati/rendering restano tutte quelle gia'
+// esistenti — qui cambia solo l'orchestrazione, non la logica.
+async function generaReportUnico(){
+  if(_raSelectedCompany) return generateCompanyReport();
+
   const promptText=(document.getElementById('ra-prompt')?.value||'').trim();
-  const resultsEl=document.getElementById('ra-search-results');
-  const btn=document.getElementById('btn-search-companies');
-  if(!promptText||!resultsEl)return;
+  const erroriEl=document.getElementById('ra-search-results');
+  const btn=document.getElementById('btn-generate-company-report');
+  erroriEl.innerHTML='';
+  if(!promptText)return;
+
+  // Finestra aperta SUBITO, sincrona rispetto al click — stesso principio
+  // gia' documentato per generateCompanyReport/generateCustomReport: se si
+  // aspettasse l'esito delle chiamate AI prima di aprirla, il browser la
+  // bloccherebbe come popup perche' non piu' vista come conseguenza diretta
+  // del gesto dell'utente.
+  const win=window.open('','_blank');
+  if(win){
+    win.document.write('<title>Generazione report...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione del report in corso...</body>');
+    win.document.close();
+  }
   btn.disabled=true;
-  resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Interpretazione della richiesta...</div>';
   try{
     const plan=await planCompanySearchFromPrompt(promptText);
+    let html;
     if(plan.modalita==='confronto'){
-      resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca delle aziende da confrontare...</div>';
       const risolte=await risolviAziendePerConfronto(plan.aziende_da_confrontare);
-      await renderComparisonResolutionResults(risolte);
-    }else if(plan.modalita==='concorrenti'){
-      resultsEl.innerHTML=`<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca di "${plan.azienda_target}" e dei suoi concorrenti...</div>`;
-      const [risolta]=await risolviAziendePerConfronto([plan.azienda_target]);
-      if(risolta.stato==='non_trovata'){
-        resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">❌ Nessuna azienda trovata con il nome "${plan.azienda_target}".</div>`;
-      }else if(risolta.stato==='ambigua'){
-        resultsEl.innerHTML=`<div style="color:#f59e0b;font-size:12px;padding:12px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`;
-      }else{
-        const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget,sintesiPipelineTarget}=await trovaConcorrenti(risolta.azienda.id);
-        // "primi N" si applica per gruppo, non sul totale misto — altrimenti
-        // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
-        // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
-        const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
-        renderCompetitorResults(risolta.azienda,valori,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget);
+      const problemi=risolte.filter(r=>r.stato!=='trovata');
+      if(problemi.length)erroriEl.innerHTML=problemi.map(r=>r.stato==='ambigua'
+        ?`<div style="color:#f59e0b;font-size:12px;padding:4px 0;">⚠️ "${r.nomeCercato}": più aziende corrispondono (${r.candidati.map(c=>c.name).join(', ')}) — riformula con il nome esatto.</div>`
+        :`<div style="color:var(--danger);font-size:12px;padding:4px 0;">❌ "${r.nomeCercato}": nessuna azienda trovata con questo nome.</div>`
+      ).join('');
+      const trovate=risolte.filter(r=>r.stato==='trovata');
+      if(trovate.length<2){
+        if(!problemi.length)erroriEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:4px 0;">Servono almeno 2 aziende risolte correttamente per generare un confronto.</div>';
+        if(win&&!win.closed)win.close();
+        return;
       }
+      const dati=await Promise.all(trovate.map(r=>raccogliDatiAzienda(r.azienda.id,r.azienda)));
+      const sovrapposizioni=await calcolaSovrapposizioniConfronto(dati);
+      let narrazione;
+      try{ narrazione=await narraConfrontoAziende(dati,sovrapposizioni); }
+      catch(e){ console.warn('narrazione AI non disponibile, uso fallback deterministico:',e.message); narrazione=narrazioneFallback(sovrapposizioni); }
+      html=renderCompanyComparisonHTML(dati,sovrapposizioni,narrazione);
+    }else if(plan.modalita==='concorrenti'){
+      const [risolta]=await risolviAziendePerConfronto([plan.azienda_target]);
+      if(risolta.stato!=='trovata'){
+        erroriEl.innerHTML=risolta.stato==='ambigua'
+          ?`<div style="color:#f59e0b;font-size:12px;padding:4px 0;">⚠️ Più aziende corrispondono a "${plan.azienda_target}": ${risolta.candidati.map(c=>c.name).join(', ')} — riformula con il nome esatto.</div>`
+          :`<div style="color:var(--danger);font-size:12px;padding:4px 0;">❌ Nessuna azienda trovata con il nome "${plan.azienda_target}".</div>`;
+        if(win&&!win.closed)win.close();
+        return;
+      }
+      const {concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget}=await trovaConcorrenti(risolta.azienda.id);
+      // "primi N" si applica per gruppo, non sul totale misto — altrimenti
+      // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
+      // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
+      const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
+      html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget);
     }else{
       const aziende=await executeCompanySearchPlan(plan);
-      renderCompanySearchResults(plan,aziende);
+      if(!aziende.length){
+        erroriEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:4px 0;">Nessuna azienda trovata con questi criteri.</div>';
+        if(win&&!win.closed)win.close();
+        return;
+      }
+      html=renderCompanyListReportHTML(plan,aziende);
+    }
+    if(win&&!win.closed){
+      win.document.open(); win.document.write(html); win.document.close();
+      setTimeout(()=>win.print(),1000);
+    }else{
+      toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning');
     }
   }catch(e){
-    resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
+    erroriEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:4px 0;">Errore: ${e.message}</div>`;
+    if(win&&!win.closed)win.close();
   }finally{
     btn.disabled=false;
   }
-}
-
-let _ultimaRicercaCriteri=null; // {plan,aziende}, per il pulsante "genera report"
-let _ultimoConfronto=null; // array di raccogliDatiAzienda(), per il pulsante "genera report di confronto"
-
-function renderCompanySearchResults(plan,aziende){
-  _ultimaRicercaCriteri={plan,aziende};
-  const resultsEl=document.getElementById('ra-search-results');
-  const dropped=plan._dropped_filters||[];
-  const droppedHtml=dropped.length?`<div style="font-size:11px;color:var(--warning,#f59e0b);margin-bottom:10px;">⚠️ Filtri ignorati: ${dropped.join('; ')}</div>`:'';
-  if(!aziende.length){
-    resultsEl.innerHTML=`${droppedHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessuna azienda trovata con questi criteri.</div>`;
-    return;
-  }
-  const righe=aziende.map(a=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${a.id}",name:${JSON.stringify(a.name)}};generateCompanyReport();'>
-    <td style="color:var(--accent2);text-decoration:underline;">${a.name}</td>
-    <td style="color:var(--text2);">${a.sector_v2||'—'}</td>
-    <td style="color:var(--text2);">${a.regione_sede||'—'}</td>
-    <td style="color:var(--text2);">${STATO_ASSUNZIONI_LABEL[a.stato_assunzioni]||'—'}</td>
-    <td style="color:var(--text2);">${(a.gruppo||[]).join(', ')||'—'}</td>
-  </tr>`).join('');
-  resultsEl.innerHTML=`${droppedHtml}
-    <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">${aziende.length} aziend${aziende.length===1?'a trovata':'e trovate'}${aziende.length===200?' (limite di visualizzazione raggiunto, potrebbero essercene altre)':''} — clicca una riga per generare la scheda completa</div>
-    <div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">Regione</th><th style="text-align:left;padding:8px 10px;">Assunzioni</th><th style="text-align:left;padding:8px 10px;">Gruppo</th></tr></thead>
-        <tbody>${righe}</tbody>
-      </table>
-    </div>
-    <button class="btn btn-secondary" onclick="generaReportListaAziende()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report</button>`;
-}
-
-async function renderComparisonResolutionResults(risolte){
-  const resultsEl=document.getElementById('ra-search-results');
-  const righeStato=risolte.map(r=>{
-    if(r.stato==='trovata')return `<div style="padding:6px 0;color:var(--text);">✅ <strong>${r.nomeCercato}</strong> → ${r.azienda.name}${r.azienda.sector_v2?` (${r.azienda.sector_v2})`:''}</div>`;
-    if(r.stato==='ambigua')return `<div style="padding:6px 0;color:#f59e0b;">⚠️ <strong>${r.nomeCercato}</strong>: più aziende corrispondono (${r.candidati.map(c=>c.name).join(', ')}) — riformula con il nome esatto</div>`;
-    return `<div style="padding:6px 0;color:var(--danger);">❌ <strong>${r.nomeCercato}</strong>: nessuna azienda trovata con questo nome</div>`;
-  }).join('');
-
-  const trovate=risolte.filter(r=>r.stato==='trovata');
-  if(trovate.length<2){
-    resultsEl.innerHTML=`${righeStato}<div style="font-size:12px;color:var(--text2);margin-top:10px;">Servono almeno 2 aziende risolte correttamente per generare un confronto.</div>`;
-    return;
-  }
-
-  resultsEl.innerHTML=`${righeStato}<div style="font-size:12px;color:var(--text2);margin:10px 0;">⏳ Raccolta dati per il confronto...</div>`;
-  const dati=await Promise.all(trovate.map(r=>raccogliDatiAzienda(r.azienda.id,r.azienda)));
-  _ultimoConfronto=dati;
-
-  const nf=(n)=>n==null?'—':Number(n).toLocaleString('it-IT');
-  const righeTabella=dati.map(d=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${d.company.id}",name:${JSON.stringify(d.company.name)}};generateCompanyReport();'>
-    <td style="color:var(--text);font-weight:700;">${d.company.name}</td>
-    <td style="color:var(--text2);">${d.scheda?.sector_v2||d.company.sector_v2||'—'}</td>
-    <td style="color:var(--text2);">${d.scheda?.regione_sede||d.company.region||'—'}</td>
-    <td style="color:var(--text2);">${d.scheda?.stato_assunzioni?STATO_ASSUNZIONI_LABEL[d.scheda.stato_assunzioni]:'—'}</td>
-    <td style="color:var(--text2);">${nf(d.totaleProdotti)}</td>
-  </tr>`).join('');
-
-  resultsEl.innerHTML=`${righeStato}
-    <div style="font-size:12px;color:var(--text2);margin:10px 0 8px;">Anteprima confronto — il report completo include anche RAL, aree terapeutiche, gruppo e fatti CORE</div>
-    <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Azienda</th><th style="text-align:left;padding:8px 10px;">Settore</th><th style="text-align:left;padding:8px 10px;">Regione</th><th style="text-align:left;padding:8px 10px;">Assunzioni</th><th style="text-align:left;padding:8px 10px;">N. prodotti</th></tr></thead>
-        <tbody>${righeTabella}</tbody>
-      </table>
-    </div>
-    <button class="btn btn-secondary" onclick="generaReportConfronto()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report di confronto</button>`;
 }
 
 async function raccogliDatiAzienda(id, fallbackCompany){
@@ -9612,22 +9599,6 @@ async function trovaConcorrenti(companyId){
   };
 }
 
-async function trovaConcorrentiDiSelezionata(){
-  if(!_raSelectedCompany)return;
-  const resultsEl=document.getElementById('ra-search-results');
-  const btn=document.getElementById('btn-find-competitors');
-  btn.disabled=true;
-  resultsEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:12px 0;">⏳ Ricerca concorrenti in corso...</div>';
-  try{
-    const {valori,concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,partnership,segnaliTarget,sintesiPipelineTarget}=await trovaConcorrenti(_raSelectedCompany.id);
-    renderCompetitorResults(_raSelectedCompany,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget);
-  }catch(e){
-    resultsEl.innerHTML=`<div style="color:var(--danger);font-size:12px;padding:12px 0;">Errore: ${e.message}</div>`;
-  }finally{
-    btn.disabled=false;
-  }
-}
-
 const REGIME_FARMACO_LABEL={ospedaliero:'ospedaliero',rimborsato_ssn:'rimborsato SSN'};
 
 function formattaSovrapposizione(s){
@@ -9729,93 +9700,6 @@ function segnaliPipelineRaggruppati(segnali){
     byTipo.get(f.tipo).push(f);
   });
   return TIPI_SEGNALI_PIPELINE.filter(t=>byTipo.has(t)).map(t=>({tipo:t,label:CORE_TIPO_LABEL[t]||t,fatti:byTipo.get(t)}));
-}
-
-let _ultimiConcorrenti=null; // {target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,segnaliTarget,sintesiPipelineTarget}, per il pulsante "genera report"
-
-function renderCompetitorResults(target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget){
-  concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
-  segnaliTarget=segnaliTarget||[];
-  _ultimiConcorrenti={target,valori,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget};
-  const resultsEl=document.getElementById('ra-search-results');
-  const partnershipHtml=(partnership&&partnership.length)?`<div style="font-size:12px;color:#f59e0b;background:rgba(245,158,11,.1);border-left:3px solid #f59e0b;padding:8px 12px;margin-bottom:12px;">⚠️ Partnership commerciale nota (non conteggiata come concorrenza): ${partnership.join(' · ')}</div>`:'';
-  const gruppiPipelineTarget=segnaliPipelineRaggruppati(segnaliTarget);
-  const segnaliTargetHtml=gruppiPipelineTarget.length?`<div style="font-size:12px;background:var(--surface2);border-left:3px solid #8b5cf6;padding:8px 12px;margin-bottom:12px;border-radius:0 6px 6px 0;">
-    <div style="font-weight:700;color:var(--text);margin-bottom:6px;">🧬 Pipeline regolatoria e studi clinici — ${target.name}</div>
-    ${sintesiPipelineTarget?`<div style="color:var(--text);margin-bottom:4px;">${escHtml(sintesiPipelineTarget)} <span style="color:var(--text2);font-size:10px;font-style:italic;">(sintesi AI di ${segnaliTarget.length} fatti raccolti)</span></div>`:gruppiPipelineTarget.map(g=>`<div style="margin-bottom:4px;"><span style="color:var(--text2);font-size:11px;">${g.label}:</span> ${g.fatti.map(coreFattoHtml).join('')}</div>`).join('')}
-  </div>`:'';
-  if(!valori.length){
-    resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun prodotto/principio attivo/categoria dispositivo registrato per ${target.name}: non è possibile calcolare concorrenti per prodotto.</div>`;
-    return;
-  }
-  if(!concorrentiFarmaci.length&&!concorrentiDispositivi.length&&!concorrentiClasseTerapeutica.length){
-    resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}<div style="font-size:12px;color:var(--text2);padding:12px 0;">Nessun concorrente trovato su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} di ${target.name}.</div>`;
-    return;
-  }
-  function tabella(titolo,concorrenti,conAreaTerapeutica){
-    if(!concorrenti.length)return '';
-    const conPipeline=concorrenti.some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
-    const righe=concorrenti.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
-      <td>${tierBadgeHtml(c)}</td>
-      <td style="color:var(--accent2);text-decoration:underline;">${c.name}${c.catalogoTotale!=null?`<div style="font-size:9px;color:var(--text2);text-decoration:none;font-weight:400;">catalogo: ${c.catalogoTotale} prodotti</div>`:''}</td>
-      <td style="color:var(--text2);">${c.sector_v2||'—'}</td>
-      ${conAreaTerapeutica?`<td style="color:var(--text2);">${c.aree_terapeutiche.join(', ')||'—'}</td>`:''}
-      <td style="color:var(--text2);">${presenzaItaliaTesto(c)}</td>
-      <td style="color:var(--text2);font-size:11px;">${c.sovrapposizioni.map(formattaSovrapposizione).join('')}</td>
-      ${conPipeline?`<td style="color:var(--text2);font-size:11px;">${pipelineCellTesto(c,coreFattoHtml)}</td>`:''}
-    </tr>`).join('');
-    return `<div style="font-size:12px;color:var(--text2);margin:14px 0 6px;font-weight:700;">${titolo} (${concorrenti.length})</div>
-    <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:8px 10px;">Punteggio</th><th style="text-align:left;padding:8px 10px;">Azienda concorrente</th><th style="text-align:left;padding:8px 10px;">Settore</th>${conAreaTerapeutica?'<th style="text-align:left;padding:8px 10px;">Area terapeutica</th>':''}<th style="text-align:left;padding:8px 10px;">Presenza Italia</th><th style="text-align:left;padding:8px 10px;">In comune su</th>${conPipeline?'<th style="text-align:left;padding:8px 10px;">Pipeline / studi clinici</th>':''}</tr></thead>
-        <tbody>${righe}</tbody>
-      </table>
-    </div>`;
-  }
-  const riepilogo=prepRiepilogoConcorrenti(concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica);
-  const righeTier=riepilogo.conteggiPerTier.map(r=>`<tr>
-    <td style="padding:5px 8px;"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${r.tier.colore};margin-right:6px;"></span>${r.tier.label}</td>
-    ${r.perMercato.map(n=>`<td style="text-align:center;padding:5px 8px;color:var(--text2);">${n||'—'}</td>`).join('')}
-    <td style="text-align:center;padding:5px 8px;font-weight:700;color:var(--text);">${r.totale}</td>
-  </tr>`).join('');
-  const righeTop10=riepilogo.top10.map(c=>`<tr style="cursor:pointer;" onclick='_raSelectedCompany={id:"${c.id}",name:${JSON.stringify(c.name)}};generateCompanyReport();'>
-    <td style="padding:5px 8px;">${tierBadgeHtml(c)}</td>
-    <td style="padding:5px 8px;color:var(--accent2);text-decoration:underline;">${c.name}</td>
-    <td style="padding:5px 8px;color:var(--text2);">${c.mercato}</td>
-    <td style="padding:5px 8px;color:var(--text2);">${presenzaItaliaTesto(c)}</td>
-  </tr>`).join('');
-  const riepilogoHtml=riepilogo.top10.length?`<div style="margin:14px 0;">
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">📊 Riepilogo per tier</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:5px 8px;">Tier</th>${riepilogo.mercati.map(m=>`<th style="text-align:center;padding:5px 8px;">${m.label}</th>`).join('')}<th style="text-align:center;padding:5px 8px;">Totale</th></tr></thead>
-      <tbody>${righeTier}</tbody>
-    </table>
-    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🏆 Top 10 per punteggio (tutti i mercati — vedi nota sopra)</div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <thead><tr style="background:var(--surface2);"><th style="text-align:left;padding:5px 8px;">Punteggio</th><th style="text-align:left;padding:5px 8px;">Azienda</th><th style="text-align:left;padding:5px 8px;">Mercato</th><th style="text-align:left;padding:5px 8px;">Presenza Italia</th></tr></thead>
-      <tbody>${righeTop10}</tbody>
-    </table>
-  </div>`:'';
-  const notaCoperturaPipeline=(gruppiPipelineTarget.length||[...concorrentiFarmaci,...concorrentiDispositivi,...concorrentiClasseTerapeutica].some(c=>c.segnaliPipeline&&c.segnaliPipeline.length))?`<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:6px;">Segnali di pipeline/studi clinici mostrati solo per le aziende con fatti CORE già raccolti in archivio: l'assenza non significa assenza di studi clinici nella realtà.</div>`:'';
-  resultsEl.innerHTML=`${partnershipHtml}${segnaliTargetHtml}
-    <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">Concorrenti per ${target.name} su ${valori.length} prodott${valori.length===1?'o':'i'}/categori${valori.length===1?'a':'e'} — clicca una riga per la scheda completa</div>
-    <div style="font-size:11px;color:var(--text2);font-style:italic;margin-bottom:8px;">Il punteggio combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato — un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.</div>
-    ${riepilogoHtml}
-    ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
-    ${tabella('Concorrenti sui dispositivi medici',concorrentiDispositivi,false)}
-    ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
-    ${notaCoperturaPipeline}
-    <button class="btn btn-secondary" onclick="generaReportConcorrenti()" style="border-color:#8b5cf6;color:#8b5cf6;">🖨️ Genera report concorrenti</button>`;
-}
-
-function generaReportConcorrenti(){
-  if(!_ultimiConcorrenti)return;
-  const win=window.open('','_blank');
-  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const {target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget}=_ultimiConcorrenti;
-  const html=renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget);
-  win.document.open(); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(),1000);
 }
 
 function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget){
@@ -9921,15 +9805,6 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
 // per il confronto tra aziende nominate esplicitamente. Stesso principio di
 // isolamento delle altre funzioni di rendering di questa pagina: stile
 // proprio, nessuna condivisione col Report Builder. ──
-
-function generaReportListaAziende(){
-  if(!_ultimaRicercaCriteri)return;
-  const win=window.open('','_blank');
-  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  const html=renderCompanyListReportHTML(_ultimaRicercaCriteri.plan,_ultimaRicercaCriteri.aziende);
-  win.document.open(); win.document.write(html); win.document.close();
-  setTimeout(()=>win.print(),1000);
-}
 
 function renderCompanyListReportHTML(plan,aziende){
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
@@ -10058,28 +9933,6 @@ function narrazioneFallback(sovrapposizioni){
     return `${s.aziendaA} e ${s.aziendaB} ${prodotto}. ${aree}`;
   }).join(' ');
   return {introduzione:'Analisi generata senza narrazione AI (provider non disponibili).', aree_terapeutiche:righe, concorrenza_prodotto:righe, sintesi:''};
-}
-
-async function generaReportConfronto(){
-  if(!_ultimoConfronto)return;
-  const win=window.open('','_blank');
-  if(!win){ toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning'); return; }
-  win.document.write('<title>Generazione report...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione del confronto in corso...</body>');
-  win.document.close();
-  try{
-    const sovrapposizioni=await calcolaSovrapposizioniConfronto(_ultimoConfronto);
-    let narrazione;
-    try{ narrazione=await narraConfrontoAziende(_ultimoConfronto,sovrapposizioni); }
-    catch(e){ console.warn('narrazione AI non disponibile, uso fallback deterministico:',e.message); narrazione=narrazioneFallback(sovrapposizioni); }
-    const html=renderCompanyComparisonHTML(_ultimoConfronto,sovrapposizioni,narrazione);
-    if(win&&!win.closed){
-      win.document.open(); win.document.write(html); win.document.close();
-      setTimeout(()=>win.print(),1000);
-    }
-  }catch(e){
-    toast('Errore generazione confronto: '+e.message,'error');
-    if(win&&!win.closed)win.close();
-  }
 }
 
 function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
@@ -11667,28 +11520,20 @@ function renderDemandScatter(){
 <div class="view" id="view-report-aziende">
   <div style="padding:24px 32px;max-width:900px;">
     <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">📇 Report Aziende</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Genera una scheda stampabile su una singola azienda: dati CORE, prodotti, gruppo, decision maker e ultimi annunci pubblicati.</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Cerca un'azienda per nome, oppure descrivi cosa vuoi — una lista per criteri, un confronto tra aziende nominate, i concorrenti di un'azienda — e genera direttamente il report stampabile.</div>
 
     <div style="position:relative;max-width:420px;">
       <input type="text" id="ra-search" placeholder="Cerca azienda per nome..." autocomplete="off" oninput="searchCompanyForReport(this.value)" style="width:100%;font-size:13px;padding:10px 14px;">
       <div id="ra-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:260px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.25);"></div>
     </div>
 
-    <div style="display:flex;gap:10px;align-items:center;margin-top:16px;">
-      <button class="btn btn-primary" id="btn-generate-company-report" onclick="generateCompanyReport()" disabled style="background:#8b5cf6;border-color:#8b5cf6;opacity:.5;">📄 Genera Report</button>
-      <button class="btn btn-secondary" id="btn-find-competitors" onclick="trovaConcorrentiDiSelezionata()" disabled style="border-color:#8b5cf6;color:#8b5cf6;opacity:.5;">🥊 Trova concorrenti</button>
+    <textarea id="ra-prompt" placeholder="...oppure descrivi cosa vuoi: aziende in Lombardia con certificazione GMP attiva · confronta Steris e Stryker · concorrenti di Orion Pharma" style="width:100%;height:70px;font-size:13px;padding:12px 14px;margin-top:12px;resize:vertical;" oninput="_raSelectedCompany=null; aggiornaBottoneGenera();"></textarea>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+      <button class="btn btn-primary" id="btn-generate-company-report" onclick="generaReportUnico()" disabled style="background:#8b5cf6;border-color:#8b5cf6;opacity:.5;">📄 Genera Report</button>
       <div id="ra-status" style="font-size:12px;color:var(--text2);"></div>
     </div>
-
-    <div style="display:flex;align-items:center;gap:12px;margin:28px 0;color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:1px;">
-      <div style="flex:1;height:1px;background:var(--border);"></div>oppure cerca per criteri<div style="flex:1;height:1px;background:var(--border);"></div>
-    </div>
-
-    <textarea id="ra-prompt" placeholder="Es. aziende in Lombardia con certificazione GMP attiva&#10;Es. aziende del gruppo Bayer con hiring attivo&#10;Es. aziende che producono principi attivi in area oncologica" style="width:100%;height:70px;font-size:13px;padding:12px 14px;resize:vertical;"></textarea>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-      <button class="btn btn-primary" id="btn-search-companies" onclick="searchCompaniesFromPrompt()" style="background:#8b5cf6;border-color:#8b5cf6;">🔎 Cerca aziende</button>
-    </div>
-    <div id="ra-search-results" style="margin-top:16px;"></div>
+    <div id="ra-search-results" style="margin-top:12px;"></div>
 
     <div style="margin-top:32px;font-size:11px;color:var(--text2);line-height:1.9;">
       <strong style="color:var(--text);">Esempi di attività già possibili oggi:</strong>
@@ -11697,6 +11542,7 @@ function renderDemandScatter(){
         <li>Verifica rapida se un'azienda "minore" fa in realtà parte di un gruppo più ampio (es. Bracco, Bayer) prima di valutarla come entità isolata.</li>
         <li>Controlla se un'azienda sta assumendo davvero in un'area, o se l'unico segnale disponibile sono prodotti/certificazioni senza alcun annuncio recente.</li>
         <li>Cerca per criteri (box sopra) per ottenere un elenco di aziende invece di una sola — es. tutte quelle di un gruppo, di un settore/regione, o con una certificazione specifica.</li>
+        <li>Scrivi "confronta X e Y" per un confronto affiancato, o "concorrenti di X" per il report concorrenti con punteggio, tier e presenza Italia.</li>
       </ul>
       <strong style="color:var(--text);">Direzioni su cui stiamo lavorando (dati già in parte disponibili):</strong>
       <ul style="margin:8px 0 0 18px;padding:0;">
