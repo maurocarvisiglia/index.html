@@ -3492,6 +3492,13 @@ async function executeReportPlan(plan){
     const ral_segments = computeRalSegments(listings);
     const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
     const pricing_decisions = computePricingDecisions(listings);
+    // Elementi del pacchetto economico (auto aziendale, bonus, LTI, welfare...) —
+    // non un toggle opzionale come seniority_mix/geo_mix: e' la stessa categoria
+    // di dato della RAL (quanto costa/vale davvero un'offerta), quindi sempre
+    // calcolato quando c'e' un campione, richiesto da Mauro il 9/09/2026 ("sono
+    // dati che abbiamo" — gia' raccolti in job_listings.benefits, mai mostrati
+    // nei report stampabili prima di questa modifica).
+    const benefits_mix = computeBenefitsSection(listings);
     // Se un'azienda concentra una quota elevata, la "RAL per seniority" aggregata
     // rischia di essere in realta' la sua scala interna — calcola anche quella
     // depurata, cosi' il lettore vede il differenziale di seniority SENZA la
@@ -3499,7 +3506,7 @@ async function executeReportPlan(plan){
     const ral_by_seniority_diversified = benchmark.concentration_flag
       ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company))
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions});
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3541,6 +3548,10 @@ async function narrateReport(plan,entityResults){
       numero_decisioni_stimate:r.pricing_decisions.totalDecisions,
       decisioni_replicate:r.pricing_decisions.replicatedDecisions.slice(0,6).map(d=>({azienda:d.company,ruolo:d.title,ral_min:d.ral_min,ral_max:d.ral_max,annunci:d.count}))
     }:null,
+    pacchetto_economico:r.benefits_mix&&r.benefits_mix.breakdown.length?{
+      coverage_pct:r.benefits_mix.coverage_pct,
+      elementi:r.benefits_mix.breakdown.slice(0,8)
+    }:null,
     gap_vs_first:r.gap_vs_first||null
   }));
 
@@ -3564,6 +3575,7 @@ REGOLE ASSOLUTE SUI DATI:
 - Usa "ral_by_seniority" per commentare esplicitamente i differenziali retributivi tra livelli (es. quanto guadagna in più/meno un senior specialist rispetto a uno specialist o un entry level, con numeri precisi) — questo dato e' quasi sempre disponibile e va sempre sfruttato, non ignorato.
 - Se "ral_segments" e' presente (non null), il mercato si divide in fasce retributive nette individuate matematicamente dai salti nella distribuzione — descrivi OGNI fascia con il suo range (min-max), quante posizioni contiene, e le aziende che la compongono ("top_companies"). Non inventare nomi per le fasce (es. "entry", "generalista", "specialty") a meno che le aziende/RAL della fascia lo suggeriscano chiaramente — altrimenti descrivile semplicemente per range di RAL. Se "ral_segments" e' null o assente, il mercato e' omogeneo: NON inventare fasce che non esistono.
 - Usa la distribuzione geografica ("sections.geo_mix") per indicare dove si concentra la domanda e cosa significa operativamente.
+- Se "pacchetto_economico" e' presente (non null), descrivi in "benefits_note" quali elementi del pacchetto oltre alla RAL sono piu' diffusi tra gli annunci ("elementi", ordinati per frequenza — ognuno ha "key" e "pct", che e' la percentuale di annunci del campione che lo dichiara: NON somma a 100, un annuncio può avere piu' elementi insieme). Se "coverage_pct" e' basso, dillo esplicitamente: significa che molti annunci non dichiarano alcun benefit, non che il pacchetto sia povero. Se "pacchetto_economico" e' null, di' semplicemente che nessun annuncio del campione dichiara elementi di pacchetto oltre alla RAL — non inventare nulla.
 - ANOMALIE DA SCORPORARE — controlla sempre "benchmark.concentration_flag" E "top_employers": se un'azienda rappresenta una quota sproporzionata degli annunci (tipicamente oltre il 30-40% del totale) con una RAL fissa o anomala rispetto al resto del mercato, DEVI nominarla esplicitamente e spiegare come distorce i numeri aggregati, citando sia il dato "inquinato" sia quello "depurato" (concentration_flag.company_median_ral vs concentration_flag.diversified_median) quando disponibili. Non trattarla come una nota a margine: e' un fatto centrale della sintesi esecutiva, perche' altrimenti chi legge il report crede che la mediana rappresenti un mercato omogeneo quando invece e' pilotata da un singolo datore.
 - CAMPIONE VUOTO — regola prioritaria su tutte le altre: se "campione_vuoto" e' true (zero annunci), NON formulare NESSUNA ipotesi sul mercato, sul ruolo o sul perche' non ci siano annunci. Un campione vuoto NON e' un'informazione di mercato: e' l'esito di una combinazione di filtri che non trova corrispondenze. Dichiaralo apertamente elencando i "filtri_applicati" che hanno prodotto il vuoto (es. "La combinazione di filtri richiesta — ruolo X, settore Y, periodo Z — non trova alcun annuncio nel database: il campione e' vuoto e non e' possibile produrre alcun benchmark. Verificare se i criteri sono troppo restrittivi.") e fermati li'. Non riempire il resto del report con congetture: meglio un report che dice "nessun dato per questi criteri" che uno che sembra un'analisi ma non poggia su niente.
 - Se un'entita' ha POCHI annunci (ma non zero), dillo esplicitamente indicando il numero e trattandolo come limite di rappresentativita': con pochi annunci mediane e percentuali sono instabili e non vanno presentate come solide. Puoi formulare un'ipotesi sul perche' il volume e' basso (es. "il ruolo probabilmente non viene pubblicato come figura separata, ma assorbito dentro [altro ruolo/famiglia]"), ma solo dopo aver dichiarato la numerosita' reale.
@@ -3585,7 +3597,8 @@ Rispondi SOLO con questo JSON:
   "executive_summary": "<4-6 frasi: il messaggio piu' importante emerso dai dati (inclusa qualunque anomalia/concentrazione da scorporare), con il ragionamento dietro il numero, non solo il numero>",
   "entity_notes": [{"label":"<usa ESATTAMENTE uno dei valori di 'label' presenti in factsForAI sopra — es. il nome del ruolo/figura analizzata, MAI il nome di un'azienda anche se la menzioni nel testo>","note":"<3-4 frasi specifiche su questa entita': seniority, geografia, eventuali anomalie — lettura del dato non solo elenco>"}] (un elemento per ogni entita' in factsForAI, stesso ordine),
   "operational_implication": "<3-4 frasi che spiegano cosa cambia concretamente per chi deve decidere su assunzioni/retribuzioni/organico, ancorate a un meccanismo specifico dei dati sopra>",
-  "market_depth_note": "<2-3 frasi basate su 'decisioni_retributive_indipendenti': se 'numero_decisioni_stimate' e' significativamente minore di 'totale_annunci', spiega quali aziende/ruoli si ripetono su piu' sedi e cosa significa per la profondita' reale del mercato. Se il numero di decisioni e' vicino al totale annunci, di' semplicemente che il campione non presenta repliche significative>"
+  "market_depth_note": "<2-3 frasi basate su 'decisioni_retributive_indipendenti': se 'numero_decisioni_stimate' e' significativamente minore di 'totale_annunci', spiega quali aziende/ruoli si ripetono su piu' sedi e cosa significa per la profondita' reale del mercato. Se il numero di decisioni e' vicino al totale annunci, di' semplicemente che il campione non presenta repliche significative>",
+  "benefits_note": "<2-3 frasi basate su 'pacchetto_economico': quali elementi oltre alla RAL sono piu' diffusi nel campione (bonus, auto aziendale, LTI, welfare...) e cosa significa per la competitivita' dell'offerta. Se 'pacchetto_economico' e' null, di' che nessun annuncio del campione dichiara elementi di pacchetto oltre alla RAL>"
 }`;
 
   try{
@@ -3606,7 +3619,8 @@ Rispondi SOLO con questo JSON:
       executive_summary:'Report basato su '+entityResults.reduce((a,r)=>a+r.n_listings,0)+' annunci totali. RAL mediana '+(e0.benchmark.median?'€'+Math.round(e0.benchmark.median/1000)+'k':'n.d.')+' su '+e0.benchmark.n_companies+' aziende attive.',
       entity_notes:entityResults.map(r=>({label:r.label,note:r.n_listings+' annunci, RAL mediana '+(r.benchmark.median?'€'+Math.round(r.benchmark.median/1000)+'k':'n.d.')})),
       operational_implication:'',
-      market_depth_note:''
+      market_depth_note:'',
+      benefits_note:''
     };
   }
 }
@@ -3820,6 +3834,10 @@ function renderReportHTML(plan,entityResults,narration){
         const covNote=(sec.coverage_pct!=null&&sec.coverage_pct<100)?` <span style="color:#aaa;font-weight:400;text-transform:none;letter-spacing:0;">(dato presente su ${sec.coverage_pct}% degli annunci)</span>`:'';
         return `<div class="section-title" style="margin-top:24px;">${SECTION_TITLES[key]||key}${covNote}</div><div class="chart-box">${renderSection(key,sec)}</div>`;
       }).join('')}
+      ${e.benefits_mix&&e.benefits_mix.breakdown.length?`
+      <div class="section-title" style="margin-top:24px;">Pacchetto economico <span style="color:#aaa;font-weight:400;text-transform:none;letter-spacing:0;">(dichiarato su ${e.benefits_mix.coverage_pct}% degli annunci)</span></div>
+      <div class="chart-box">${barRows(e.benefits_mix,GOLD)}</div>
+      ${narration.benefits_note?`<div class="summary-box">${narration.benefits_note}</div>`:''}`:''}
     `;
   }else{
     const cols='repeat('+n+',1fr)';
@@ -3864,6 +3882,12 @@ function renderReportHTML(plan,entityResults,narration){
     // Distribuzioni settori (NUOVO)
     const sectorGrid=`<div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} - Top Settori</div>${barRows(e.sector_distribution?{breakdown:e.sector_distribution}:null,GOLD)}</div>`).join('')}</div>`;
 
+    // Pacchetto economico — quali elementi oltre alla RAL (auto aziendale, bonus,
+    // LTI, welfare...) sono piu' diffusi per ciascuna entita' a confronto.
+    const benefitsGrid=entityResults.some(e=>e.benefits_mix&&e.benefits_mix.breakdown.length)?`<div class="section-title" style="margin-top:24px;">Pacchetto economico</div>
+      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} <span style="color:#aaa;font-weight:400;">(dichiarato su ${e.benefits_mix?e.benefits_mix.coverage_pct:0}% degli annunci)</span></div>${barRows(e.benefits_mix,GOLD)}</div>`).join('')}</div>
+      ${narration.benefits_note?`<div class="summary-box">${narration.benefits_note}</div>`:''}`:'';
+
     // Key findings deterministici (NUOVO)
     const keyFindings=`<div class="section-title" style="margin-top:24px;">Key Findings</div>
       <div style="display:grid;grid-template-columns:${cols};gap:16px;">
@@ -3889,6 +3913,7 @@ function renderReportHTML(plan,entityResults,narration){
       <div class="section-title">3. Talent Scarcity</div>
       ${scarcityGrid}
       ${sectionBlocks}
+      ${benefitsGrid}
     `;
   }
 
@@ -6474,6 +6499,50 @@ function computeRalBenchmarkSection(listings,label){
 // excludeValue = valore che NON conta come "specificato" (es. 'not_applicable' per TA):
 // viene tolto dal breakdown ma il suo conteggio resta visibile in coverage_pct, cosi'
 // si vede sempre quanti annunci mancano di quel dato invece di far sembrare il dato completo.
+// Elementi del pacchetto economico dichiarati in job_listings.benefits — dato gia'
+// raccolto (mostrato oggi solo come tooltip nella tabella annunci a schermo, mai
+// nei report stampabili) ma non ancora ricondotto a categorie comparabili: due
+// annunci che dicono "Auto aziendale" e "Company car" sono lo stesso elemento,
+// non due voci distinte. Stessa tassonomia usata per l'analisi manuale MSL del
+// 9/09/2026 (Merck Serono/AstraZeneca/GSK/Chiesi), qui generalizzata a qualunque
+// ruolo. Un annuncio può cadere in più categorie (un pacchetto ha piu' elementi
+// insieme), quindi le percentuali NON devono sommare a 100 — stesso principio
+// gia' vero per benchmark.top_employers.
+const CATEGORIE_BENEFIT=[
+  ['Auto aziendale',/auto aziendal|company car|car benefit/i],
+  ['Bonus annuale/performance',/bonus annual|annual.*bonus|target bonus|performance.bonus|compenso variabile|variable compensation|\bsip\b|performance reward/i],
+  ['Premio di partecipazione',/premio di partecipazione|participation bonus/i],
+  ['Incentivi lungo termine (LTI/azioni)',/long.term incentive|azioni e risparmi|stock purchase|espp|401\(k\)/i],
+  ['Incentivi breve termine (STI)',/short.term incentive/i],
+  ['Fondo pensione integrativo',/pensione integrativ|integrative pension|piano pensionistico/i],
+  ['Assicurazione/piano sanitario',/assicurazione sanitaria|healthcare plan|health insurance|piano sanitario|copertura sanitaria|medical.*dental.*vision/i],
+  ['Supporto psicologico/benessere',/supporto psicologic|wellbeing|well.being|benessere/i],
+  ['Welfare/benefit package',/welfare|pacchetto.*benefit|benefit.*package/i],
+  ['Flessibilità/lavoro ibrido',/flessibilit|hybrid|ibrido|flexible working|smart working/i],
+  ['Congedo parentale/maternità',/congedo parental|parental leave|maternity leave/i],
+  ['Assistenza fiscale',/assistenza fiscale|tax assistance/i],
+  ['Fertility benefit',/fertility/i],
+  ['Sconti dipendenti',/sconti|discount/i],
+  ['13esima/14esima mensilità',/13.mensilit|13.month|14.mensilit/i],
+  ['Sviluppo professionale',/sviluppo professionale|professional development|career growth/i],
+];
+function computeBenefitsSection(listings){
+  const total=listings.length||1;
+  const dichiarati=listings.filter(l=>l.benefits&&l.benefits!=='N/A');
+  const conteggio={};
+  dichiarati.forEach(l=>{
+    CATEGORIE_BENEFIT.forEach(([nome,re])=>{
+      if(re.test(l.benefits))conteggio[nome]=(conteggio[nome]||0)+1;
+    });
+  });
+  return{
+    type:'benefits_mix',
+    coverage_pct:Math.round(dichiarati.length/total*100),
+    covered_count:dichiarati.length,total_count:total,
+    breakdown:Object.entries(conteggio).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({key:k,count:v,pct:Math.round(v/total*100)}))
+  };
+}
+
 function computeMixSection(listings,field,label,excludeValue){
   const counts={};
   let uncovered=0;
