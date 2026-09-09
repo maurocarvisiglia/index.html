@@ -9490,6 +9490,11 @@ function categoriaDispositivoGenerica(valore){
 // vera. Nessuna funzione condivisa col Report Builder ne' con le altre
 // ricerche di questa pagina, stesso principio di isolamento gia' in uso qui. ──
 
+// Etichetta leggibile per i 3 gruppi di trovaConcorrenti — condivisa tra il
+// calcolo (fronti incrociati sotto) e il rendering, cosi' un'azienda che
+// compete su piu' fronti mostra sempre lo stesso nome di mercato ovunque.
+const MERCATO_LABEL={farmaco:'Farmaci', dispositivo:'Dispositivi', classe_terapeutica:'Classe terapeutica'};
+
 async function trovaConcorrenti(companyId){
   // Caricato una sola volta per sessione (cache interna) — serve a
   // formattaNomeIngrediente() per mostrare "budesonide + formoterolo" invece
@@ -9849,12 +9854,23 @@ async function trovaConcorrenti(companyId){
     const N=filtrata.length;
     const idf=valore=>Math.log((N+1)/((nAziendePerValore.get(valore)||1)+1))+1; // smussato: mai zero/negativo
 
+    // Punteggio di concorrenza PER VALORE condiviso (non solo per azienda),
+    // stessa scala 0-100 gia' in uso per il punteggio complessivo: normalizza
+    // idf(valore) sul massimo idf visto in questo gruppo, cosi' il valore piu'
+    // raro/specifico del gruppo vale 100 e gli altri scendono in proporzione.
+    // Richiesto da Mauro il 9/09/2026 ("diamo per i vari prodotti un
+    // punteggio di concorrenza, come gia' facciamo") per mostrare nella frase
+    // descrittiva dell'overlap non solo l'elenco dei valori ma quanto ognuno
+    // pesa — usato da formattaSovrapposizioneDescrittiva() in fase di stampa.
+    const massimoIdf=Math.max(...[...nAziendePerValore.keys()].map(idf))||1;
+    const filtrataConPunteggioValore=filtrata.map(c=>({...c, sovrapposizioni:c.sovrapposizioni.map(s=>({...s, punteggioValore:Math.round(100*idf(s.valore)/massimoIdf)}))}));
+
     const filtroCatalogo=tipo==='dispositivo'
       ?'device_category=not.is.null'
       :'category=eq.commercializzato&active_ingredients_norm=not.is.null';
     const conCatalogo=[];
-    for(let i=0;i<filtrata.length;i+=CONCORRENZA){
-      const lotto=filtrata.slice(i,i+CONCORRENZA);
+    for(let i=0;i<filtrataConPunteggioValore.length;i+=CONCORRENZA){
+      const lotto=filtrataConPunteggioValore.slice(i,i+CONCORRENZA);
       const conteggi=await Promise.all(lotto.map(c=>catalogoTotale(c.id,filtroCatalogo)));
       lotto.forEach((c,idx)=>conCatalogo.push({...c, catalogoTotale:conteggi[idx]}));
     }
@@ -9932,13 +9948,41 @@ async function trovaConcorrenti(companyId){
     })
     .sort((a,b)=>b.punteggio-a.punteggio||(b.dipendenti||0)-(a.dipendenti||0)||a.name.localeCompare(b.name));
 
-  const sintesiEsecutiva=await sintetizzaMinacceCompetitive(targetRows[0]?.name||'questa azienda',concorrentiFarmaci,concorrentiDispositivi,concorrentiClasseTerapeutica,dispositiviMarginaliPerTarget);
+  // Accorpamento cross-mercato (richiesto da Mauro il 9/09/2026): un'azienda
+  // puo' comparire in piu' di uno dei 3 gruppi (es. Zentiva compete sia sui
+  // farmaci esatti sia nella stessa classe terapeutica, con punteggi diversi
+  // per motivi diversi) — invece di lasciare che chi legge lo scopra
+  // confrontando tabelle separate, ogni riga sa gia' su quali ALTRI fronti
+  // la stessa azienda compete, con punteggio e tier propri di quel fronte.
+  // Nessuna riga viene tolta (richiesta esplicita: "non escludiamo le parti
+  // secondarie") — questo aggiunge solo informazione, non ne rimuove.
+  const gruppiPerFronte=[
+    {mercato:'farmaco', lista:concorrentiFarmaci},
+    {mercato:'dispositivo', lista:concorrentiDispositivi},
+    {mercato:'classe_terapeutica', lista:concorrentiClasseTerapeutica},
+  ];
+  const frontiPerAzienda=new Map();
+  gruppiPerFronte.forEach(g=>g.lista.forEach(c=>{
+    if(!frontiPerAzienda.has(c.id))frontiPerAzienda.set(c.id,[]);
+    frontiPerAzienda.get(c.id).push({mercato:g.mercato, punteggio:c.punteggio, tier:c.tier});
+  }));
+  function conAltriFronti(lista,mercatoProprio){
+    return lista.map(c=>{
+      const fronti=(frontiPerAzienda.get(c.id)||[]).filter(f=>f.mercato!==mercatoProprio);
+      return fronti.length?{...c, altriFronti:fronti}:c;
+    });
+  }
+  const concorrentiFarmaciConFronti=conAltriFronti(concorrentiFarmaci,'farmaco');
+  const concorrentiDispositiviConFronti=conAltriFronti(concorrentiDispositivi,'dispositivo');
+  const concorrentiClasseTerapeuticaConFronti=conAltriFronti(concorrentiClasseTerapeutica,'classe_terapeutica');
+
+  const sintesiEsecutiva=await sintetizzaMinacceCompetitive(targetRows[0]?.name||'questa azienda',concorrentiFarmaciConFronti,concorrentiDispositiviConFronti,concorrentiClasseTerapeuticaConFronti,dispositiviMarginaliPerTarget);
 
   return {
     valori:listaCompiti.map(c=>c.valore),
-    concorrentiFarmaci,
-    concorrentiDispositivi,
-    concorrentiClasseTerapeutica,
+    concorrentiFarmaci:concorrentiFarmaciConFronti,
+    concorrentiDispositivi:concorrentiDispositiviConFronti,
+    concorrentiClasseTerapeutica:concorrentiClasseTerapeuticaConFronti,
     partnership,
     partnershipRilevate,
     segnaliTarget,
@@ -10014,18 +10058,33 @@ function formattaSovrapposizione(s){
   return `<div style="margin-bottom:4px;"><strong>${s.valore}</strong>${suffisso}${s.nomiLoro.length?` — es. ${s.nomiLoro.join(', ')}`:''}</div>`;
 }
 
-// Versione compatta per i tier "Overlap debole"/"Overlap marginale": solo
-// l'elenco dei valori condivisi, mai gli esempi di prodotto per ciascuno —
-// richiesto da Mauro l'8/09/2026 ("gli overlap deboli siano solo accennati").
-// Un'azienda con overlap marginale non merita lo stesso spazio in pagina di
-// un vero competitor strategico: il dettaglio completo resta comunque nei
-// dati, solo non stampato per intero qui.
-function formattaSovrapposizioneCompatta(sovrapposizioni){
-  const nomi=[...new Set((sovrapposizioni||[]).map(s=>s.valore))];
-  const MAX=4;
-  const mostrati=nomi.slice(0,MAX).join(', ');
-  const extra=nomi.length>MAX?` (+${nomi.length-MAX} altre)`:'';
-  return `<div style="color:#888;">${nomi.length} in comune: ${mostrati}${extra}</div>`;
+// Paragrafo descrittivo unico per TUTTI i tier (non solo debole/marginale
+// come nella versione precedente formattaSovrapposizioneCompatta) —
+// richiesto da Mauro il 9/09/2026: anche le righe dei competitor forti
+// (Sandoz/Teva su Orion) elencavano ogni singolo principio attivo con TUTTI
+// gli esempi di marchio, occupando piu' spazio delle righe "overlap debole"
+// messe insieme. Un solo esempio di marchio per valore condiviso, ordinati
+// per punteggioValore (piu' specifico/raro prima) — il dettaglio completo
+// resta comunque nel dato, solo non stampato riga per riga qui.
+// Include anche il punteggio di concorrenza PER VALORE (0-100, calcolato in
+// estraiGruppo → punteggioValore), stessa scala del punteggio complessivo:
+// "diamo per i vari prodotti un punteggio di concorrenza, come gia'
+// facciamo" — cosi' chi legge vede non solo COSA e' in comune ma quanto quel
+// singolo elemento e' un segnale specifico/raro vs comune tra i concorrenti.
+function formattaSovrapposizioneDescrittiva(sovrapposizioni){
+  const perValore=new Map();
+  (sovrapposizioni||[]).forEach(s=>{
+    if(!perValore.has(s.valore))perValore.set(s.valore,{valore:s.valore, punteggioValore:s.punteggioValore, nomiLoro:[]});
+    const v=perValore.get(s.valore);
+    (s.nomiLoro||[]).forEach(n=>{ if(!v.nomiLoro.includes(n))v.nomiLoro.push(n); });
+  });
+  const valori=[...perValore.values()].sort((a,b)=>(b.punteggioValore??0)-(a.punteggioValore??0));
+  const MAX=5;
+  const elenco=valori.slice(0,MAX).map(v=>`${v.valore}${v.punteggioValore!=null?` <span style="color:#aaa;">(${v.punteggioValore})</span>`:''}`).join(', ');
+  const extra=valori.length>MAX?` <span style="color:#aaa;">(+${valori.length-MAX} altri)</span>`:'';
+  const esempi=valori.map(v=>v.nomiLoro[0]).filter(Boolean).slice(0,MAX);
+  const fraseEsempi=esempi.length?` — es. ${esempi.join(', ')}`:'';
+  return `<div>${valori.length} in comune: ${elenco}${extra}${fraseEsempi}.</div>`;
 }
 
 // Badge punteggio+tier calcolato da estraiGruppo() dentro trovaConcorrenti.
@@ -10203,14 +10262,22 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
       const recruiting=c.recruitingRelevance?.persone!=null
         ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:8px;padding:1px 6px;">🎯 ${c.recruitingRelevance.persone} persone in ruoli commerciali/clinici</span>`
         :'';
-      const moleco=c.stessaMolecolaAncheInFarmaci
-        ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#166534;background:#f0fdf4;border-radius:8px;padding:1px 6px;">🧪 compete anche su un principio attivo esatto (vedi tabella Farmaci) — punteggio pesato</span>`
+      // Accorpamento cross-mercato (richiesto da Mauro il 9/09/2026: "non
+      // escludiamo le parti secondarie, ma inseriamo delle parti descrittive
+      // in cui scriviamo quali sono i punti in comune"): quando un'azienda
+      // compete anche in un altro gruppo (es. e' nella tabella Farmaci E in
+      // Classe terapeutica), lo dice qui in una frase — mai una riga tolta,
+      // solo il quadro completo reso esplicito invece di andare cercato in
+      // un'altra tabella. Sostituisce il vecchio badge "moleco", limitato al
+      // solo caso classe-terapeutica→farmaci: altriFronti (da trovaConcorrenti)
+      // copre tutte le combinazioni tra i 3 gruppi.
+      const altriFronti=(c.altriFronti&&c.altriFronti.length)
+        ?`<div style="margin-top:3px;font-size:10px;color:#166534;">🔗 Compete anche su ${c.altriFronti.map(f=>`${MERCATO_LABEL[f.mercato]||f.mercato} (${f.punteggio} · ${f.tier.label})`).join(', ')}.</div>`
         :'';
-      const overlapAccennato=c.tier.id==='debole'||c.tier.id==='marginale';
-      const overlapHtml=overlapAccennato?formattaSovrapposizioneCompatta(c.sovrapposizioni):c.sovrapposizioni.map(formattaSovrapposizione).join('');
+      const overlapHtml=formattaSovrapposizioneDescrittiva(c.sovrapposizioni);
       return `<tr>
       <td>${tierBadgeHtml(c)}</td>
-      <td>${c.name}${meta?`<div style="font-size:9px;color:#aaa;">${meta}</div>`:''}${recruiting?`<div>${recruiting}</div>`:''}${moleco?`<div>${moleco}</div>`:''}</td>
+      <td>${c.name}${meta?`<div style="font-size:9px;color:#aaa;">${meta}</div>`:''}${recruiting?`<div>${recruiting}</div>`:''}${altriFronti}</td>
       <td style="color:#333;font-size:11px;">${overlapHtml}</td>
       ${conPipeline?`<td style="color:#333;font-size:11px;">${pipelineCellTesto(c,fattoPipelineHtml)}</td>`:''}
     </tr>`;
