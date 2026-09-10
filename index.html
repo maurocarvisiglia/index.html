@@ -3364,7 +3364,15 @@ function computeRalBySeniority(listings){
   listings.forEach(l => {
     const sen = l.seniority_v2 || 'N/D';
     if (sen === 'not_applicable') return;
-    const ral = l.ral_max || l.ral_min;
+    // Media di min/max se entrambi presenti, altrimenti il singolo valore
+    // disponibile — stessa convenzione usata OVUNQUE ALTRO nel file. Questa era
+    // l'unica funzione rimasta su "preferisci sempre il massimo", che penalizzava
+    // sistematicamente gli annunci "Da X€" (dopo il fix del 10/09/2026 hanno solo
+    // ral_min) rispetto a quelli con un range stimato completo (che vincevano
+    // sempre col loro massimo) — un entry level con un solo annuncio poteva
+    // risultare piu' pagato di uno specialist solo per questo disallineamento,
+    // non per un segnale di mercato reale.
+    const ral = l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
     if (!ral) return;
     if (!bySen[sen]) bySen[sen] = [];
     bySen[sen].push(ral);
