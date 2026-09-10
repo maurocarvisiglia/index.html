@@ -3063,7 +3063,11 @@ async function findOrCreateCompany(name,ragioneSociale,extraFields,opts){
 // ── REPORT BUILDER — query generica per filtri (nessuna IA, solo composizione query) ──
 async function fetchListingsForReportFilters(filters){
   const parts=[];
-  if(filters.canonical_role)parts.push('canonical_role=eq.'+encodeURIComponent(filters.canonical_role));
+  // canonical_role puo' essere una stringa (un ruolo preciso, comportamento
+  // originale) o un array (piu' ruoli scelti dall'utente nel selettore alias/
+  // categoria — vedi interpretaRichiestaReport/confermaGeneraReport, 10/09/2026).
+  if(Array.isArray(filters.canonical_role)&&filters.canonical_role.length)parts.push('canonical_role=in.('+filters.canonical_role.map(encodeURIComponent).join(',')+')');
+  else if(filters.canonical_role&&!Array.isArray(filters.canonical_role))parts.push('canonical_role=eq.'+encodeURIComponent(filters.canonical_role));
   if(filters.functional_area)parts.push('functional_area_v2=eq.'+encodeURIComponent(filters.functional_area));
   if(filters.sector_v2==='Pharma')parts.push('sector_v2=in.(Big Pharma,Mid Pharma,Specialty Pharma,Pharma)');
   else if(filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(filters.sector_v2));
@@ -3176,7 +3180,8 @@ REGOLE:
 - Se la richiesta non specifica un focus preciso, includi tutte le 4 sezioni disponibili.
 - Non inventare ruoli o valori non presenti nelle liste sopra: se non sei sicuro, usa null per quel filtro.
 - Non restringere MAI il campione a un settore specifico (sector_v2) sulla base di una menzione generica di "Life Sciences" o del nome della piattaforma: questo escluderebbe silenziosamente la maggior parte del mercato reale senza che l'utente lo sappia. Applica sector_v2 SOLO quando l'utente nomina esplicitamente un settore preciso.
-- Se la richiesta nomina un ruolo che assomiglia a uno della lista ma non e' identico (es. "Tender specialist" quando la lista ha "Tender Office Specialist"), scegli il ruolo della lista piu' vicino per significato invece di lasciare null — null va usato solo quando NESSUN ruolo della lista e' plausibilmente lo stesso concetto, non quando la formulazione e' semplicemente diversa. Un canonical_role null su una richiesta che nomina chiaramente un ruolo produce un report senza filtro (mostra quasi tutto il database), che e' peggio di una scelta ragionevole.
+- Se la richiesta nomina UN ruolo preciso che assomiglia a uno della lista ma non e' identico (es. "Tender specialist" quando la lista ha "Tender Office Specialist"), scegli il ruolo della lista piu' vicino per significato invece di lasciare null — null va usato solo quando NESSUN ruolo della lista e' plausibilmente lo stesso concetto, non quando la formulazione e' semplicemente diversa. Un canonical_role null su una richiesta che nomina chiaramente UN ruolo preciso produce un report senza filtro (mostra quasi tutto il database), che e' peggio di una scelta ragionevole.
+- CATEGORIA AMPIA vs RUOLO PRECISO — distinzione critica, causa reale di report vuoti/troppo piccoli (trovato il 10/09/2026: "Sales Representative o figure Commerciali" forzato su canonical_role="Sales Representative" dava 2 annunci, quando functional_area="commercial" ne aveva 217 — il singolo canonical_role e' solo UNA delle tante figure commerciali esistenti in tassonomia, Area Manager Commercial/Product Specialist/Key Account Manager/Sales Manager/Sales Specialist/National Account Manager sono ALTRETTANTO "figure commerciali" ma restavano fuori). Quando la richiesta usa un termine di CATEGORIA/FAMIGLIA ampia invece di un nome di ruolo preciso (es. "commerciali", "figure di vendita", "ruoli tecnici", "profili di qualita'", "figure regolatorie", o una frase con "o" che elenca piu' sinonimi generici come "Sales Representative o figure Commerciali"), NON forzare canonical_role su un singolo ruolo scelto a caso dalla lista: usa invece functional_area con il valore piu' pertinente (es. "commercial" per richieste commerciali/vendita, "quality" per qualita', "regulatory_affairs" per regolatorio, "medical_affairs" per medico/clinico) e lascia canonical_role null. canonical_role va scelto SOLO quando la richiesta nomina un titolo di ruolo specifico e riconoscibile (es. "Medical Science Liaison", "Tender Specialist", "Key Account Manager") — mai come approssimazione di una categoria ampia.
 - Mai usare mode="comparison" per confrontare un ruolo con un suo livello di seniority (es. "Tender Specialist" e "Senior Specialist" NON sono due entita' diverse da confrontare — "Senior Specialist" e' un LIVELLO, non un ruolo. Se la richiesta menziona un livello di seniority insieme a un ruolo, quel livello va nel filtro seniority_v2 della STESSA entita', mai come entita' separata).
 
 Rispondi SOLO con questo JSON, nessun altro testo:
@@ -4048,48 +4053,147 @@ td.num{text-align:right;font-weight:700;}
 
 // ── REPORT BUILDER — orchestrazione: prompt → piano (IA) → esecuzione (calcolo) →
 // narrazione (IA vincolata) → rendering → stampa/PDF. ──
-async function generateCustomReport(){
+// ── REPORT BUILDER — flusso a due fasi (richiesto da Mauro il 10/09/2026, dopo
+// che "Sales Representative o figure Commerciali" forzato su UN solo
+// canonical_role dava 2 annunci invece di 217): prima si interpreta la
+// richiesta e si mostrano i ruoli/alias realmente presenti nell'area
+// riconosciuta, con conteggi reali e spuntati di default; l'utente sceglie
+// quali includere PRIMA che il report venga calcolato, invece di scoprire a
+// cose fatte che il campione era troppo stretto. ──
+let _reportPlanPendente=null;
+
+async function interpretaRichiestaReport(){
   const promptEl=document.getElementById('report-prompt');
   const statusEl=document.getElementById('report-status');
   const btn=document.getElementById('btn-generate-report');
   const userPrompt=(promptEl?.value||'').trim();
   if(!userPrompt){toast('Scrivi prima cosa vuoi analizzare','warning');return;}
 
-  // Apri la finestra SUBITO, in modo sincrono rispetto al click: se si aspetta il
-  // risultato delle chiamate IA prima di aprire, il browser la blocca come popup
-  // perche' non e' piu' vista come conseguenza diretta del gesto dell'utente.
+  document.getElementById('report-role-picker').style.display='none';
+  btn.disabled=true;
+  if(statusEl)statusEl.textContent='⏳ Interpreto la richiesta...';
+  try{
+    const plan=await planReportFromPrompt(userPrompt);
+    if(plan._dropped_filters&&plan._dropped_filters.length){
+      toast('⚠️ Filtri ignorati perché senza corrispondenza nei dati: '+plan._dropped_filters.join('; '),'warning');
+    }
+
+    await loadTaxonomy();
+    const funzionePerRuolo=new Map(_taxonomyCache.map(t=>[t.canonical_role,t.functional_area]));
+
+    // Per ogni entita': l'area funzionale da esplorare e' quella del ruolo
+    // preciso riconosciuto (se c'e') o quella scelta direttamente per le
+    // richieste gia' ampie (regola "CATEGORIA AMPIA vs RUOLO PRECISO" nel
+    // prompt sopra). Il conteggio per ruolo dentro quell'area rispetta GLI
+    // STESSI altri filtri gia' individuati (settore/seniority/...) — mai un
+    // conteggio globale che ignora il resto della richiesta.
+    for(const e of plan.entities){
+      const fa=e.filters.functional_area||(e.filters.canonical_role?funzionePerRuolo.get(e.filters.canonical_role):null);
+      e._functional_area_esplorata=fa||null;
+      if(!fa){ e._ruoliCandidati=[]; continue; }
+      const parts=['functional_area_v2=eq.'+encodeURIComponent(fa),'canonical_role=not.is.null'];
+      if(e.filters.sector_v2==='Pharma')parts.push('sector_v2=in.(Big Pharma,Mid Pharma,Specialty Pharma,Pharma)');
+      else if(e.filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(e.filters.sector_v2));
+      if(e.filters.seniority_v2)parts.push('seniority_v2=eq.'+encodeURIComponent(e.filters.seniority_v2));
+      if(e.filters.seniority_v2_exclude&&e.filters.seniority_v2_exclude.length)parts.push('seniority_v2=not.in.('+e.filters.seniority_v2_exclude.map(encodeURIComponent).join(',')+')');
+      if(e.filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(e.filters.therapeutic_area));
+      if(e.filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(e.filters.contract_type));
+      if(e.filters.region)parts.push('region=eq.'+encodeURIComponent(e.filters.region));
+      const righe=await api('job_listings?select=canonical_role&'+parts.join('&')+'&limit=3000');
+      const conteggio={};
+      righe.forEach(r=>{conteggio[r.canonical_role]=(conteggio[r.canonical_role]||0)+1;});
+      e._ruoliCandidati=Object.entries(conteggio).sort((a,b)=>b[1]-a[1]).map(([ruolo,n])=>({ruolo,n,selezionato:true}));
+    }
+
+    _reportPlanPendente=plan;
+    renderReportRolePicker(plan);
+  }catch(err){
+    console.error('interpretaRichiestaReport error:',err);
+    toast('Errore: '+err.message,'error');
+  }finally{
+    btn.disabled=false;
+    if(statusEl)statusEl.textContent='';
+  }
+}
+
+function renderReportRolePicker(plan){
+  const wrap=document.getElementById('report-role-picker');
+  const intro=document.getElementById('report-role-picker-intro');
+  const list=document.getElementById('report-role-picker-list');
+  // Nessuna area funzionale riconosciuta per nessuna entita' (richiesta non
+  // basata su un ruolo/categoria, es. "report sul mercato Oncologia in
+  // Lombardia"): niente da scegliere, ma il pannello si mostra comunque — il
+  // popup deve aprirsi SOLO sul click di conferma (qui siamo gia' dentro una
+  // catena di await, aprirlo ora verrebbe bloccato dal browser come popup
+  // non richiesto direttamente da un click).
+  if(plan.entities.every(e=>!e._ruoliCandidati||!e._ruoliCandidati.length)){
+    intro.textContent='Ho interpretato "'+plan.title+'" — nessun ruolo/categoria specifico da scegliere per questa richiesta, il report userà tutti gli annunci che rispettano i filtri individuati.';
+    list.innerHTML='';
+    wrap.style.display='';
+    return;
+  }
+  intro.textContent='Ho interpretato "'+plan.title+'". Per ogni figura analizzata, questi sono i ruoli/alias realmente presenti nei dati con gli stessi filtri richiesti — deseleziona quelli che non vuoi includere.';
+  list.innerHTML=plan.entities.map((e,ei)=>{
+    if(!e._ruoliCandidati||!e._ruoliCandidati.length)return `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>${escHtml(e.label)}</strong>: nessuna area di ruoli riconosciuta, incluso così com'è.</div>`;
+    const righe=e._ruoliCandidati.map((r,ri)=>`
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;cursor:pointer;">
+        <input type="checkbox" checked data-entity="${ei}" data-idx="${ri}" onchange="_reportPlanPendente.entities[${ei}]._ruoliCandidati[${ri}].selezionato=this.checked">
+        <span>${escHtml(r.ruolo)} <span style="color:var(--text2);">(${r.n})</span></span>
+      </label>`).join('');
+    return `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">${escHtml(e.label)} <span style="color:var(--text2);font-weight:400;">— area: ${e._functional_area_esplorata||'-'}</span></div>${righe}</div>`;
+  }).join('');
+  wrap.style.display='';
+}
+
+function annullaRolePicker(){
+  document.getElementById('report-role-picker').style.display='none';
+  _reportPlanPendente=null;
+}
+
+async function confermaGeneraReport(){
+  const plan=_reportPlanPendente;
+  if(!plan){toast('Nessuna richiesta interpretata da confermare','warning');return;}
+
+  // Applica la selezione dell'utente: i ruoli spuntati diventano un filtro
+  // canonical_role ad array (fetchListingsForReportFilters gestisce sia
+  // stringa singola sia array). Se l'utente deseleziona tutto per
+  // un'entita', si ricade sul solo functional_area (nessun filtro ruolo,
+  // mostra l'intera area) invece di un campione vuoto per errore.
+  plan.entities.forEach(e=>{
+    if(e._ruoliCandidati&&e._ruoliCandidati.length){
+      const scelti=e._ruoliCandidati.filter(r=>r.selezionato).map(r=>r.ruolo);
+      e.filters.canonical_role=scelti.length?scelti:null;
+    }
+  });
+  document.getElementById('report-role-picker').style.display='none';
+
+  const statusEl=document.getElementById('report-status');
+  const btn=document.getElementById('btn-confirm-report');
+
+  // Apri la finestra SUBITO, in modo sincrono rispetto a QUESTO click (ora e'
+  // lui il gesto diretto dell'utente che genera il report): se si aspetta il
+  // risultato delle chiamate IA prima di aprire, il browser la blocca come
+  // popup perche' non e' piu' vista come conseguenza diretta del click.
   const win=window.open('','_blank');
   if(win){
     win.document.write('<title>Generazione report...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione del report in corso...</body>');
     win.document.close();
   }
 
-  btn.disabled=true;
+  if(btn)btn.disabled=true;
   try{
-    if(statusEl)statusEl.textContent='⏳ Interpreto la richiesta...';
-    const plan=await planReportFromPrompt(userPrompt);
-
-    // Filtri richiesti ma inapplicabili (valore inesistente nei dati): l'utente deve
-    // sapere che il report NON rispetta un criterio che aveva chiesto, altrimenti
-    // legge un campione piu' ampio del previsto credendolo filtrato.
-    if(plan._dropped_filters&&plan._dropped_filters.length){
-      toast('⚠️ Filtri ignorati perché senza corrispondenza nei dati: '+plan._dropped_filters.join('; '),'warning');
-    }
-
     if(statusEl)statusEl.textContent='⏳ Calcolo i dati ('+plan.entities.map(e=>e.label).join(', ')+')...';
     const entityResults=await executeReportPlan(plan);
 
     if(entityResults.every(e=>e.n_listings===0)){
       if(statusEl)statusEl.textContent='';
       if(win&&!win.closed)win.close();
-      // Elenca i filtri che hanno prodotto il vuoto: "nessun annuncio trovato" da
-      // solo non dice DOVE stringere per ottenere un risultato.
       const applied=plan.entities.map(e=>{
         const f=Object.entries(e.filters||{}).filter(([,v])=>v!=null&&v!==''&&!(Array.isArray(v)&&!v.length));
         return f.length?`${e.label}: ${f.map(([k,v])=>k+'='+(Array.isArray(v)?v.join('/'):v)).join(', ')}`:e.label;
       }).join(' | ');
       toast('⚠️ Nessun annuncio corrisponde a questi criteri, quindi non c\'è nulla da analizzare. Filtri applicati → '+applied,'warning');
-      btn.disabled=false;
+      if(btn)btn.disabled=false;
       return;
     }
 
@@ -4108,13 +4212,14 @@ async function generateCustomReport(){
 
     if(statusEl)statusEl.textContent='✅ Report generato';
     toast('✅ Report generato: '+plan.title,'success');
+    _reportPlanPendente=null;
   }catch(e){
-    console.error('generateCustomReport error:',e);
+    console.error('confermaGeneraReport error:',e);
     if(statusEl)statusEl.textContent='';
     if(win&&!win.closed)win.close();
     toast('Errore: '+e.message,'error');
   }finally{
-    btn.disabled=false;
+    if(btn)btn.disabled=false;
   }
 }
 
@@ -12285,8 +12390,22 @@ function renderDemandScatter(){
     <textarea id="report-prompt" placeholder="Es. Fammi un report benchmark sull'Informatore Scientifico del Farmaco con focus sulla scarsità di talenti&#10;Es. Confronta Key Account Manager e Medical Science Liaison&#10;Es. Report sul mercato Oncologia in Lombardia" style="width:100%;height:100px;font-size:13px;padding:12px 14px;resize:vertical;"></textarea>
 
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
-      <button class="btn btn-primary" id="btn-generate-report" onclick="generateCustomReport()" style="background:#b8965a;border-color:#b8965a;">✨ Genera Report</button>
+      <button class="btn btn-primary" id="btn-generate-report" onclick="interpretaRichiestaReport()" style="background:#b8965a;border-color:#b8965a;">✨ Genera Report</button>
       <div id="report-status" style="font-size:12px;color:var(--text2);"></div>
+    </div>
+
+    <!-- Selettore ruoli/alias — mostrato dopo l'interpretazione, prima del
+         calcolo vero e proprio (10/09/2026): l'utente sceglie quali ruoli
+         includere invece di scoprire a report gia' fatto che il filtro
+         automatico era troppo stretto o troppo largo. -->
+    <div id="report-role-picker" style="display:none;margin-top:16px;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--bg2,#faf9f6);">
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px;">🎯 Quali ruoli includere?</div>
+      <div id="report-role-picker-intro" style="font-size:12px;color:var(--text2);margin-bottom:12px;"></div>
+      <div id="report-role-picker-list" style="max-height:280px;overflow-y:auto;"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" id="btn-confirm-report" onclick="confermaGeneraReport()" style="background:#b8965a;border-color:#b8965a;">✅ Genera Report</button>
+        <button class="btn btn-secondary" onclick="annullaRolePicker()">Annulla</button>
+      </div>
     </div>
 
     <div style="margin-top:32px;font-size:11px;color:var(--text2);line-height:1.8;">
