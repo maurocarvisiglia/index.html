@@ -9830,7 +9830,7 @@ async function trovaConcorrenti(companyId){
     (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
     if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
 
   // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
   // + regime farmaco, per poter mostrare "in comune su" con contesto invece
@@ -9899,7 +9899,7 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogliClasse));
   }
 
-  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
+  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
 
   const idsConcorrenti=[...new Set([...perAzienda.keys(),...perAziendaClasse.keys()])];
   const aziende=[];
@@ -9984,10 +9984,20 @@ async function trovaConcorrenti(companyId){
     if(!organicoPerAzienda.has(id))return {persone:null};
     return {persone:personeTrasferibili(organicoPerAzienda.get(id))};
   }
+  // Elenco effettivo (non solo il conteggio) delle aziende con organico
+  // disponibile, ordinate per numero di persone — serve a scrivere
+  // un'analisi vera nel report ("chi ha il bacino piu' ampio"), non solo
+  // una percentuale di copertura senza contenuto. Richiesto da Mauro il
+  // 10/09/2026 dopo aver visto la sola nota metodologica: "voglio una
+  // descrizione della situazione di organico...diamo un'analisi".
+  const aziendeConOrganico=[...organicoPerAzienda.keys()]
+    .map(id=>({nome:aziendaPerId.get(id)?.name||'—', persone:personeTrasferibili(organicoPerAzienda.get(id))}))
+    .sort((a,b)=>b.persone-a.persone);
   const coperturaOrganico={
     nConDati:organicoPerAzienda.size,
     nTotale:idsConcorrenti.length,
     percentuale:idsConcorrenti.length?Math.round(100*organicoPerAzienda.size/idsConcorrenti.length):0,
+    aziende:aziendeConOrganico,
   };
 
   // Un'azienda gia' segnalata come partner commerciale/co-sviluppo nei fatti
@@ -10511,10 +10521,29 @@ function segnaliPipelineRaggruppati(segnali){
   return TIPI_SEGNALI_PIPELINE.filter(t=>byTipo.has(t)).map(t=>({tipo:t,label:CORE_TIPO_LABEL[t]||t,fatti:byTipo.get(t)}));
 }
 
+// Analisi vera della situazione di organico tra i concorrenti mappati (non
+// solo una nota metodologica su quanti dati mancano) — richiesto da Mauro il
+// 10/09/2026: "voglio una descrizione della situazione di organico...diamo
+// un'analisi". Usa i numeri reali gia' calcolati (coperturaOrganico.aziende,
+// ordinate per persone decrescente): elenca chi ha il bacino piu' ampio,
+// mai un punteggio o una stima per chi non ha dati.
+function descrizioneRecruitingRelevance(copertura){
+  if(!copertura.nTotale)return '';
+  if(!copertura.nConDati){
+    return `<br><br><strong>🎯 Recruiting Relevance</strong>: nessuno dei ${copertura.nTotale} concorrenti mappati ha dati di organico disponibili in archivio al momento — non significa assenza di organico nella realtà, solo che non è ancora stato raccolto.`;
+  }
+  const top=copertura.aziende.slice(0,3);
+  const elenco=top.map(a=>`${escHtml(a.nome)} (${a.persone} persone)`).join(', ');
+  const restanti=copertura.aziende.length-top.length;
+  const altre=restanti>0?`, e altr${restanti===1?'a':'e'} ${restanti} con dati disponibili`:'';
+  const guida=top.length>1&&top[0].persone>top[1].persone?` <strong>${escHtml(top[0].nome)}</strong> rappresenta il bacino di reclutamento più ampio tra i concorrenti mappati.`:'';
+  return `<br><br><strong>🎯 Recruiting Relevance</strong>: tra i ${copertura.nTotale} concorrenti mappati, ${copertura.nConDati} ${copertura.nConDati===1?'ha':'hanno'} dati di organico disponibili (${copertura.percentuale}% del campione): ${elenco}${altre}.${guida} È il numero totale di persone in organico, su tutte le funzioni aziendali e senza alcun vincolo di ruolo — utile sia per un competitor commerciale sia per una CDMO/produttore, dove il bacino di reclutamento reale è più spesso chimica/produzione/quality che vendite. Le aziende senza questo dato non mostrano alcuna indicazione: l'assenza del dato non significa assenza di organico nella realtà.`;
+}
+
 function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva){
   concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   segnaliTarget=segnaliTarget||[];
-  coperturaOrganico=coperturaOrganico||{nConDati:0,nTotale:0,percentuale:0};
+  coperturaOrganico=coperturaOrganico||{nConDati:0,nTotale:0,percentuale:0,aziende:[]};
   partnershipRilevate=partnershipRilevate||[];
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
@@ -10636,7 +10665,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   </div>
   ${partnershipHtml}
   ${segnaliTargetHtml}
-  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.${coperturaOrganico.nTotale?`<br><br><strong>🎯 Recruiting Relevance</strong>: organico disponibile per ${coperturaOrganico.nConDati} concorrenti su ${coperturaOrganico.nTotale} (${coperturaOrganico.percentuale}% del campione). È il numero totale di persone in organico, su tutte le funzioni aziendali e senza alcun vincolo di ruolo — utile sia per un competitor commerciale sia per una CDMO/produttore, dove il bacino di reclutamento reale è più spesso chimica/produzione/quality che vendite. Non è un punteggio: con una copertura così bassa, calcolarne uno solo sui pochi dati disponibili sarebbe fuorviante. Le aziende senza questo dato non mostrano alcuna indicazione: l'assenza del dato non significa assenza di organico nella realtà.`:''}</div>
+  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.${descrizioneRecruitingRelevance(coperturaOrganico)}</div>
   ${riepilogoHtml}
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
   ${dispositiviMarginaliPerTarget&&concorrentiDispositivi.length?`<div style="font-size:10px;color:#aaa;font-style:italic;margin:-14px 0 8px;">I dispositivi medici sono una linea marginale del catalogo di ${target.name} (meno del 25% dei prodotti commercializzati): i punteggi sottostanti sono dimezzati rispetto al calcolo standard, non possono superare il tier "Competitor indiretto".</div>`:''}
