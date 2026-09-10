@@ -3072,7 +3072,12 @@ async function fetchListingsForReportFilters(filters){
   if(filters.sector_v2==='Pharma')parts.push('sector_v2=in.(Big Pharma,Mid Pharma,Specialty Pharma,Pharma)');
   else if(filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(filters.sector_v2));
   if(filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(filters.therapeutic_area));
-  if(filters.seniority_v2)parts.push('seniority_v2=eq.'+encodeURIComponent(filters.seniority_v2));
+  // seniority_v2 puo' essere una stringa (un livello, comportamento originale)
+  // o un array (piu' livelli scelti nel selettore — richiesto da Mauro il
+  // 10/09/2026: "solo specialist e senior specialist" sono DUE livelli da
+  // includere insieme, non esprimibile con un singolo eq.).
+  if(Array.isArray(filters.seniority_v2)&&filters.seniority_v2.length)parts.push('seniority_v2=in.('+filters.seniority_v2.map(encodeURIComponent).join(',')+')');
+  else if(filters.seniority_v2&&!Array.isArray(filters.seniority_v2))parts.push('seniority_v2=eq.'+encodeURIComponent(filters.seniority_v2));
   // Esclusione (es. "escludi i Manager") — a differenza degli altri filtri sopra,
   // che sono tutti "uguale a", questo e' l'unico "diverso da". Elenco perche' una
   // richiesta puo' escludere piu' di un livello (es. "escludi Manager e Director").
@@ -3161,7 +3166,7 @@ che lo hanno nel database: sono gli UNICI valori esistenti, non usarne altri.
 - functional_area: uno tra ${fmtVals('functional_area_v2')}
 - sector_v2: uno tra ${fmtVals('sector_v2')} — "Pharma" e' il produttore farmaceutico generico con tier non determinato, e una richiesta su "Pharma" include automaticamente anche Big/Mid/Specialty Pharma. IMPORTANTE: "Life Sciences" NON e' un sinonimo di "Pharma", e' l'insieme di TUTTI questi settori. Non impostare mai sector_v2 se la richiesta usa termini generici come "Life Sciences", "il settore", "il mercato" senza nominare un settore specifico tra quelli elencati.
 - therapeutic_area: uno tra ${fmtVals('therapeutic_area')}
-- seniority_v2: uno tra ${fmtVals('seniority_v2')}
+- seniority_v2: uno tra ${fmtVals('seniority_v2')} — oppure un ARRAY di piu' valori da quella stessa lista quando la richiesta ne include ESPLICITAMENTE piu' di uno insieme (es. "solo specialist e senior specialist" -> seniority_v2:["specialist","senior_specialist"]). Una richiesta su UN solo livello resta una stringa singola, non un array a un elemento.
 - seniority_v2_exclude: array di zero o piu' valori dalla stessa lista di seniority_v2, da ESCLUDERE dal campione — usa questo campo (mai seniority_v2) quando la richiesta dice "escludi/senza/tranne/tutti tranne X" riferito alla seniority (es. "escludi i Manager" -> seniority_v2_exclude:["manager"]). seniority_v2 e seniority_v2_exclude sono alternativi: non impostarli entrambi sulla stessa entita' a meno che la richiesta non lo richieda esplicitamente (es. "solo senior, escludi i director" e' un caso limite raro).
 - contract_type: uno tra ${fmtVals('contract_type')}
 - company: nome azienda (testo libero, null se non specificato)
@@ -3269,10 +3274,24 @@ Rispondi SOLO con questo JSON, nessun altro testo:
       }
     }
     // Filtri a valore singolo: scartati se non esistono nei dati, e segnalati.
+    // seniority_v2 e' l'unico che puo' arrivare come array (piu' livelli
+    // richiesti insieme, es. "specialist e senior specialist") — ogni valore
+    // dell'array va validato singolarmente, i validi restano, gli altri
+    // vengono tolti e segnalati come per un filtro a valore singolo.
     Object.entries(valueSets).forEach(([field,allowed])=>{
       const v=e.filters[field];
       if(v==null||v==='')return;
       if(field==='sector_v2'&&v==='Pharma')return; // espanso a valle in IN(Big/Mid/Specialty/Pharma)
+      if(field==='seniority_v2'&&Array.isArray(v)){
+        const validi=v.filter(x=>allowed.has(x));
+        const scartati=v.filter(x=>!allowed.has(x));
+        if(scartati.length){
+          droppedFilters.push(`seniority_v2="${scartati.join(',')}" (nessun annuncio con questi valori)`);
+          console.warn('planReportFromPrompt: valori seniority_v2 scartati:',scartati);
+        }
+        e.filters[field]=validi.length?validi:null;
+        return;
+      }
       if(!allowed.has(v)){
         droppedFilters.push(`${field}="${v}" (nessun annuncio con questo valore)`);
         console.warn('planReportFromPrompt: filtro scartato, valore inesistente nei dati:',field,v);
@@ -4090,19 +4109,35 @@ async function interpretaRichiestaReport(){
     for(const e of plan.entities){
       const fa=e.filters.functional_area||(e.filters.canonical_role?funzionePerRuolo.get(e.filters.canonical_role):null);
       e._functional_area_esplorata=fa||null;
-      if(!fa){ e._ruoliCandidati=[]; continue; }
+      if(!fa){ e._ruoliCandidati=[]; e._seniorityCandidati=[]; continue; }
+      // Seniority NON entra nei filtri di questa query: si vuole vedere la
+      // distribuzione COMPLETA per livello nell'area riconosciuta, cosi'
+      // l'utente puo' scegliere quali includere — l'eventuale filtro seniority
+      // gia' individuato dall'AI serve solo a pre-selezionare le caselle
+      // sotto, non a restringere cosa viene mostrato nel selettore.
       const parts=['functional_area_v2=eq.'+encodeURIComponent(fa),'canonical_role=not.is.null'];
       if(e.filters.sector_v2==='Pharma')parts.push('sector_v2=in.(Big Pharma,Mid Pharma,Specialty Pharma,Pharma)');
       else if(e.filters.sector_v2)parts.push('sector_v2=eq.'+encodeURIComponent(e.filters.sector_v2));
-      if(e.filters.seniority_v2)parts.push('seniority_v2=eq.'+encodeURIComponent(e.filters.seniority_v2));
-      if(e.filters.seniority_v2_exclude&&e.filters.seniority_v2_exclude.length)parts.push('seniority_v2=not.in.('+e.filters.seniority_v2_exclude.map(encodeURIComponent).join(',')+')');
       if(e.filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(e.filters.therapeutic_area));
       if(e.filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(e.filters.contract_type));
       if(e.filters.region)parts.push('region=eq.'+encodeURIComponent(e.filters.region));
-      const righe=await api('job_listings?select=canonical_role&'+parts.join('&')+'&limit=3000');
-      const conteggio={};
-      righe.forEach(r=>{conteggio[r.canonical_role]=(conteggio[r.canonical_role]||0)+1;});
-      e._ruoliCandidati=Object.entries(conteggio).sort((a,b)=>b[1]-a[1]).map(([ruolo,n])=>({ruolo,n,selezionato:true}));
+      const righe=await api('job_listings?select=canonical_role,seniority_v2&'+parts.join('&')+'&limit=3000');
+      const conteggioRuoli={};
+      righe.forEach(r=>{conteggioRuoli[r.canonical_role]=(conteggioRuoli[r.canonical_role]||0)+1;});
+      e._ruoliCandidati=Object.entries(conteggioRuoli).sort((a,b)=>b[1]-a[1]).map(([ruolo,n])=>({ruolo,n,selezionato:true}));
+
+      // Seniority scelta esplicitamente dall'AI (stringa o array) -> pre-seleziona
+      // SOLO quei livelli; altrimenti (nessuna preferenza espressa) tutti spuntati.
+      const seniorityRichiesta=e.filters.seniority_v2
+        ?new Set(Array.isArray(e.filters.seniority_v2)?e.filters.seniority_v2:[e.filters.seniority_v2])
+        :null;
+      const escludiRichiesto=new Set(e.filters.seniority_v2_exclude||[]);
+      const conteggioSeniority={};
+      righe.forEach(r=>{const s=r.seniority_v2||'n.d.'; if(s==='not_applicable')return; conteggioSeniority[s]=(conteggioSeniority[s]||0)+1;});
+      e._seniorityCandidati=Object.entries(conteggioSeniority).sort((a,b)=>b[1]-a[1]).map(([liv,n])=>({
+        liv,n,
+        selezionato: seniorityRichiesta?seniorityRichiesta.has(liv):!escludiRichiesto.has(liv),
+      }));
     }
 
     _reportPlanPendente=plan;
@@ -4132,15 +4167,22 @@ function renderReportRolePicker(plan){
     wrap.style.display='';
     return;
   }
-  intro.textContent='Ho interpretato "'+plan.title+'". Per ogni figura analizzata, questi sono i ruoli/alias realmente presenti nei dati con gli stessi filtri richiesti — deseleziona quelli che non vuoi includere.';
+  intro.textContent='Ho interpretato "'+plan.title+'". Per ogni figura analizzata, questi sono i ruoli/alias e i livelli di seniority realmente presenti nei dati con gli stessi filtri richiesti — deseleziona quelli che non vuoi includere.';
   list.innerHTML=plan.entities.map((e,ei)=>{
     if(!e._ruoliCandidati||!e._ruoliCandidati.length)return `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;"><strong>${escHtml(e.label)}</strong>: nessuna area di ruoli riconosciuta, incluso così com'è.</div>`;
-    const righe=e._ruoliCandidati.map((r,ri)=>`
+    const righeRuoli=e._ruoliCandidati.map((r,ri)=>`
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;cursor:pointer;">
         <input type="checkbox" checked data-entity="${ei}" data-idx="${ri}" onchange="_reportPlanPendente.entities[${ei}]._ruoliCandidati[${ri}].selezionato=this.checked">
         <span>${escHtml(r.ruolo)} <span style="color:var(--text2);">(${r.n})</span></span>
       </label>`).join('');
-    return `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">${escHtml(e.label)} <span style="color:var(--text2);font-weight:400;">— area: ${e._functional_area_esplorata||'-'}</span></div>${righe}</div>`;
+    const seniorityBlock=(!e._seniorityCandidati||!e._seniorityCandidati.length)?'':`
+      <div style="font-size:11px;font-weight:700;margin-top:10px;margin-bottom:2px;color:var(--text2);">Livelli di seniority</div>
+      ${e._seniorityCandidati.map((s,si)=>`
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0;cursor:pointer;">
+          <input type="checkbox" ${s.selezionato?'checked':''} data-entity="${ei}" data-sidx="${si}" onchange="_reportPlanPendente.entities[${ei}]._seniorityCandidati[${si}].selezionato=this.checked">
+          <span>${escHtml(LABEL_MAP[s.liv]||s.liv)} <span style="color:var(--text2);">(${s.n})</span></span>
+        </label>`).join('')}`;
+    return `<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:700;margin-bottom:4px;">${escHtml(e.label)} <span style="color:var(--text2);font-weight:400;">— area: ${e._functional_area_esplorata||'-'}</span></div>${righeRuoli}${seniorityBlock}</div>`;
   }).join('');
   wrap.style.display='';
 }
@@ -4163,6 +4205,14 @@ async function confermaGeneraReport(){
     if(e._ruoliCandidati&&e._ruoliCandidati.length){
       const scelti=e._ruoliCandidati.filter(r=>r.selezionato).map(r=>r.ruolo);
       e.filters.canonical_role=scelti.length?scelti:null;
+    }
+    if(e._seniorityCandidati&&e._seniorityCandidati.length){
+      const sceltiSeniority=e._seniorityCandidati.filter(s=>s.selezionato).map(s=>s.liv);
+      // Tutti spuntati o nessuno spuntato equivalgono entrambi a "nessun filtro"
+      // (mostra l'intera area) — un array con TUTTI i livelli darebbe lo stesso
+      // risultato di null ma appesantirebbe inutilmente la query.
+      e.filters.seniority_v2=(sceltiSeniority.length&&sceltiSeniority.length<e._seniorityCandidati.length)?sceltiSeniority:null;
+      e.filters.seniority_v2_exclude=[];
     }
   });
   document.getElementById('report-role-picker').style.display='none';
