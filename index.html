@@ -3384,8 +3384,17 @@ function calculateGapAnalysis(results){
 
 // Calcola RAL per seniority level
 function computeRalBySeniority(listings){
+  // Stesso filtro IQR gia' applicato a "RAL per azienda"/istogramma — mancava
+  // qui, e un singolo annuncio anomalo poteva far comparire in questa tabella
+  // un range (es. P75) piu' alto del MAX RAL gia' dichiarato in testa al
+  // report (quel MAX e' calcolato da trimmedRal, che esclude gli outlier).
+  // Corretto su segnalazione di Mauro il 10/09/2026 dopo aver notato un P75 a
+  // 113k in una riga "Senior Specialist" con MAX RAL aggregato dichiarato a
+  // 31k nello stesso report — la tabella non poteva mostrare un dato che il
+  // resto del report aveva gia' escluso come non rappresentativo.
+  const{kept,excludedCount}=filterRalOutlierListings(listings);
   const bySen = {};
-  listings.forEach(l => {
+  kept.forEach(l => {
     const sen = l.seniority_v2 || 'N/D';
     if (sen === 'not_applicable') return;
     // Media di min/max se entrambi presenti, altrimenti il singolo valore
@@ -3417,7 +3426,7 @@ function computeRalBySeniority(listings){
       avg: Math.round(rals.reduce((a, b) => a + b, 0) / rals.length)
     };
   });
-  return stats;
+  return {stats, excludedCount};
 }
 
 // Un annuncio per provincia con stesso titolo/RAL non e' una decisione retributiva
@@ -3547,7 +3556,7 @@ async function executeReportPlan(plan){
 
     // Distribuzioni settori + RAL per seniority + istogramma/fasce RAL + gap analysis
     const sector_distribution = computeSectorDistribution(listings);
-    const ral_by_seniority = computeRalBySeniority(listings);
+    const{stats:ral_by_seniority,excludedCount:ral_by_seniority_excluded}=computeRalBySeniority(listings);
     const ral_histogram = computeRalHistogram(listings);
     const ral_segments = computeRalSegments(listings);
     const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
@@ -3564,9 +3573,9 @@ async function executeReportPlan(plan){
     // depurata, cosi' il lettore vede il differenziale di seniority SENZA la
     // distorsione del singolo datore dominante.
     const ral_by_seniority_diversified = benchmark.concentration_flag
-      ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company))
+      ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company)).stats
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3838,7 +3847,8 @@ function renderReportHTML(plan,entityResults,narration){
         ralSenTable = `<div class="section-title" style="margin-top:24px;">RAL per Seniority Level</div>
           <table><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Annunci</th><th style="text-align:right;">P25–P75</th></tr>
             ${rows}
-          </table>`;
+          </table>
+          ${e.ral_by_seniority_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:-10px;">* ${e.ral_by_seniority_excluded} annunci esclusi da questa tabella per RAL statisticamente anomala (metodo IQR)</div>`:''}`;
       }
     }
 
