@@ -1776,6 +1776,21 @@ async function importVocationsCSV(event){
     if(s.includes('K')){const n=parseFloat(s.replace('K',''))*1000;return n>=10000&&n<=500000?Math.round(n):null;}
     const n=parseInt(s.replace(/\./g,''));return n&&n>=10000&&n<=500000?n:null;
   };
+  // "Da 33.883 €"/"Fino a 40.000 €": un solo estremo dichiarato, non un punto
+  // centrale — trattarli come un punto e spalmarci intorno il coefficiente di
+  // seniority (sotto) inventerebbe un minimo/massimo mai dichiarato dalla fonte.
+  // Bug reale trovato il 10/09/2026 (diagnosi Kedrion, 122 annunci coinvolti in
+  // tutto il DB): "Da 33.883 €" pulito diventava "DA33.883", e parseInt si
+  // fermava subito sulla "D" iniziale (non e' una cifra) restituendo NaN — quindi
+  // ral_min/ral_max restavano NULL anche se il numero era leggibile nel testo.
+  const parseRALConEstremo=str=>{
+    if(!str||str==='N/A')return null;
+    const min=str.match(/^\s*da\s+(.+)$/i);
+    if(min)return{tipo:'min',valore:parseRAL(min[1])};
+    const max=str.match(/^\s*fino\s+a\s+(.+)$/i);
+    if(max)return{tipo:'max',valore:parseRAL(max[1])};
+    return{tipo:'punto',valore:parseRAL(str)};
+  };
   // 'n/a' non ha piu' un valore fisso: significa "non specificato", quindi resta
   // null invece di finire nella falsa categoria "altro" (vedi diagnosi: il 33%
   // del dataset finiva in "altro" solo perche' la fonte diceva N/A).
@@ -1824,7 +1839,8 @@ async function importVocationsCSV(event){
     let published_date=null;
     const rd=(row['Data creazione']||'').trim();
     if(rd&&rd!=='N/A'){const p=rd.split('/');if(p.length===3)published_date=p[2]+'-'+p[1]+'-'+p[0];}
-    const ral=parseRAL(row['Stipendio annuo']||'');
+    const estremoRAL=parseRALConEstremo(row['Stipendio annuo']||'');
+    const ral=estremoRAL?estremoRAL.valore:null;
     const settoreRaw=(row['Settori']||'').split(',')[0].trim();
     let sector_v2=sectorMap[settoreRaw]||null;
     // Se il CSV non specifica un settore (spesso "N/A" anche per aziende grandi e
@@ -1957,29 +1973,41 @@ async function importVocationsCSV(event){
     const desc=[row['Competenze']?'Competenze: '+row['Competenze']:'',row['Target']?'Profilo: '+row['Target']:''].filter(Boolean).join('\n').substring(0,2000)||null;
     // Calcolo range RAL da mediana (coefficienti per seniority)
     let ral_min=null,ral_max=null,ral_estimated=false;
-    if(!isAgenzia&&ral){
-      // Coefficienti per seniority
-      const ralCoeff={
-        'internship':       {lo:0.90,hi:1.10},
-        'entry_level':      {lo:0.90,hi:1.10},
-        'associate':        {lo:0.88,hi:1.12},
-        'specialist':       {lo:0.88,hi:1.12},
-        'senior_specialist':{lo:0.88,hi:1.12},
-        'manager':          {lo:0.85,hi:1.15},
-        'senior_manager':   {lo:0.85,hi:1.15},
-        'lead':             {lo:0.85,hi:1.15},
-        'director':         {lo:0.83,hi:1.17},
-        'senior_director':  {lo:0.83,hi:1.17},
-        'head':             {lo:0.83,hi:1.17},
-        'vp':               {lo:0.83,hi:1.17},
-        'c_level':          {lo:0.83,hi:1.17},
-      };
-      const coeff=ralCoeff[seniority_v2]||{lo:0.85,hi:1.15};
-      // Arrotonda a €500 più vicino
-      const round500=v=>Math.round(v/500)*500;
-      ral_min=round500(ral*coeff.lo);
-      ral_max=round500(ral*coeff.hi);
-      ral_estimated=true;
+    if(!isAgenzia&&estremoRAL&&estremoRAL.valore){
+      if(estremoRAL.tipo==='min'){
+        // "Da X €": X e' un minimo dichiarato dalla fonte, non un punto centrale
+        // da cui stimare un range — si registra solo quello che e' stato detto
+        // davvero, mai un massimo inventato.
+        ral_min=estremoRAL.valore;
+        ral_estimated=false;
+      }else if(estremoRAL.tipo==='max'){
+        // "Fino a X €": stesso principio, X e' un massimo dichiarato.
+        ral_max=estremoRAL.valore;
+        ral_estimated=false;
+      }else{
+        // Coefficienti per seniority
+        const ralCoeff={
+          'internship':       {lo:0.90,hi:1.10},
+          'entry_level':      {lo:0.90,hi:1.10},
+          'associate':        {lo:0.88,hi:1.12},
+          'specialist':       {lo:0.88,hi:1.12},
+          'senior_specialist':{lo:0.88,hi:1.12},
+          'manager':          {lo:0.85,hi:1.15},
+          'senior_manager':   {lo:0.85,hi:1.15},
+          'lead':             {lo:0.85,hi:1.15},
+          'director':         {lo:0.83,hi:1.17},
+          'senior_director':  {lo:0.83,hi:1.17},
+          'head':             {lo:0.83,hi:1.17},
+          'vp':               {lo:0.83,hi:1.17},
+          'c_level':          {lo:0.83,hi:1.17},
+        };
+        const coeff=ralCoeff[seniority_v2]||{lo:0.85,hi:1.15};
+        // Arrotonda a €500 più vicino
+        const round500=v=>Math.round(v/500)*500;
+        ral_min=round500(estremoRAL.valore*coeff.lo);
+        ral_max=round500(estremoRAL.valore*coeff.hi);
+        ral_estimated=true;
+      }
     }
     const record={job_title:title,company_name:company,ragione_sociale,url,source:'Vocations',published_date,location,province,contract_type,contract_category:isAgenzia?'agent':'employee',sector_v2,functional_area_v2,canonical_role:roleInfo.canonical_role,role_family:roleInfo.role_family,seniority_v2,therapeutic_area,therapeutic_area_sub,ral_min,ral_max,fixed_monthly:isAgenzia?ral:null,ral_estimated,salary_text:row['Stipendio annuo']||null,benefits:(row['Benefit']||'').trim()||null,job_description:desc,entity_type:'life_sciences'};
     try{
