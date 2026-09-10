@@ -9528,24 +9528,19 @@ const COMPETITOR_TIER=[
 ];
 function tierPerPunteggio(punteggio){ return COMPETITOR_TIER.find(t=>punteggio>=t.min); }
 
-// Sottoinsieme dei 30 codici funzione di company_workforce (vedi
-// WORKFORCE_FUNZIONE_LABEL piu' sotto nel file) che rappresentano ruoli
-// commerciali/clinici/customer-facing tipicamente trasferibili da
-// un'azienda all'altra — quelli citati da Mauro stesso come esempio l'8/09/2026
-// (Sales Manager, Account Manager, MSL, KAM, Product/Clinical Specialist,
-// Field Service). Esclude di proposito il back-office puro (finance, hr,
-// legal, IT, procurement, logistics, quality, regulatory, R&D, produzione):
-// non sono bacini di reclutamento commerciale, anche se contano come
-// organico dell'azienda.
-const FUNZIONI_RECRUITING_TRASFERIBILI=new Set([
-  'sales_commercial','business_development','business_development_conto_terzi','business_development_proposal',
-  'marketing_communications','trade_marketing_retail','ecommerce',
-  'medical_affairs_msl','market_access','field_service','clinical_affairs_device',
-  'product_management_device','product_management_software','training_clinico',
-  'customer_success','customer_service','farmacista','operations_punto_vendita',
-]);
+// Fino al 10/09/2026 questo contava solo un sottoinsieme di funzioni
+// "commerciali/cliniche trasferibili" (Sales, MSL, KAM, Field Service...),
+// escludendo di proposito R&D/Quality/produzione/regulatory. Aveva senso per
+// un target commerciale come Orion, ma falsava il dato per una CDMO come
+// Cambrex Profarmaco Milano o F.I.S.: il loro vero organico rilevante e'
+// chimica/produzione/quality, categorie escluse dal filtro — il report
+// mostrava "19 persone" su un'azienda da 2057 dipendenti (0,9%). Richiesto
+// da Mauro il 10/09/2026 ("lo spettro sia ampio a tutte le posizioni
+// rilevanti per il settore, senza alcun vincolo"): nessun filtro di funzione,
+// si conta tutto l'organico noto dell'azienda, qualunque sia il settore del
+// concorrente.
 function personeTrasferibili(righeOrganico){
-  return (righeOrganico||[]).filter(r=>FUNZIONI_RECRUITING_TRASFERIBILI.has(r.funzione)).reduce((s,r)=>s+r.conteggio,0);
+  return (righeOrganico||[]).reduce((s,r)=>s+r.conteggio,0);
 }
 
 // Fetch batched (150 alla volta) di v_company_workforce_funzioni per piu'
@@ -10379,7 +10374,7 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
         presenza!=='—'?presenza:null,
       ].filter(Boolean).join(' · ');
       const recruiting=c.recruitingRelevance?.persone!=null
-        ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:8px;padding:1px 6px;">🎯 ${c.recruitingRelevance.persone} persone in ruoli commerciali/clinici</span>`
+        ?`<span style="display:inline-block;margin-top:3px;font-size:9px;font-weight:700;color:#4338ca;background:#eef2ff;border-radius:8px;padding:1px 6px;">🎯 ${c.recruitingRelevance.persone} persone in organico (tutte le funzioni)</span>`
         :'';
       // Accorpamento cross-mercato (richiesto da Mauro il 9/09/2026: "non
       // escludiamo le parti secondarie, ma inseriamo delle parti descrittive
@@ -10475,7 +10470,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   </div>
   ${partnershipHtml}
   ${segnaliTargetHtml}
-  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.${coperturaOrganico.nTotale?` <strong>🎯 Recruiting Relevance</strong>: organico per funzione disponibile per ${coperturaOrganico.nConDati} concorrenti su ${coperturaOrganico.nTotale} (${coperturaOrganico.percentuale}% del campione) — mostrato come numero di persone in ruoli commerciali/clinici, mai un punteggio calcolato solo sui pochi dati presenti; per le aziende senza questo dato non compare alcuna indicazione, non significa assenza di organico nella realtà.`:''}</div>
+  <div class="summary-box">${totale} aziende trovate con almeno un principio attivo o una categoria di dispositivo in comune con ${target.name} (escluse le aziende dello stesso gruppo, che non sono concorrenza di mercato ma integrazione interna). Farmaci e dispositivi sono mercati diversi: elenchi separati. Il <strong>punteggio</strong> combina quanti prodotti/categorie sono in comune e quanto sono rari tra i concorrenti trovati: un'interpretazione dei dati reali, non un fatto verificato — non sostituisce una valutazione commerciale. Sotto ogni azienda è indicata la dimensione del suo catalogo totale in questo mercato: un punteggio alto su un catalogo enorme può riflettere un'azienda generalista, non necessariamente un competitor mirato.${coperturaOrganico.nTotale?` <strong>🎯 Recruiting Relevance</strong>: organico disponibile per ${coperturaOrganico.nConDati} concorrenti su ${coperturaOrganico.nTotale} (${coperturaOrganico.percentuale}% del campione) — mostrato come numero totale di persone in organico, su tutte le funzioni aziendali senza alcun vincolo di ruolo (rilevante sia per un competitor commerciale sia per una CDMO/produttore dove il bacino vero è chimica/produzione/quality), mai un punteggio calcolato solo sui pochi dati presenti; per le aziende senza questo dato non compare alcuna indicazione, non significa assenza di organico nella realtà.`:''}</div>
   ${riepilogoHtml}
   ${tabella('Concorrenti sui farmaci',concorrentiFarmaci,true)}
   ${dispositiviMarginaliPerTarget&&concorrentiDispositivi.length?`<div style="font-size:10px;color:#aaa;font-style:italic;margin:-14px 0 8px;">I dispositivi medici sono una linea marginale del catalogo di ${target.name} (meno del 25% dei prodotti commercializzati): i punteggi sottostanti sono dimezzati rispetto al calcolo standard, non possono superare il tier "Competitor indiretto".</div>`:''}
@@ -10661,7 +10656,7 @@ function renderCompanyComparisonHTML(datiAziende,sovrapposizioni,narrazione){
       const top=[...(d.organico||[])].sort((a,b)=>b.conteggio-a.conteggio).slice(0,3);
       return top.length?top.map(r=>`${WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione} (${r.conteggio})`).join(', '):'—';
     }],
-    ['Persone in ruoli commerciali/clinici',d=>{
+    ['Persone in organico (tutte le funzioni)',d=>{
       const p=personeTrasferibili(d.organico);
       return (d.organico&&d.organico.length)?nf(p):'—';
     }],
