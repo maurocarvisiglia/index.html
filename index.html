@@ -3393,6 +3393,20 @@ function computeRalBySeniority(listings){
   // 31k nello stesso report — la tabella non poteva mostrare un dato che il
   // resto del report aveva gia' escluso come non rappresentativo.
   const{kept,excludedCount}=filterRalOutlierListings(listings);
+  // Per segnalare SU QUALE livello e' caduta l'esclusione (non solo un
+  // conteggio totale in fondo alla tabella) — richiesto da Mauro il
+  // 10/09/2026: "va segnalato che un caso e' fuori scala e quindi escluso
+  // dalla mediana", non lasciato implicito in una nota generica.
+  const keptSet = new Set(kept);
+  const excludedBySen = {};
+  listings.forEach(l => {
+    if (keptSet.has(l)) return;
+    const sen = l.seniority_v2 || 'N/D';
+    if (sen === 'not_applicable') return;
+    const ral = l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
+    if (!ral) return; // niente RAL: non e' un'esclusione per anomalia, e' un dato mancante
+    excludedBySen[sen] = (excludedBySen[sen]||0) + 1;
+  });
   const bySen = {};
   kept.forEach(l => {
     const sen = l.seniority_v2 || 'N/D';
@@ -3426,7 +3440,7 @@ function computeRalBySeniority(listings){
       avg: Math.round(rals.reduce((a, b) => a + b, 0) / rals.length)
     };
   });
-  return {stats, excludedCount};
+  return {stats, excludedCount, excludedBySen};
 }
 
 // Un annuncio per provincia con stesso titolo/RAL non e' una decisione retributiva
@@ -3556,7 +3570,7 @@ async function executeReportPlan(plan){
 
     // Distribuzioni settori + RAL per seniority + istogramma/fasce RAL + gap analysis
     const sector_distribution = computeSectorDistribution(listings);
-    const{stats:ral_by_seniority,excludedCount:ral_by_seniority_excluded}=computeRalBySeniority(listings);
+    const{stats:ral_by_seniority,excludedCount:ral_by_seniority_excluded,excludedBySen:ral_by_seniority_excluded_by_level}=computeRalBySeniority(listings);
     const ral_histogram = computeRalHistogram(listings);
     const ral_segments = computeRalSegments(listings);
     const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
@@ -3575,7 +3589,7 @@ async function executeReportPlan(plan){
     const ral_by_seniority_diversified = benchmark.concentration_flag
       ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company)).stats
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_excluded_by_level,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3840,7 +3854,14 @@ function renderReportHTML(plan,entityResults,narration){
         .map(([sen, data]) => {
           const unico = data.count === 1;
           const p25p75 = unico ? '—' : `€${Math.round(data.p25/1000)}k–€${Math.round(data.p75/1000)}k`;
-          return `<tr${unico ? ' style="color:#999;"' : ''}><td style="text-transform:capitalize;">${sen.replace(/_/g, ' ')}${unico ? ' <span style="font-size:9px;font-weight:700;">(campione: 1 solo annuncio, non una mediana)</span>' : ''}</td><td class="num">${fmt(data.median)}</td><td class="num">${data.count}</td><td class="num">${p25p75}</td></tr>`;
+          // Segnalazione SULLA RIGA interessata (non solo una nota generica in
+          // fondo alla tabella) — richiesto da Mauro il 10/09/2026: "va
+          // segnalato che un caso e' fuori scala e quindi escluso dalla
+          // mediana", cosi' e' chiaro a colpo d'occhio QUALE livello ha perso
+          // un dato, non solo che "qualcosa" e' stato escluso da qualche parte.
+          const nEsclusi = (e.ral_by_seniority_excluded_by_level||{})[sen]||0;
+          const notaEsclusi = nEsclusi ? ` <span style="font-size:9px;font-weight:700;color:${GOLD};">(${nEsclusi} fuori scala escluso dalla mediana)</span>` : '';
+          return `<tr${unico ? ' style="color:#999;"' : ''}><td style="text-transform:capitalize;">${sen.replace(/_/g, ' ')}${unico ? ' <span style="font-size:9px;font-weight:700;">(campione: 1 solo annuncio, non una mediana)</span>' : ''}${notaEsclusi}</td><td class="num">${fmt(data.median)}</td><td class="num">${data.count}</td><td class="num">${p25p75}</td></tr>`;
         })
         .join('');
       if (rows) {
@@ -3848,7 +3869,7 @@ function renderReportHTML(plan,entityResults,narration){
           <table><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Annunci</th><th style="text-align:right;">P25–P75</th></tr>
             ${rows}
           </table>
-          ${e.ral_by_seniority_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:-10px;">* ${e.ral_by_seniority_excluded} annunci esclusi da questa tabella per RAL statisticamente anomala (metodo IQR)</div>`:''}`;
+          ${e.ral_by_seniority_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:-10px;">* ${e.ral_by_seniority_excluded} annunci esclusi in totale per RAL statisticamente anomala (metodo IQR) — vedi il livello segnalato sopra</div>`:''}`;
       }
     }
 
