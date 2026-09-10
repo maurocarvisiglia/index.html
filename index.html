@@ -8352,7 +8352,11 @@ async function loadCompanies(offset=0){
     // Build query
     // merged_into=is.null: nasconde i record fusi in un duplicato canonico (restano
     // nel database per storico/audit, ma non devono comparire nella lista normale).
-    let q=`companies?select=*&merged_into=is.null&limit=${pageSize}&offset=${offset}`;
+    // sede_italia=eq.true: nasconde i titolari AIC esteri senza sede in Italia
+    // (richiesto da Mauro il 10/09/2026) — i loro company_products restano e
+    // continuano a contare nei calcoli aggregati, solo l'azienda-contenitore
+    // non compare piu' come riga a se' in questa lista.
+    let q=`companies?select=*&merged_into=is.null&sede_italia=eq.true&limit=${pageSize}&offset=${offset}`;
 
     // Filtri
     if(search)q+=`&name=ilike.*${encodeURIComponent(search)}*`;
@@ -8382,7 +8386,7 @@ async function loadCompanies(offset=0){
     });
 
     // Totale con filtri
-    let countQ=`companies?select=id&merged_into=is.null`;
+    let countQ=`companies?select=id&merged_into=is.null&sede_italia=eq.true`;
     if(search)countQ+=`&name=ilike.*${encodeURIComponent(search)}*`;
     const countResp=await fetch(`${SB_URL}/rest/v1/${countQ}`,{
       headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
@@ -8973,7 +8977,7 @@ function searchCompanyForReport(term){
   if(q.length<2){box.style.display='none';box.innerHTML='';return;}
   _raSearchTimer=setTimeout(async()=>{
     try{
-      const risultati=await api(`companies?select=id,name,ragione_sociale,sector_v2&is_active=eq.true&merged_into=is.null&name=ilike.*${encodeURIComponent(q)}*&order=name.asc&limit=15`);
+      const risultati=await api(`companies?select=id,name,ragione_sociale,sector_v2&is_active=eq.true&merged_into=is.null&sede_italia=eq.true&name=ilike.*${encodeURIComponent(q)}*&order=name.asc&limit=15`);
       if(!risultati.length){
         box.innerHTML='<div style="padding:10px 14px;font-size:12px;color:var(--text2);">Nessuna azienda trovata</div>';
         box.style.display='';
@@ -9086,7 +9090,7 @@ async function risolviAziendePerConfronto(nomi){
   // non si trova o resta ambiguo viene segnalato, mai indovinato in silenzio.
   const risultati=[];
   for(const nome of nomi){
-    const candidati=await api(`companies?select=id,name,sector_v2&is_active=eq.true&merged_into=is.null&name=ilike.*${encodeURIComponent(nome.trim())}*&order=name.asc&limit=10`);
+    const candidati=await api(`companies?select=id,name,sector_v2&is_active=eq.true&merged_into=is.null&sede_italia=eq.true&name=ilike.*${encodeURIComponent(nome.trim())}*&order=name.asc&limit=10`);
     if(candidati.length===0){
       risultati.push({nomeCercato:nome, stato:'non_trovata', candidati:[]});
     }else if(candidati.length===1){
@@ -9746,7 +9750,14 @@ async function trovaConcorrenti(companyId){
   const aziende=[];
   for(let i=0;i<idsConcorrenti.length;i+=150){
     const lotto=idsConcorrenti.slice(i,i+150);
-    aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id,region,dipendenti,fatturato_range&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null`));
+    // sede_italia=eq.true: un titolare AIC estero senza sede in Italia non e' un
+    // competitor utile in un report di recruiting Italia (nessun organico/sede da
+    // presidiare) — richiesto da Mauro il 10/09/2026. tuttiConPartner/tuttiClasseConPartner
+    // sotto iterano su `aziende` (non su perAzienda/perAziendaClasse direttamente),
+    // quindi filtrare qui esclude l'azienda estera sia dalla lista mostrata SIA dal
+    // denominatore di rarita'/IDF in estraiGruppo — la company_products grezza resta
+    // in database (mai toccata), solo non alimenta piu' questo report.
+    aziende.push(...await api(`companies?select=id,name,sector_v2,company_group_id,region,dipendenti,fatturato_range&id=in.(${lotto.join(',')})&is_active=eq.true&merged_into=is.null&sede_italia=eq.true`));
   }
   const gruppoTarget=targetRows[0]?.company_group_id||null;
 
