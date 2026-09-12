@@ -246,6 +246,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-geo" onclick="showView('geo',this)" style="border-color:#10b981;color:#10b981;">🗺️ Geographic</button>
     <button class="nav-btn" id="nav-report" onclick="showView('report',this)" style="border-color:#b8965a;color:#b8965a;">📄 Report</button>
     <button class="nav-btn" id="nav-insight" onclick="showView('insight',this)" style="border-color:#ec4899;color:#ec4899;">🎙️ Insight Recruiter</button>
+    <button class="nav-btn" id="nav-rumors" onclick="showView('rumors',this)" style="border-color:#14b8a6;color:#14b8a6;">🗞️ Rumors & Market Insight</button>
     <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -892,6 +893,14 @@ a.job-link:hover{text-decoration:underline;}
     <div class="chart-card" id="cd-core-card" style="margin-bottom:24px; border: 2px solid #a78bfa; display:none;">
       <div class="chart-card-title">🧠 Dati CORE (ricerca sul sito ufficiale + Market Radar)</div>
       <div id="cd-core-body" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- Rumor esterni + insight recruiter che menzionano questa azienda —
+         stessa fonte dati della pagina "Rumors & Market Insight" (12/09/2026),
+         nascosta quando non c'e' nulla da mostrare. -->
+    <div class="chart-card" id="cd-rumors-card" style="margin-bottom:24px; border: 2px solid #14b8a6; display:none;">
+      <div class="chart-card-title">🗞️ Rumors & Market Insight</div>
+      <div id="cd-rumors-body" style="margin-top:12px;"></div>
     </div>
 
     <div class="chart-card" id="cd-products-card" style="margin-bottom:24px; border: 2px solid #a78bfa; display:none;">
@@ -4543,6 +4552,308 @@ async function loadInsightCounter(){
   }
 }
 
+/* ── RUMORS & MARKET INSIGHT ──
+   Pagina dedicata alle notizie di settore raccolte da fonti esterne
+   (market_rumors, alimentata da scripts/market-rumors-giornaliero.mjs) —
+   richiesta da Mauro il 12/09/2026. Da qui si sfoglia il flusso grezzo e si
+   genera l'Executive Intelligence Brief (digest periodico per settore, non
+   per singola azienda — scelta confermata da Mauro). Quando un rumor
+   menziona un'azienda, la stessa riga compare anche nella sua scheda
+   (vedi loadRumorsCard, chiamata da loadCompanyDetail). ── */
+
+const TIPO_SEGNALE_LABEL={personale:'👤 Personale',m_and_a:'🤝 M&A',prodotto:'💊 Prodotto',partnership:'🔗 Partnership',finanziario:'💰 Finanziario',regolatorio:'📋 Regolatorio',altro:'📰 Altro'};
+const TIPO_SEGNALE_COLOR={personale:'#ec4899',m_and_a:'#8b5cf6',prodotto:'#10b981',partnership:'#06b6d4',finanziario:'#f59e0b',regolatorio:'#3b82f6',altro:'#888888'};
+
+let _rumorsDebounce=null;
+function applicaFiltroRumorsDebounced(){
+  clearTimeout(_rumorsDebounce);
+  _rumorsDebounce=setTimeout(applicaFiltroRumors,400);
+}
+
+async function loadRumorsView(){
+  const selFonte=document.getElementById('rum-filtro-fonte');
+  if(selFonte&&selFonte.options.length<=1){
+    try{
+      const righe=await api('market_rumors?select=fonte&limit=3000');
+      const fonti=[...new Set(righe.map(r=>r.fonte))].sort();
+      selFonte.innerHTML='<option value="">Tutte</option>'+fonti.map(f=>`<option value="${escHtml(f)}">${escHtml(f)}</option>`).join('');
+    }catch(e){console.error('loadRumorsView fonti error:',e);}
+  }
+  await applicaFiltroRumors();
+}
+
+async function applicaFiltroRumors(){
+  const tipo=document.getElementById('rum-filtro-tipo')?.value||'';
+  const fonte=document.getElementById('rum-filtro-fonte')?.value||'';
+  const periodo=Number(document.getElementById('rum-filtro-periodo')?.value||30);
+  const testo=(document.getElementById('rum-filtro-testo')?.value||'').trim().toLowerCase();
+  const lista=document.getElementById('rum-lista');
+  const countEl=document.getElementById('rum-filtro-count');
+  lista.innerHTML='<div class="loading">Caricamento...</div>';
+  try{
+    const parts=['select=*'];
+    if(tipo)parts.push('tipo_segnale=eq.'+encodeURIComponent(tipo));
+    if(fonte)parts.push('fonte=eq.'+encodeURIComponent(fonte));
+    if(periodo>0)parts.push('rilevato_il=gte.'+new Date(Date.now()-periodo*86400000).toISOString());
+    parts.push('order=pubblicato_il.desc.nullslast,rilevato_il.desc','limit=300');
+    let righe=await api('market_rumors?'+parts.join('&'));
+
+    const companiesMap=await mappaAziendePerRumors(righe);
+    if(testo){
+      righe=righe.filter(r=>{
+        const nomiAziende=(r.companies_menzionate||[]).map(id=>companiesMap.get(id)||'').join(' ').toLowerCase();
+        return (r.titolo+' '+r.sintesi+' '+nomiAziende).toLowerCase().includes(testo);
+      });
+    }
+    countEl.textContent=righe.length+' risultati';
+    renderRumorsList(righe,companiesMap,lista);
+  }catch(e){
+    console.error('applicaFiltroRumors error:',e);
+    lista.innerHTML='<div class="empty">Errore nel caricamento.</div>';
+  }
+}
+
+async function mappaAziendePerRumors(righe){
+  const idSet=new Set();
+  righe.forEach(r=>{
+    if(r.company_id_principale)idSet.add(r.company_id_principale);
+    (r.companies_menzionate||[]).forEach(id=>idSet.add(id));
+  });
+  const map=new Map();
+  if(idSet.size){
+    const aziende=await api('companies?select=id,name&id=in.('+[...idSet].join(',')+')');
+    aziende.forEach(a=>map.set(a.id,a.name));
+  }
+  return map;
+}
+
+function renderRumorsList(righe,companiesMap,container){
+  if(!righe.length){container.innerHTML='<div class="empty">Nessun rumor trovato con questi filtri.</div>';return;}
+  container.innerHTML=righe.map(r=>{
+    const chips=(r.companies_menzionate||[]).map(id=>companiesMap.get(id)).filter(Boolean);
+    const data=r.pubblicato_il?new Date(r.pubblicato_il).toLocaleDateString('it-IT'):new Date(r.rilevato_il).toLocaleDateString('it-IT');
+    const colore=TIPO_SEGNALE_COLOR[r.tipo_segnale]||'#888888';
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div style="flex:1;min-width:0;">
+          <a href="${escHtml(r.url)}" target="_blank" rel="noopener" style="font-size:14px;font-weight:700;color:var(--text);text-decoration:none;">${escHtml(r.titolo)}</a>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">${escHtml(r.sintesi)}</div>
+          ${chips.length?`<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${chips.map(n=>`<span style="font-size:10px;padding:2px 8px;border-radius:6px;background:var(--surface2);color:var(--text2);">${escHtml(n)}</span>`).join('')}</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;background:${colore}22;color:${colore};white-space:nowrap;">${TIPO_SEGNALE_LABEL[r.tipo_segnale]||r.tipo_segnale}</span>
+          <div style="font-size:10px;color:var(--text2);margin-top:6px;">${escHtml(r.fonte)} · ${data}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Card nella scheda azienda: rumor dove l'azienda e' principale o
+//    menzionata — stesso principio di trasparenza gia' usato per i fatti
+//    CORE (mai un dato nascosto se disponibile). ──
+async function loadRumorsCard(companyId){
+  const card=document.getElementById('cd-rumors-card');
+  const body=document.getElementById('cd-rumors-body');
+  if(!card||!body)return;
+  try{
+    const righe=await api(`market_rumors?select=*&or=(company_id_principale.eq.${companyId},companies_menzionate.cs.{${companyId}})&order=pubblicato_il.desc.nullslast&limit=30`);
+    if(!righe.length){card.style.display='none';return;}
+    card.style.display='';
+    const companiesMap=await mappaAziendePerRumors(righe);
+    renderRumorsList(righe,companiesMap,body);
+  }catch(e){
+    console.error('loadRumorsCard error:',e);
+    card.style.display='none';
+  }
+}
+
+// ── Executive Intelligence Brief: digest periodico per settore (o "tutti"),
+//    combina rumor esterni + insight recruiter dello stesso periodo. Stesso
+//    principio "l'IA narra, non scopre" di narrateReport/sintetizzaMinacce
+//    Competitive: i dati sono gia' raccolti in modo deterministico, l'IA
+//    scrive solo il testo sopra numeri e fatti gia' calcolati. ──
+async function generaExecutiveBrief(){
+  const settore=document.getElementById('brief-settore')?.value||'';
+  const periodo=Number(document.getElementById('brief-periodo')?.value||30);
+  const statusEl=document.getElementById('brief-status');
+  const btn=document.getElementById('btn-genera-brief');
+
+  // Popup sincrono rispetto al click, stesso principio gia' in uso in tutti
+  // gli altri report di questa app: se si aspettasse la fine delle chiamate
+  // IA prima di aprirlo, il browser lo bloccherebbe come popup non voluto.
+  const win=window.open('','_blank');
+  if(win){
+    win.document.write('<title>Generazione brief...</title><body style="font-family:sans-serif;padding:60px;color:#888;text-align:center;">⏳ Generazione dell\'Executive Intelligence Brief in corso...</body>');
+    win.document.close();
+  }
+
+  btn.disabled=true;
+  try{
+    if(statusEl)statusEl.textContent='⏳ Raccolgo i dati...';
+    const cutoff=new Date(Date.now()-periodo*86400000).toISOString();
+
+    let idSettore=null;
+    if(settore){
+      const az=await api('companies?select=id&sector_v2=eq.'+encodeURIComponent(settore)+'&is_active=eq.true&merged_into=is.null&limit=3000');
+      idSettore=new Set(az.map(a=>a.id));
+    }
+
+    const tuttiRumors=await api('market_rumors?select=*&rilevato_il=gte.'+cutoff+'&order=pubblicato_il.desc.nullslast&limit=1000');
+    // Un rumor senza alcuna azienda risolta e' un segnale di mercato generale
+    // (es. "il settore X cresce del 5%"): resta sempre incluso, a
+    // prescindere dal settore scelto — non e' attribuibile a nessuna singola
+    // azienda, ma non per questo va scartato.
+    const rumors=!idSettore?tuttiRumors:tuttiRumors.filter(r=>{
+      const generale=!r.company_id_principale&&!(r.companies_menzionate||[]).length;
+      return generale
+        || (r.company_id_principale&&idSettore.has(r.company_id_principale))
+        || (r.companies_menzionate||[]).some(id=>idSettore.has(id));
+    });
+
+    const tuttiInsight=await api('company_facts?select=company_id,valore,rilevato_il&tipo=eq.insight_recruiter&rilevato_il=gte.'+cutoff+'&limit=1000');
+    const insights=!idSettore?tuttiInsight:tuttiInsight.filter(r=>idSettore.has(r.company_id));
+
+    if(!rumors.length&&!insights.length){
+      if(statusEl)statusEl.textContent='';
+      if(win&&!win.closed)win.close();
+      toast('⚠️ Nessun dato trovato per questo settore/periodo — prova ad allargare il periodo.','warning');
+      btn.disabled=false;
+      return;
+    }
+
+    const idSet=new Set();
+    rumors.forEach(r=>{if(r.company_id_principale)idSet.add(r.company_id_principale);(r.companies_menzionate||[]).forEach(id=>idSet.add(id));});
+    insights.forEach(r=>idSet.add(r.company_id));
+    let companiesMap=new Map();
+    if(idSet.size){
+      const az=await api('companies?select=id,name&id=in.('+[...idSet].join(',')+')');
+      az.forEach(a=>companiesMap.set(a.id,a.name));
+    }
+
+    if(statusEl)statusEl.textContent='⏳ Scrivo il brief...';
+    const settoreLabel=settore||'Tutti i settori';
+    const narrazione=await narraExecutiveBrief(settoreLabel,periodo,rumors,insights,companiesMap);
+    const html=renderExecutiveBriefHTML(settoreLabel,periodo,rumors,insights,companiesMap,narrazione);
+
+    if(win&&!win.closed){
+      win.document.open();win.document.write(html);win.document.close();
+      setTimeout(()=>win.print(),1000);
+    }else{
+      toast('Popup bloccato dal browser: abilita i popup per questo sito e riprova.','warning');
+    }
+    if(statusEl)statusEl.textContent='✅ Brief generato';
+    toast('✅ Executive Intelligence Brief generato: '+settoreLabel,'success');
+  }catch(e){
+    console.error('generaExecutiveBrief error:',e);
+    if(statusEl)statusEl.textContent='';
+    if(win&&!win.closed)win.close();
+    toast('Errore: '+e.message,'error');
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+async function narraExecutiveBrief(settoreLabel,periodo,rumors,insights,companiesMap){
+  const nomeAzienda=(id)=>companiesMap.get(id)||'azienda non risolta';
+  const righeRumor=rumors.slice(0,80).map(r=>{
+    const aziende=(r.companies_menzionate||[]).map(nomeAzienda).join(', ')||'—';
+    const data=r.pubblicato_il?new Date(r.pubblicato_il).toLocaleDateString('it-IT'):'';
+    return `[${r.tipo_segnale}] ${data} — ${r.titolo}: ${r.sintesi} (aziende: ${aziende}, fonte: ${r.fonte})`;
+  }).join('\n');
+  const righeInsight=insights.slice(0,40).map(r=>`[insight recruiter] ${nomeAzienda(r.company_id)}: ${r.valore}`).join('\n');
+
+  const prompt=`Sei un analista senior di MC Pharma Consulting, societa' di executive search Life Sciences, che scrive un Executive Intelligence Brief per il management interno.
+
+Ricevi l'elenco REALE (gia' raccolto in modo deterministico, non modificabile) di segnali di mercato e osservazioni recruiter degli ultimi ${periodo} giorni per: ${settoreLabel}. Non aggiungere aziende, fatti o numeri che non siano qui elencati, non inventare nulla.
+
+SEGNALI DI MERCATO (${rumors.length} totali):
+${righeRumor||'(nessuno)'}
+
+OSSERVAZIONI RECRUITER (${insights.length} totali):
+${righeInsight||'(nessuna)'}
+
+Scrivi un Executive Intelligence Brief in italiano, strutturato per TEMA (non un elenco cronologico): movimenti di persone/nomine, M&A, prodotti/partnership, finanza/regolatorio, e cosa emerge dalle osservazioni recruiter sul campo (se presenti) — ometti un tema se non c'e' materiale per quel tema. Per ciascun tema, 2-4 frasi che sintetizzano il pattern, citando aziende e fonti quando rilevante. Chiudi con una frase di sintesi sul livello di attivita' del periodo.
+
+Rispondi SOLO con questo JSON, nessun altro testo: {"sezioni":[{"titolo":"...","testo":"..."}], "sintesi_finale":"..."}`;
+
+  try{
+    const raw=await callAIPowerful(prompt,1800);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    return JSON.parse(clean);
+  }catch(e){
+    console.warn('narraExecutiveBrief: narrazione IA non disponibile,',e.message);
+    return null;
+  }
+}
+
+function renderExecutiveBriefHTML(settoreLabel,periodo,rumors,insights,companiesMap,narrazione){
+  const date=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
+  const GOLD='#b8965a',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const nomeAzienda=(id)=>companiesMap.get(id)||'—';
+
+  const sezioniHtml=narrazione&&narrazione.sezioni&&narrazione.sezioni.length
+    ? narrazione.sezioni.map(s=>`<div class="summary-box"><div style="font-weight:700;margin-bottom:6px;">${escHtml(s.titolo)}</div><div>${escHtml(s.testo)}</div></div>`).join('')
+    : '<div style="font-size:12px;color:#888;font-style:italic;">Narrazione non disponibile — sotto l\'elenco grezzo dei dati raccolti.</div>';
+  const sintesiFinaleHtml=narrazione&&narrazione.sintesi_finale
+    ? `<div class="summary-box" style="border-left-color:${DARK};font-weight:600;">🎯 ${escHtml(narrazione.sintesi_finale)}</div>` : '';
+
+  const righeRumor=rumors.slice(0,60).map(r=>{
+    const aziende=(r.companies_menzionate||[]).map(nomeAzienda).join(', ')||'—';
+    const data=r.pubblicato_il?new Date(r.pubblicato_il).toLocaleDateString('it-IT'):'—';
+    return `<tr><td>${TIPO_SEGNALE_LABEL[r.tipo_segnale]||r.tipo_segnale}</td><td>${escHtml(r.titolo)}</td><td style="color:#888;">${escHtml(aziende)}</td><td style="color:#888;">${escHtml(r.fonte)}</td><td style="color:#888;">${data}</td></tr>`;
+  }).join('');
+  const tabellaRumor=rumors.length?`<div class="section-title">Elenco segnali di mercato (${rumors.length}${rumors.length>60?', primi 60 mostrati':''})</div>
+    <table><tr><th>Tipo</th><th>Titolo</th><th>Aziende</th><th>Fonte</th><th>Data</th></tr>${righeRumor}</table>`:'';
+
+  const righeInsight=insights.slice(0,40).map(r=>{
+    const data=new Date(r.rilevato_il).toLocaleDateString('it-IT');
+    return `<tr><td>${escHtml(nomeAzienda(r.company_id))}</td><td>${escHtml(r.valore)}</td><td style="color:#888;">${data}</td></tr>`;
+  }).join('');
+  const tabellaInsight=insights.length?`<div class="section-title">Osservazioni recruiter (${insights.length}${insights.length>40?', prime 40 mostrate':''})</div>
+    <table><tr><th>Azienda</th><th>Osservazione</th><th>Data</th></tr>${righeInsight}</table>`:'';
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Executive Intelligence Brief — ${escHtml(settoreLabel)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
+.page{max-width:900px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:14px;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};overflow-wrap:break-word;}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Executive Intelligence Brief</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${escHtml(settoreLabel)}</div>
+      <div style="font-size:11px;color:#888;">Ultimi ${periodo} giorni · ${date}</div>
+    </div>
+  </div>
+  <div class="summary-box">${rumors.length} segnali di mercato e ${insights.length} osservazioni recruiter raccolti negli ultimi ${periodo} giorni per ${escHtml(settoreLabel)}. I segnali senza un'azienda specifica risolta in anagrafica sono comunque inclusi come indicazione di mercato generale.</div>
+  ${sezioniHtml}
+  ${sintesiFinaleHtml}
+  ${tabellaRumor}
+  ${tabellaInsight}
+  <div class="footer">
+    Report generato da LS Job Intelligence in base a fonti di stampa di settore e osservazioni raccolte dai recruiter.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
 /* ── NAVIGATION ── */
 function showView(name,btn){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -4562,6 +4873,7 @@ function showView(name,btn){
   if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();loadWorkforceProgress();}
   if(name==='ruolo')analyzeRuolo();
   if(name==='insight')loadInsightCounter();
+  if(name==='rumors')loadRumorsView();
 }
 
 async function analyzeRuolo(){
@@ -9085,6 +9397,7 @@ async function loadCompanyDetail(company){
   if(company.id){
     loadEnrichedData(company.id);
     loadCoreCard(company.id,listings);
+    loadRumorsCard(company.id);
     loadProductsCard(company.id);
     loadWorkforceCard(company.id);
     loadGruppoCard(company);
@@ -12813,6 +13126,90 @@ function renderDemandScatter(){
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="btn btn-primary" id="btn-salva-insight" onclick="confermaSalvaInsight()" style="background:#ec4899;border-color:#ec4899;">💾 Salva Insight</button>
         <button class="btn btn-secondary" onclick="annullaInsightRecruiter()">Annulla</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── RUMORS & MARKET INSIGHT ── -->
+<!-- Pagina dedicata alle notizie di settore raccolte da fonti esterne
+     (market_rumors, alimentata da scripts/market-rumors-giornaliero.mjs) —
+     richiesta da Mauro il 12/09/2026. Da qui si sfoglia il flusso grezzo E si
+     genera l'Executive Intelligence Brief (digest periodico per settore).
+     Quando un rumor menziona un'azienda, compare anche nella sua scheda
+     (view-company-detail, card "🗞️ Rumors & Market Insight"). -->
+<div class="view" id="view-rumors">
+  <div style="padding:24px 32px;">
+    <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">🗞️ Rumors & Market Insight</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:20px;">Notizie di settore (nomine, M&A, prodotti, partnership, finanza, regolatorio) raccolte in continuità da fonti esterne. Filtra il flusso qui sotto, oppure genera un Executive Intelligence Brief per settore.</div>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--surface);">
+      <div>
+        <div class="filter-label" style="margin-bottom:4px;">Tipo segnale</div>
+        <select id="rum-filtro-tipo" onchange="applicaFiltroRumors()">
+          <option value="">Tutti</option>
+          <option value="personale">Personale / nomine</option>
+          <option value="m_and_a">M&A</option>
+          <option value="prodotto">Prodotto</option>
+          <option value="partnership">Partnership</option>
+          <option value="finanziario">Finanziario</option>
+          <option value="regolatorio">Regolatorio</option>
+          <option value="altro">Altro</option>
+        </select>
+      </div>
+      <div>
+        <div class="filter-label" style="margin-bottom:4px;">Fonte</div>
+        <select id="rum-filtro-fonte" onchange="applicaFiltroRumors()">
+          <option value="">Tutte</option>
+        </select>
+      </div>
+      <div>
+        <div class="filter-label" style="margin-bottom:4px;">Periodo</div>
+        <select id="rum-filtro-periodo" onchange="applicaFiltroRumors()">
+          <option value="7">Ultimi 7 giorni</option>
+          <option value="30" selected>Ultimi 30 giorni</option>
+          <option value="90">Ultimi 90 giorni</option>
+          <option value="0">Tutti</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:180px;">
+        <div class="filter-label" style="margin-bottom:4px;">Cerca (azienda, testo)</div>
+        <input type="text" id="rum-filtro-testo" placeholder="Es. Chiesi, Stryker..." oninput="applicaFiltroRumorsDebounced()" style="width:100%;">
+      </div>
+      <div id="rum-filtro-count" style="font-size:12px;color:var(--text2);padding-bottom:8px;"></div>
+    </div>
+
+    <div id="rum-lista" style="margin-bottom:32px;"></div>
+
+    <!-- Executive Intelligence Brief: digest periodico per settore/mercato,
+         non per singola azienda (scelto da Mauro il 12/09/2026) — combina
+         rumor esterni + insight recruiter dello stesso periodo/settore. -->
+    <div style="border-top:2px solid #14b8a6;padding-top:20px;margin-top:12px;">
+      <div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px;">📰 Executive Intelligence Brief</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Sintesi esecutiva per un intero settore: rumor di mercato + insight recruiter + fatti CORE dello stesso periodo, narrati per temi.</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+          <div class="filter-label" style="margin-bottom:4px;">Settore</div>
+          <select id="brief-settore">
+            <option value="">Tutti i settori</option>
+            <optgroup label="Pharma">
+              <option>Big Pharma</option><option>Mid Pharma</option><option>Specialty Pharma</option><option>Pharma</option>
+            </optgroup>
+            <option>Biotech</option><option>Medical Devices</option><option>Diagnostics</option><option>CRO</option>
+            <option>CDMO</option><option>Consumer Health</option><option>Nutraceutical</option>
+            <option>Cosmetics</option><option>Veterinary</option><option>Digital Health</option>
+          </select>
+        </div>
+        <div>
+          <div class="filter-label" style="margin-bottom:4px;">Periodo</div>
+          <select id="brief-periodo">
+            <option value="7">Ultimi 7 giorni</option>
+            <option value="30" selected>Ultimi 30 giorni</option>
+            <option value="90">Ultimi 90 giorni</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btn-genera-brief" onclick="generaExecutiveBrief()" style="background:#14b8a6;border-color:#14b8a6;">✨ Genera Brief</button>
+        <div id="brief-status" style="font-size:12px;color:var(--text2);"></div>
       </div>
     </div>
   </div>
