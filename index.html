@@ -4571,6 +4571,8 @@ function applicaFiltroRumorsDebounced(){
 }
 
 async function loadRumorsView(){
+  const meseInput=document.getElementById('brief-mese');
+  if(meseInput&&!meseInput.value)meseInput.value=new Date().toISOString().slice(0,7);
   const selFonte=document.getElementById('rum-filtro-fonte');
   if(selFonte&&selFonte.options.length<=1){
     try{
@@ -4586,6 +4588,7 @@ async function applicaFiltroRumors(){
   const tipo=document.getElementById('rum-filtro-tipo')?.value||'';
   const fonte=document.getElementById('rum-filtro-fonte')?.value||'';
   const periodo=Number(document.getElementById('rum-filtro-periodo')?.value||30);
+  const rilevanza=document.getElementById('rum-filtro-rilevanza')?.value||'rilevanti';
   const testo=(document.getElementById('rum-filtro-testo')?.value||'').trim().toLowerCase();
   const lista=document.getElementById('rum-lista');
   const countEl=document.getElementById('rum-filtro-count');
@@ -4595,6 +4598,8 @@ async function applicaFiltroRumors(){
     if(tipo)parts.push('tipo_segnale=eq.'+encodeURIComponent(tipo));
     if(fonte)parts.push('fonte=eq.'+encodeURIComponent(fonte));
     if(periodo>0)parts.push('rilevato_il=gte.'+new Date(Date.now()-periodo*86400000).toISOString());
+    if(rilevanza==='rilevanti')parts.push('rilevante=eq.true');
+    else if(rilevanza==='non_rilevanti')parts.push('rilevante=eq.false');
     parts.push('order=pubblicato_il.desc.nullslast,rilevato_il.desc','limit=300');
     let righe=await api('market_rumors?'+parts.join('&'));
 
@@ -4629,11 +4634,29 @@ async function mappaAziendePerRumors(righe){
 
 function renderRumorsList(righe,companiesMap,container){
   if(!righe.length){container.innerHTML='<div class="empty">Nessun rumor trovato con questi filtri.</div>';return;}
-  container.innerHTML=righe.map(r=>{
+  const MESI_LABEL=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  // Raggruppati per mese di calendario (non solo un filtro mobile a 7/30/90
+  // giorni) — richiesto da Mauro il 12/09/2026: "dividiamole anche per mese,
+  // così a fine mese creo il report sul mese". Le righe arrivano gia'
+  // ordinate per data decrescente: un cambio di mese durante lo scorrimento
+  // e' sempre un confine pulito, mai un gruppo spezzato in due punti.
+  let meseCorrente=null;
+  const pezzi=[];
+  righe.forEach(r=>{
+    const d=new Date(r.pubblicato_il||r.rilevato_il);
+    const chiaveMese=d.getFullYear()+'-'+d.getMonth();
+    if(chiaveMese!==meseCorrente){
+      meseCorrente=chiaveMese;
+      pezzi.push(`<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:${pezzi.length?'20px':'0'} 0 10px;">${MESI_LABEL[d.getMonth()]} ${d.getFullYear()}</div>`);
+    }
     const chips=(r.companies_menzionate||[]).map(id=>companiesMap.get(id)).filter(Boolean);
     const data=r.pubblicato_il?new Date(r.pubblicato_il).toLocaleDateString('it-IT'):new Date(r.rilevato_il).toLocaleDateString('it-IT');
     const colore=TIPO_SEGNALE_COLOR[r.tipo_segnale]||'#888888';
-    return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);">
+    // Un rumor giudicato non rilevante resta identico nella struttura, solo
+    // visivamente piu' discreto (opacita' ridotta) — mai nascosto di forza,
+    // solo distinguibile a colpo d'occhio quando compare (filtro "Tutti").
+    const stileNonRilevante=r.rilevante===false?'opacity:.65;':'';
+    pezzi.push(`<div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--surface);${stileNonRilevante}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div style="flex:1;min-width:0;">
           <a href="${escHtml(r.url)}" target="_blank" rel="noopener" style="font-size:14px;font-weight:700;color:var(--text);text-decoration:none;">${escHtml(r.titolo)}</a>
@@ -4642,11 +4665,13 @@ function renderRumorsList(righe,companiesMap,container){
         </div>
         <div style="text-align:right;flex-shrink:0;">
           <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:6px;background:${colore}22;color:${colore};white-space:nowrap;">${TIPO_SEGNALE_LABEL[r.tipo_segnale]||r.tipo_segnale}</span>
+          ${r.rilevante===false?'<div style="font-size:9px;color:var(--text2);margin-top:4px;">non rilevante</div>':''}
           <div style="font-size:10px;color:var(--text2);margin-top:6px;">${escHtml(r.fonte)} · ${data}</div>
         </div>
       </div>
-    </div>`;
-  }).join('');
+    </div>`);
+  });
+  container.innerHTML=pezzi.join('');
 }
 
 // ── Card nella scheda azienda: rumor dove l'azienda e' principale o
@@ -4675,9 +4700,29 @@ async function loadRumorsCard(companyId){
 //    scrive solo il testo sopra numeri e fatti gia' calcolati. ──
 async function generaExecutiveBrief(){
   const settore=document.getElementById('brief-settore')?.value||'';
-  const periodo=Number(document.getElementById('brief-periodo')?.value||30);
+  const periodoVal=document.getElementById('brief-periodo')?.value||'30';
+  const includiNonRilevanti=document.getElementById('brief-includi-non-rilevanti')?.checked||false;
   const statusEl=document.getElementById('brief-status');
   const btn=document.getElementById('btn-genera-brief');
+
+  // Mese di calendario esatto (non una finestra mobile) — richiesto da Mauro
+  // il 12/09/2026: "dividiamole anche per mese, così a fine mese creo il
+  // report sul mese". cutoff/limiteSuperiore delimitano [inizio mese, inizio
+  // mese successivo) invece dei semplici "ultimi N giorni" da adesso.
+  const MESI_LABEL=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  let cutoff,limiteSuperiore=null,periodoLabel;
+  if(periodoVal==='mese'){
+    const meseInput=document.getElementById('brief-mese')?.value; // "YYYY-MM"
+    if(!meseInput){toast('Scegli un mese','warning');return;}
+    const [anno,mese]=meseInput.split('-').map(Number);
+    cutoff=new Date(Date.UTC(anno,mese-1,1)).toISOString();
+    limiteSuperiore=new Date(Date.UTC(anno,mese,1)).toISOString();
+    periodoLabel=MESI_LABEL[mese-1]+' '+anno;
+  }else{
+    const periodo=Number(periodoVal||30);
+    cutoff=new Date(Date.now()-periodo*86400000).toISOString();
+    periodoLabel='gli ultimi '+periodo+' giorni';
+  }
 
   // Popup sincrono rispetto al click, stesso principio gia' in uso in tutti
   // gli altri report di questa app: se si aspettasse la fine delle chiamate
@@ -4691,7 +4736,6 @@ async function generaExecutiveBrief(){
   btn.disabled=true;
   try{
     if(statusEl)statusEl.textContent='⏳ Raccolgo i dati...';
-    const cutoff=new Date(Date.now()-periodo*86400000).toISOString();
 
     let idSettore=null;
     if(settore){
@@ -4699,7 +4743,11 @@ async function generaExecutiveBrief(){
       idSettore=new Set(az.map(a=>a.id));
     }
 
-    const tuttiRumors=await api('market_rumors?select=*&rilevato_il=gte.'+cutoff+'&order=pubblicato_il.desc.nullslast&limit=1000');
+    let filtroRumors='market_rumors?select=*&rilevato_il=gte.'+cutoff;
+    if(limiteSuperiore)filtroRumors+='&rilevato_il=lt.'+limiteSuperiore;
+    if(!includiNonRilevanti)filtroRumors+='&rilevante=eq.true';
+    filtroRumors+='&order=pubblicato_il.desc.nullslast&limit=1000';
+    const tuttiRumors=await api(filtroRumors);
     // Un rumor senza alcuna azienda risolta e' un segnale di mercato generale
     // (es. "il settore X cresce del 5%"): resta sempre incluso, a
     // prescindere dal settore scelto — non e' attribuibile a nessuna singola
@@ -4711,7 +4759,10 @@ async function generaExecutiveBrief(){
         || (r.companies_menzionate||[]).some(id=>idSettore.has(id));
     });
 
-    const tuttiInsight=await api('company_facts?select=company_id,valore,rilevato_il&tipo=eq.insight_recruiter&rilevato_il=gte.'+cutoff+'&limit=1000');
+    let filtroInsight='company_facts?select=company_id,valore,rilevato_il&tipo=eq.insight_recruiter&rilevato_il=gte.'+cutoff;
+    if(limiteSuperiore)filtroInsight+='&rilevato_il=lt.'+limiteSuperiore;
+    filtroInsight+='&limit=1000';
+    const tuttiInsight=await api(filtroInsight);
     const insights=!idSettore?tuttiInsight:tuttiInsight.filter(r=>idSettore.has(r.company_id));
 
     if(!rumors.length&&!insights.length){
@@ -4733,8 +4784,8 @@ async function generaExecutiveBrief(){
 
     if(statusEl)statusEl.textContent='⏳ Scrivo il brief...';
     const settoreLabel=settore||'Tutti i settori';
-    const narrazione=await narraExecutiveBrief(settoreLabel,periodo,rumors,insights,companiesMap);
-    const html=renderExecutiveBriefHTML(settoreLabel,periodo,rumors,insights,companiesMap,narrazione);
+    const narrazione=await narraExecutiveBrief(settoreLabel,periodoLabel,rumors,insights,companiesMap);
+    const html=renderExecutiveBriefHTML(settoreLabel,periodoLabel,rumors,insights,companiesMap,narrazione);
 
     if(win&&!win.closed){
       win.document.open();win.document.write(html);win.document.close();
@@ -4754,7 +4805,7 @@ async function generaExecutiveBrief(){
   }
 }
 
-async function narraExecutiveBrief(settoreLabel,periodo,rumors,insights,companiesMap){
+async function narraExecutiveBrief(settoreLabel,periodoLabel,rumors,insights,companiesMap){
   const nomeAzienda=(id)=>companiesMap.get(id)||'azienda non risolta';
   const righeRumor=rumors.slice(0,80).map(r=>{
     const aziende=(r.companies_menzionate||[]).map(nomeAzienda).join(', ')||'—';
@@ -4765,7 +4816,7 @@ async function narraExecutiveBrief(settoreLabel,periodo,rumors,insights,companie
 
   const prompt=`Sei un analista senior di MC Pharma Consulting, societa' di executive search Life Sciences, che scrive un Executive Intelligence Brief per il management interno.
 
-Ricevi l'elenco REALE (gia' raccolto in modo deterministico, non modificabile) di segnali di mercato e osservazioni recruiter degli ultimi ${periodo} giorni per: ${settoreLabel}. Non aggiungere aziende, fatti o numeri che non siano qui elencati, non inventare nulla.
+Ricevi l'elenco REALE (gia' raccolto in modo deterministico, non modificabile) di segnali di mercato e osservazioni recruiter per ${periodoLabel}, settore: ${settoreLabel}. Non aggiungere aziende, fatti o numeri che non siano qui elencati, non inventare nulla.
 
 SEGNALI DI MERCATO (${rumors.length} totali):
 ${righeRumor||'(nessuno)'}
@@ -4787,7 +4838,7 @@ Rispondi SOLO con questo JSON, nessun altro testo: {"sezioni":[{"titolo":"...","
   }
 }
 
-function renderExecutiveBriefHTML(settoreLabel,periodo,rumors,insights,companiesMap,narrazione){
+function renderExecutiveBriefHTML(settoreLabel,periodoLabel,rumors,insights,companiesMap,narrazione){
   const date=new Date().toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
   const GOLD='#b8965a',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const nomeAzienda=(id)=>companiesMap.get(id)||'—';
@@ -4837,10 +4888,10 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
     <div style="text-align:right;">
       <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Executive Intelligence Brief</div>
       <div style="font-size:16px;font-weight:700;color:${DARK};">${escHtml(settoreLabel)}</div>
-      <div style="font-size:11px;color:#888;">Ultimi ${periodo} giorni · ${date}</div>
+      <div style="font-size:11px;color:#888;">${escHtml(periodoLabel)} · generato il ${date}</div>
     </div>
   </div>
-  <div class="summary-box">${rumors.length} segnali di mercato e ${insights.length} osservazioni recruiter raccolti negli ultimi ${periodo} giorni per ${escHtml(settoreLabel)}. I segnali senza un'azienda specifica risolta in anagrafica sono comunque inclusi come indicazione di mercato generale.</div>
+  <div class="summary-box">${rumors.length} segnali di mercato e ${insights.length} osservazioni recruiter raccolti per ${escHtml(periodoLabel)}, settore ${escHtml(settoreLabel)}. I segnali senza un'azienda specifica risolta in anagrafica sono comunque inclusi come indicazione di mercato generale.</div>
   ${sezioniHtml}
   ${sintesiFinaleHtml}
   ${tabellaRumor}
@@ -13172,6 +13223,20 @@ function renderDemandScatter(){
           <option value="0">Tutti</option>
         </select>
       </div>
+      <div>
+        <div class="filter-label" style="margin-bottom:4px;">Rilevanza</div>
+        <!-- Non e' piu' un cancello a monte (12/09/2026): niente viene scartato
+             prima di finire nel database. Questo e' solo un filtro di
+             visualizzazione, sempre visibile e reversibile — di default
+             nasconde il rumore (notizie cliniche/di salute pubblica senza
+             segnale di mercato) ma "Tutti" mostra letteralmente tutto quello
+             che e' stato raccolto. -->
+        <select id="rum-filtro-rilevanza" onchange="applicaFiltroRumors()">
+          <option value="rilevanti" selected>Solo rilevanti</option>
+          <option value="tutti">Tutti</option>
+          <option value="non_rilevanti">Solo non rilevanti</option>
+        </select>
+      </div>
       <div style="flex:1;min-width:180px;">
         <div class="filter-label" style="margin-bottom:4px;">Cerca (azienda, testo)</div>
         <input type="text" id="rum-filtro-testo" placeholder="Es. Chiesi, Stryker..." oninput="applicaFiltroRumorsDebounced()" style="width:100%;">
@@ -13202,12 +13267,23 @@ function renderDemandScatter(){
         </div>
         <div>
           <div class="filter-label" style="margin-bottom:4px;">Periodo</div>
-          <select id="brief-periodo">
+          <select id="brief-periodo" onchange="document.getElementById('brief-mese-wrap').style.display=this.value==='mese'?'':'none';">
             <option value="7">Ultimi 7 giorni</option>
             <option value="30" selected>Ultimi 30 giorni</option>
             <option value="90">Ultimi 90 giorni</option>
+            <option value="mese">Mese specifico</option>
           </select>
         </div>
+        <!-- Mese di calendario esatto (non una finestra mobile) — richiesto da
+             Mauro il 12/09/2026: "dividiamole anche per mese, così a fine mese
+             creo il report sul mese". -->
+        <div id="brief-mese-wrap" style="display:none;">
+          <div class="filter-label" style="margin-bottom:4px;">Mese</div>
+          <input type="month" id="brief-mese">
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);padding-bottom:8px;cursor:pointer;">
+          <input type="checkbox" id="brief-includi-non-rilevanti">Includi anche i segnali non rilevanti
+        </label>
         <button class="btn btn-primary" id="btn-genera-brief" onclick="generaExecutiveBrief()" style="background:#14b8a6;border-color:#14b8a6;">✨ Genera Brief</button>
         <div id="brief-status" style="font-size:12px;color:var(--text2);"></div>
       </div>
