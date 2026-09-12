@@ -12,11 +12,19 @@
  *
  * FONTI (verificate con fetch reali il 12/09/2026, non da nome):
  *   MedTech Dive, AboutPharma, Farmacista33, Confindustria Dispositivi Medici,
- *   Fierce Pharma, Pharmaceutical Technology, HealthTech360 — le 7 con feed
- *   RSS funzionante e contenuto realmente rilevante (personale/aziende), non
- *   solo clinico/scientifico. Farmindustria escluso per ora: il suo feed RSS
- *   e' fermo al 2021 nonostante il sito sia attivo, servirebbe uno scraper
- *   HTML dedicato — non incluso qui, da valutare a parte.
+ *   Fierce Pharma, Pharmaceutical Technology, HealthTech360 — 7 con feed RSS
+ *   funzionante e contenuto realmente rilevante (personale/aziende), non solo
+ *   clinico/scientifico.
+ *
+ *   Farmindustria e' l'ottava, ma diversa dalle altre: il suo feed RSS e' fermo
+ *   al 2021 (la sezione comunicati usa un post-type WordPress non esposto ne'
+ *   in RSS ne' nella REST API standard) — verificato con fetch reale il
+ *   12/09/2026 che la pagina https://www.farmindustria.it/documenticategory/
+ *   comunicati/ e' pero' HTML statico con gli ultimi comunicati per intero
+ *   (non serve un fetch separato per articolo). Manca pero' un permalink
+ *   singolo per comunicato: l'URL salvato e' la pagina reale + un'ancora
+ *   sintetica (data+titolo), non un link diretto al solo comunicato — l'unico
+ *   compromesso possibile dato che il sito non ne pubblica uno.
  *
  * COSTO: ZERO. Stesso schema di core-recupero-gratuito.mjs: fetch gratuito
  * (RSS + pagina articolo), estrazione sul piano gratuito Mistral.
@@ -79,6 +87,9 @@ const FONTI = [
   { nome: 'Fierce Pharma', feed: 'https://www.fiercepharma.com/rss/xml', lingua: 'en' },
   { nome: 'Pharmaceutical Technology', feed: 'https://www.pharmaceutical-technology.com/feed/', lingua: 'en' },
   { nome: 'HealthTech360', feed: 'https://www.healthtech360.it/feed/', lingua: 'it' },
+  // tipo:'html_farmindustria' — non e' un feed RSS, e' la pagina statica dei
+  // comunicati: gestita a parte piu' sotto (parseFarmindustria), non da parseRss.
+  { nome: 'Farmindustria', feed: 'https://www.farmindustria.it/documenticategory/comunicati/', lingua: 'it', tipo: 'html_farmindustria' },
 ].filter((f) => !SOLO.length || SOLO.includes(f.nome));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +151,46 @@ function parseRss(xml) {
     const description = tag(blocco, 'description');
     if (!titolo || !link) continue;
     items.push({ titolo, link, pubDate, contentEncoded, description });
+  }
+  return items;
+}
+
+const MESI_ITA = { gennaio: 0, febbraio: 1, marzo: 2, aprile: 3, maggio: 4, giugno: 5, luglio: 6, agosto: 7, settembre: 8, ottobre: 9, novembre: 10, dicembre: 11 };
+
+function slug(s) {
+  return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+// Pagina statica dei comunicati Farmindustria: niente feed, niente permalink
+// per singolo comunicato (verificato il 12/09/2026 — l'intero testo di ogni
+// comunicato e' gia' incorporato nella pagina elenco, un blocco <div
+// class="row_doc"> per comunicato con titolo/data/corpo completo). L'URL
+// salvato e' la pagina reale + un'ancora sintetica (data-titolo): non punta
+// al singolo comunicato (non esiste), ma alla pagina vera da cui viene, ed e'
+// comunque unico per riga — necessario per la chiave di deduplicazione.
+function parseFarmindustria(html, paginaUrl) {
+  const titoli = [...html.matchAll(/<div class="text_doc\s*"><span>([\s\S]*?)<\/span><\/div>/gi)].map((m) => soloTesto(m[1]).trim());
+  const date = [...html.matchAll(/<div class="text_data"[^>]*>\s*<span>\s*([\s\S]*?)\s*<\/span>/gi)].map((m) => soloTesto(m[1]).trim());
+  const corpi = [...html.matchAll(/<div class="articolo_doc">([\s\S]*?)<\/div>/gi)].map((m) => m[1]);
+
+  const items = [];
+  const n = Math.min(titoli.length, date.length, corpi.length);
+  for (let i = 0; i < n; i++) {
+    const titolo = titoli[i];
+    const corpo = soloTesto(corpi[i]);
+    if (!titolo || corpo.length < 100) continue;
+
+    // "28 LUGLIO 2026" -> ISO. Se il formato non combacia, resta senza data
+    // (non e' un motivo per scartare il comunicato).
+    let pubDate = '';
+    const m = date[i].match(/(\d{1,2})\s+([A-ZÀ-ÖØ-Þa-zà-öø-ÿ]+)\s+(\d{4})/i);
+    if (m && MESI_ITA[m[2].toLowerCase()] !== undefined) {
+      pubDate = new Date(Date.UTC(Number(m[3]), MESI_ITA[m[2].toLowerCase()], Number(m[1]))).toUTCString();
+    }
+
+    const link = `${paginaUrl}#${slug(date[i])}-${slug(titolo)}`;
+    items.push({ titolo, link, pubDate, contentEncoded: corpo, description: '' });
   }
   return items;
 }
@@ -258,8 +309,8 @@ let totNuovi = 0, totRilevanti = 0, totScartatiProva = 0, totNonRilevanti = 0, t
 for (const fonte of FONTI) {
   process.stdout.write(`${B}${fonte.nome}${Z} `);
   const xml = await scarica(fonte.feed);
-  if (!xml) { console.log(`${R}feed non raggiungibile${Z}`); continue; }
-  const items = parseRss(xml).slice(0, N_PER_FONTE);
+  if (!xml) { console.log(`${R}pagina/feed non raggiungibile${Z}`); continue; }
+  const items = (fonte.tipo === 'html_farmindustria' ? parseFarmindustria(xml, fonte.feed) : parseRss(xml)).slice(0, N_PER_FONTE);
   const nuovi = items.filter((it) => !urlGiaNoti.has(it.link));
   console.log(`${D}${items.length} nel feed, ${nuovi.length} nuovi${Z}`);
 
