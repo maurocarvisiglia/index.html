@@ -245,6 +245,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-competitor" onclick="showView('competitor',this)" style="border-color:#06b6d4;color:#06b6d4;">🔬 Competitor Monitor</button>
     <button class="nav-btn" id="nav-geo" onclick="showView('geo',this)" style="border-color:#10b981;color:#10b981;">🗺️ Geographic</button>
     <button class="nav-btn" id="nav-report" onclick="showView('report',this)" style="border-color:#b8965a;color:#b8965a;">📄 Report</button>
+    <button class="nav-btn" id="nav-insight" onclick="showView('insight',this)" style="border-color:#ec4899;color:#ec4899;">🎙️ Insight Recruiter</button>
     <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -4304,6 +4305,244 @@ async function confermaGeneraReport(){
   }
 }
 
+/* ── INSIGHT RECRUITER ──
+   Schermata a campo libero (voce o testo) dove i recruiter annotano
+   osservazioni di mercato (RAL, benefit, pacchetto economico) raccolte
+   durante colloqui/contatti. Stesso principio "IA propone, l'utente
+   conferma" gia' usato nel Report Builder (interpretaRichiestaReport ->
+   picker -> confermaGeneraReport): l'IA estrae e anonimizza, ma NULLA viene
+   scritto nel database prima di una conferma esplicita, e il testo che
+   verra' salvato e' sempre mostrato/modificabile prima del salvataggio.
+   Regola assoluta: il nome del candidato non deve MAI finire nella scheda
+   azienda, anche se il recruiter lo scrive/detta esplicitamente — la
+   redazione la fa l'IA (istruzione esplicita nel prompt), ma la garanzia
+   vera e' la revisione umana obbligatoria che segue, non la sola IA. ── */
+
+let _insightPendente=null; // {azienda:{id,name}|null, candidatiAmbigui:[], testo, ruoloContesto}
+let _insightRecognition=null;
+let _insightMicAttivo=false;
+
+function toggleInsightMic(){
+  const SpeechRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+  const statusEl=document.getElementById('insight-mic-status');
+  const btn=document.getElementById('btn-insight-mic');
+  if(!SpeechRec){
+    toast('Dettatura vocale non supportata in questo browser — usa Chrome, oppure scrivi il testo.','warning');
+    return;
+  }
+  if(_insightMicAttivo){
+    _insightRecognition&&_insightRecognition.stop();
+    return;
+  }
+  const ta=document.getElementById('insight-testo-libero');
+  const rec=new SpeechRec();
+  rec.lang='it-IT';
+  rec.continuous=true;
+  rec.interimResults=true;
+  let baseText=ta.value?ta.value.replace(/\s+$/,'')+' ':'';
+  rec.onstart=()=>{
+    _insightMicAttivo=true;
+    if(btn){btn.textContent='⏹️ Ferma';btn.style.borderColor='#ec4899';btn.style.color='#ec4899';}
+    if(statusEl)statusEl.textContent='🔴 In ascolto...';
+  };
+  rec.onresult=(ev)=>{
+    let finalChunk='',interimChunk='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const t=ev.results[i][0].transcript;
+      if(ev.results[i].isFinal)finalChunk+=t;
+      else interimChunk+=t;
+    }
+    if(finalChunk){baseText+=finalChunk.trim()+' ';}
+    ta.value=(baseText+interimChunk).trim();
+  };
+  rec.onerror=(ev)=>{
+    if(statusEl)statusEl.textContent='';
+    if(ev.error!=='no-speech')toast('Dettatura interrotta: '+ev.error,'warning');
+  };
+  rec.onend=()=>{
+    _insightMicAttivo=false;
+    if(btn){btn.textContent='🎙️ Detta';btn.style.borderColor='var(--border)';btn.style.color='var(--text)';}
+    if(statusEl)statusEl.textContent='';
+  };
+  _insightRecognition=rec;
+  rec.start();
+}
+
+async function estraiInsightRecruiter(testo){
+  const prompt=`Sei un assistente che elabora note di mercato scritte o dettate a voce da recruiter Life Sciences italiani. Il testo riguarda un'osservazione su un'azienda (pacchetto retributivo, benefit, RAL, bonus, struttura commerciale...) raccolta durante un colloquio o un contatto con un candidato. Il testo puo' contenere imperfezioni di trascrizione (e' dettato a voce).
+
+REGOLA ASSOLUTA, NON NEGOZIABILE: il testo che produci in "insight_anonimizzato" e in "punti_chiave" NON DEVE MAI contenere il nome o cognome di una persona (candidato, dipendente, recruiter, referente), anche se il testo originale lo contiene esplicitamente. Sostituisci qualunque nome proprio di persona con un riferimento generico e neutro ("il candidato", "la candidata", "una risorsa", "un profilo [ruolo]"), MAI un'iniziale, MAI un nome parziale, MAI un nickname. Se hai anche solo il dubbio che una parola sia il nome di una persona, trattala come tale. I nomi di aziende, marchi di prodotto e ruoli professionali NON sono nomi di persona: quelli vanno mantenuti.
+
+Restituisci ESATTAMENTE questo JSON, nessun altro testo prima o dopo:
+{
+  "azienda_menzionata": "<nome dell'azienda a cui si riferisce l'insight, cosi' come si capisce dal testo, o null se non è chiaro>",
+  "ruolo_contesto": "<ruolo/funzione menzionato nel testo, es. 'MSL', 'Area Manager', o null se non presente>",
+  "insight_anonimizzato": "<il contenuto informativo del testo, riscritto in 1-3 frasi chiare in italiano, SENZA alcun nome proprio di persona>",
+  "punti_chiave": ["<elenco dei singoli elementi fattuali estratti, es. 'Auto aziendale', 'Bonus ~28% della RAL', 'Welfare 2.000€/anno'>"]
+}
+
+TESTO DA ELABORARE:
+"""
+${testo}
+"""`;
+  const raw=await callAIPowerful(prompt,700);
+  const clean=raw.replace(/```json|```/g,'').trim();
+  return JSON.parse(clean);
+}
+
+async function analizzaInsightRecruiter(){
+  const testo=(document.getElementById('insight-testo-libero')?.value||'').trim();
+  const statusEl=document.getElementById('insight-status');
+  const btn=document.getElementById('btn-analizza-insight');
+  if(!testo){toast('Scrivi o detta prima l\'osservazione','warning');return;}
+  document.getElementById('insight-review-panel').style.display='none';
+  btn.disabled=true;
+  if(statusEl)statusEl.textContent='⏳ Analizzo e anonimizzo...';
+  try{
+    const estratto=await estraiInsightRecruiter(testo);
+    if(!estratto.insight_anonimizzato){throw new Error('Nessun contenuto informativo riconosciuto nel testo.');}
+
+    let risoltaAzienda=null,candidatiAmbigui=[],statoAzienda='non_trovata';
+    if(estratto.azienda_menzionata){
+      const [ris]=await risolviAziendePerConfronto([estratto.azienda_menzionata]);
+      statoAzienda=ris.stato;
+      if(ris.stato==='trovata')risoltaAzienda=ris.azienda;
+      else if(ris.stato==='ambigua')candidatiAmbigui=ris.candidati;
+    }
+
+    _insightPendente={
+      azienda:risoltaAzienda,
+      candidatiAmbigui,
+      statoAzienda,
+      nomeAziendaOriginale:estratto.azienda_menzionata,
+      ruoloContesto:estratto.ruolo_contesto||null,
+      testoAnonimizzato:estratto.insight_anonimizzato,
+    };
+    renderInsightReview();
+  }catch(err){
+    console.error('analizzaInsightRecruiter error:',err);
+    toast('Errore: '+err.message,'error');
+  }finally{
+    btn.disabled=false;
+    if(statusEl)statusEl.textContent='';
+  }
+}
+
+function renderInsightReview(){
+  const p=_insightPendente;
+  if(!p)return;
+  const wrap=document.getElementById('insight-review-panel');
+  const aziendaBox=document.getElementById('insight-azienda-risolta');
+  const testoEl=document.getElementById('insight-testo-anonimizzato');
+
+  if(p.azienda){
+    aziendaBox.innerHTML=`<div style="font-size:13px;">✅ <strong>${escHtml(p.azienda.name)}</strong></div>`;
+  }else if(p.statoAzienda==='ambigua'){
+    aziendaBox.innerHTML=`<div style="font-size:12px;color:#f0a020;margin-bottom:6px;">⚠️ Più aziende corrispondono a "${escHtml(p.nomeAziendaOriginale)}" — scegli quella giusta:</div>
+      <select id="insight-azienda-select" style="width:100%;padding:6px 8px;font-size:13px;" onchange="_insightPendente.azienda=_insightPendente.candidatiAmbigui.find(c=>c.id===this.value)||null">
+        <option value="">— seleziona —</option>
+        ${p.candidatiAmbigui.map(c=>`<option value="${c.id}">${escHtml(c.name)}${c.sector_v2?' ('+escHtml(c.sector_v2)+')':''}</option>`).join('')}
+      </select>`;
+  }else{
+    aziendaBox.innerHTML=`<div style="font-size:12px;color:#f0a020;">⚠️ Azienda "${escHtml(p.nomeAziendaOriginale||'')}" non trovata in anagrafica — scrivi il nome esatto per cercarla di nuovo:</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <input type="text" id="insight-azienda-manuale" placeholder="Nome esatto azienda" value="${escHtml(p.nomeAziendaOriginale||'')}" style="flex:1;padding:6px 8px;font-size:13px;">
+        <button class="btn btn-secondary" onclick="ricercaAziendaInsight()" style="font-size:12px;">Cerca</button>
+      </div>`;
+  }
+
+  testoEl.value=(p.ruoloContesto?'['+p.ruoloContesto+'] ':'')+p.testoAnonimizzato;
+  wrap.style.display='';
+}
+
+async function ricercaAziendaInsight(){
+  const nome=(document.getElementById('insight-azienda-manuale')?.value||'').trim();
+  if(!nome)return;
+  const [ris]=await risolviAziendePerConfronto([nome]);
+  _insightPendente.statoAzienda=ris.stato;
+  _insightPendente.nomeAziendaOriginale=nome;
+  if(ris.stato==='trovata'){_insightPendente.azienda=ris.azienda;_insightPendente.candidatiAmbigui=[];}
+  else if(ris.stato==='ambigua'){_insightPendente.azienda=null;_insightPendente.candidatiAmbigui=ris.candidati;}
+  else{_insightPendente.azienda=null;_insightPendente.candidatiAmbigui=[];}
+  renderInsightReview();
+}
+
+function annullaInsightRecruiter(){
+  document.getElementById('insight-review-panel').style.display='none';
+  _insightPendente=null;
+}
+
+async function confermaSalvaInsight(){
+  const p=_insightPendente;
+  if(!p){toast('Nessun insight da confermare','warning');return;}
+  if(!p.azienda){toast('Seleziona o trova l\'azienda prima di salvare','warning');return;}
+  const testoFinale=(document.getElementById('insight-testo-anonimizzato')?.value||'').trim();
+  if(!testoFinale){toast('Il testo da salvare non può essere vuoto','warning');return;}
+
+  const btn=document.getElementById('btn-salva-insight');
+  btn.disabled=true;
+  try{
+    await api('company_facts','POST',{
+      company_id:p.azienda.id,
+      tipo:'insight_recruiter',
+      valore:testoFinale,
+      fonte:'manuale',
+      worker:_currentUser?.full_name||_currentUser?.email||'sconosciuto',
+    });
+    toast('✅ Insight salvato su '+p.azienda.name,'success');
+    document.getElementById('insight-testo-libero').value='';
+    document.getElementById('insight-review-panel').style.display='none';
+    _insightPendente=null;
+    loadInsightCounter();
+  }catch(err){
+    // Indice unico (company_id,tipo,valore_norm): stesso testo gia' registrato
+    // per la stessa azienda non e' un errore da mostrare come tale.
+    if(String(err.message||'').includes('duplicate key')||String(err.message||'').includes('23505')){
+      toast('Questo insight risulta già registrato per questa azienda','warning');
+    }else{
+      console.error('confermaSalvaInsight error:',err);
+      toast('Errore nel salvataggio: '+err.message,'error');
+    }
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+async function loadInsightCounter(){
+  const box=document.getElementById('insight-counter-panel');
+  if(!box)return;
+  try{
+    const righe=await api('company_facts?select=worker,rilevato_il,valore,company:companies(name)&tipo=eq.insight_recruiter&order=rilevato_il.desc&limit=500');
+    if(!righe.length){
+      box.innerHTML='<div style="font-size:12px;color:var(--text2);">Ancora nessun insight registrato — sarai il primo.</div>';
+      return;
+    }
+    const perRecruiter={};
+    righe.forEach(r=>{const w=r.worker||'sconosciuto';perRecruiter[w]=(perRecruiter[w]||0)+1;});
+    const classifica=Object.entries(perRecruiter).sort((a,b)=>b[1]-a[1]);
+    const righeClassifica=classifica.map(([nome,n])=>
+      `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>${escHtml(nome)}</span><span style="font-weight:700;color:#ec4899;">${n}</span></div>`
+    ).join('');
+    const recenti=righe.slice(0,5).map(r=>
+      `<div style="font-size:11px;color:var(--text2);padding:4px 0;border-top:1px solid var(--border);"><strong>${escHtml(r.company?.name||'—')}</strong> · ${escHtml(r.worker||'')} · ${new Date(r.rilevato_il).toLocaleDateString('it-IT')}</div>`
+    ).join('');
+    box.innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:180px;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:8px;">🏆 Insight per recruiter</div>
+          ${righeClassifica}
+          <div style="font-size:11px;color:var(--text2);margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">Totale: ${righe.length}</div>
+        </div>
+        <div style="flex:1;min-width:220px;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:4px;">🕒 Ultimi inseriti</div>
+          ${recenti}
+        </div>
+      </div>`;
+  }catch(err){
+    console.error('loadInsightCounter error:',err);
+    box.innerHTML='<div style="font-size:12px;color:var(--text2);">Impossibile caricare il contatore.</div>';
+  }
+}
+
 /* ── NAVIGATION ── */
 function showView(name,btn){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -4322,6 +4561,7 @@ function showView(name,btn){
   if(name==='listings'){loadListings();refreshPendingBadges();}
   if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();loadWorkforceProgress();}
   if(name==='ruolo')analyzeRuolo();
+  if(name==='insight')loadInsightCounter();
 }
 
 async function analyzeRuolo(){
@@ -8899,6 +9139,11 @@ async function loadGruppoCard(company){
 // Etichette e ordine di visualizzazione dei tipi di fatto CORE. L'ordine non e'
 // alfabetico: gruppo e prodotti prima (sono i piu' letti), gli operativi dopo.
 const CORE_TIPO_LABEL={
+  // Osservazioni raccolte a voce/testo libero dai recruiter (RAL, benefit,
+  // pacchetto economico...) durante colloqui/contatti — aggiunto il
+  // 12/09/2026, in cima perche' e' il dato di campo piu' fresco e specifico
+  // che l'azienda possa avere, a differenza dei fatti raccolti da script.
+  insight_recruiter:'Insight Recruiter (mercato/retribuzione)',
   gruppo:'Gruppo',
   prodotto:'Prodotti in Italia',
   pipeline_regolatoria:'Pipeline regolatoria',
@@ -8925,7 +9170,7 @@ const CORE_TIPO_LABEL={
 // (tabella dedicata, con molecole e indice di ricerca), non da company_facts.
 // Le righe tipo='prodotto' restano in company_facts come backup passivo — la
 // card non le legge piu' da li', per non mostrare due volte lo stesso prodotto.
-const CORE_TIPO_ORDINE=['gruppo','partnership_commerciale','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
+const CORE_TIPO_ORDINE=['insight_recruiter','gruppo','partnership_commerciale','pipeline_regolatoria','certificazione_gmp','sito_italiano','fase_mercato','modello_commerciale','studio_clinico_italia','studio_clinico_europa'];
 const CORE_FONTE_LABEL={sito_ufficiale:'sito ufficiale',ricerca_web:'ricerca web',market_radar:'Market Radar',modello_testo:'testo esistente',manuale:'manuale',parola_chiave:'parola chiave',aggregato_annunci:'aggregato annunci',registro_pubblico:'registro pubblico'};
 
 // Etichette per i codici di company_therapeutic_areas.code — mai esistita finora
@@ -12520,6 +12765,55 @@ function renderDemandScatter(){
 
     <div style="margin-top:32px;font-size:11px;color:var(--text2);line-height:1.8;">
       <strong>Cosa può includere il report:</strong> benchmark RAL con rilevamento automatico di concentrazioni anomale sui datori, talent scarcity, seniority mix, area terapeutica, area geografica, tipo contratto. Supporta confronti tra 2 o più figure/ruoli/aree.
+    </div>
+  </div>
+</div>
+
+<!-- ── INSIGHT RECRUITER ── -->
+<!-- Schermata a campo libero per raccogliere osservazioni di mercato dei
+     recruiter (RAL, benefit, pacchetto economico...) durante colloqui/contatti
+     con i candidati — richiesta da Mauro il 12/09/2026. Il testo passa da
+     un'estrazione IA (che riscrive il contenuto SENZA nomi di persona) e poi
+     da una revisione umana obbligatoria prima di essere salvato: nessun
+     salvataggio automatico, mai. Il nome del candidato non deve MAI comparire
+     nel dato salvato, anche se il recruiter lo detta/scrive esplicitamente. -->
+<div class="view" id="view-insight">
+  <div style="padding:24px 32px;max-width:760px;">
+    <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:4px;">🎙️ Insight Recruiter</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:20px;">Annota qui, a voce o a testo, ciò che scopri sul pacchetto retributivo/benefit di un'azienda durante un colloquio o un contatto. Il sistema anonimizza il testo e lo lega all'azienda giusta — <strong>il nome del candidato non finisce mai nella scheda azienda</strong>, anche se lo scrivi.</div>
+
+    <div id="insight-counter-panel" style="margin-bottom:20px;"></div>
+
+    <div style="border:1px solid var(--border);border-radius:10px;padding:16px 18px;background:var(--surface);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <label class="form-label" style="margin:0;">Osservazione</label>
+        <button type="button" id="btn-insight-mic" onclick="toggleInsightMic()" title="Detta a voce" style="border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:8px;padding:4px 10px;font-size:13px;cursor:pointer;">🎙️ Detta</button>
+        <span id="insight-mic-status" style="font-size:11px;color:var(--text2);"></span>
+      </div>
+      <textarea id="insight-testo-libero" placeholder="Es. Un candidato di Chiesi MSL ha l'auto aziendale, un premio pari al 28% della RAL, welfare di 2.000€ annui, assicurazione sanitaria extra-contrattuale e lo psicologo aziendale compreso." style="width:100%;height:110px;font-size:13px;padding:12px 14px;resize:vertical;"></textarea>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
+        <button class="btn btn-primary" id="btn-analizza-insight" onclick="analizzaInsightRecruiter()" style="background:#ec4899;border-color:#ec4899;">✨ Analizza</button>
+        <div id="insight-status" style="font-size:12px;color:var(--text2);"></div>
+      </div>
+    </div>
+
+    <!-- Revisione obbligatoria: niente arriva al database prima di un click
+         esplicito su "Salva", e il testo che verra' salvato e' sempre
+         mostrato/modificabile qui — mai un salvataggio silenzioso. -->
+    <div id="insight-review-panel" style="display:none;margin-top:16px;padding:16px 18px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;">✅ Rivedi prima di salvare</div>
+
+      <label class="form-label">Azienda</label>
+      <div id="insight-azienda-risolta" style="margin-bottom:12px;"></div>
+
+      <label class="form-label">Testo che verrà salvato nella scheda azienda</label>
+      <textarea id="insight-testo-anonimizzato" style="width:100%;height:90px;font-size:13px;padding:10px 12px;resize:vertical;margin-top:6px;"></textarea>
+      <div style="font-size:11px;color:#f0a020;margin-top:6px;">⚠️ Controlla che non compaia alcun nome di persona (candidato, dipendente, referente) prima di salvare — modifica il testo se serve.</div>
+
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary" id="btn-salva-insight" onclick="confermaSalvaInsight()" style="background:#ec4899;border-color:#ec4899;">💾 Salva Insight</button>
+        <button class="btn btn-secondary" onclick="annullaInsightRecruiter()">Annulla</button>
+      </div>
     </div>
   </div>
 </div>
