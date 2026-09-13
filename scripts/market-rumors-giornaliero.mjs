@@ -325,7 +325,14 @@ async function runMarketRumorsDailyBatch(opts = {}) {
   const apply = opts.apply !== false; // il cron scrive sempre; il CLI decide con --apply
   const nPerFonte = opts.nPerFonte || 9999;
   const soloNomi = opts.solo || [];
-  const dump = opts.dumpPath || join(ROOT, 'dati-passate', `market-rumors-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.jsonl`);
+  // Il filesystem del repo e' di sola lettura su Vercel (solo /tmp e'
+  // scrivibile, ed e' effimero) — osservato in produzione il 13/09/2026:
+  // "ENOENT: no such file or directory, mkdir '/var/task/dati-passate'"
+  // bloccava l'INTERA richiesta prima ancora di leggere un solo feed. Il
+  // giornale di bordo su disco resta utile in locale, ma non e' piu' l'unica
+  // rete di sicurezza: quella vera e' la scrittura fonte-per-fonte nel
+  // database qualche riga sotto, che non dipende dal filesystem.
+  const dump = opts.dumpPath || join(process.env.VERCEL ? '/tmp' : join(ROOT, 'dati-passate'), `market-rumors-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.jsonl`);
 
   const log = [];
   const push = (m) => { console.log(m); log.push(m); };
@@ -341,7 +348,10 @@ async function runMarketRumorsDailyBatch(opts = {}) {
   const urlGiaNoti = new Set((notiRows || []).map((r) => r.url));
   push(`${urlGiaNoti.size} articoli gia' registrati (non ririchiesti all'IA)`);
 
-  mkdirSync(dirname(dump), { recursive: true });
+  // Mai fatale: il giornale di bordo e' una comodita' in piu', la vera rete
+  // di sicurezza (scrittura fonte-per-fonte su market_rumors) non dipende da
+  // questo — un filesystem indisponibile non deve bloccare la corsa.
+  try { mkdirSync(dirname(dump), { recursive: true }); } catch (e) { push(`⚠️ giornale di bordo su disco non disponibile (${e.message}) — proseguo senza`); }
 
   const cacheAziende = new Map();
   let totNuovi = 0, totRilevanti = 0, totNonRilevanti = 0, totScartatiProva = 0, totErrori = 0, totScritti = 0;
@@ -428,7 +438,7 @@ async function runMarketRumorsDailyBatch(opts = {}) {
     // perso anche il lavoro delle fonti gia' completate. Giornale di bordo su
     // disco PRIMA del database, come ovunque altro nella famiglia CORE.
     if (daScrivereFonte.length) {
-      appendFileSync(dump, daScrivereFonte.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      try { appendFileSync(dump, daScrivereFonte.map((r) => JSON.stringify(r)).join('\n') + '\n'); } catch { /* mai fatale, vedi nota sopra */ }
       if (apply) {
         const { error } = await supabase.from('market_rumors').upsert(daScrivereFonte, { onConflict: 'url', ignoreDuplicates: false });
         if (error) push(`   ❌ errore scrittura "${fonte.nome}": ${error.message}`);
