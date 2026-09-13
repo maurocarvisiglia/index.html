@@ -224,18 +224,27 @@ async function runApolloDailyBatch() {
 
   push('🤖 APOLLO DAILY BATCH — ' + new Date().toISOString());
 
-  const { data: doneRows } = await supabase.from('enrichment_log').select('company_id').eq('api_usata', 'apollo');
-  const doneIds = new Set(doneRows.map(r => r.company_id));
+  // Guardia null su tutte e 3 le query (13/09/2026): una qualunque risposta
+  // Supabase con data:null (errore di rete/rate-limit transitorio, mai
+  // controllato finora) faceva crashare l'intero batch con "Cannot read
+  // properties of null (reading 'filter')" — osservato in produzione lo
+  // stesso 13/09/2026 dopo 2 giorni di successo. Un errore vero viene comunque
+  // sollevato esplicitamente, non inghiottito in silenzio.
+  const { data: doneRows, error: doneErr } = await supabase.from('enrichment_log').select('company_id').eq('api_usata', 'apollo');
+  if (doneErr) throw new Error('lettura enrichment_log fallita: ' + doneErr.message);
+  const doneIds = new Set((doneRows || []).map(r => r.company_id));
 
-  const { data: companies } = await supabase
+  const { data: companies, error: companiesErr } = await supabase
     .from('companies')
     .select('id, name, website, dipendenti, fatturato_range, descrizione_aziendale, linkedin_url, crescita_dipendenti_12m, apollo_keywords, apollo_industry')
     .not('website', 'is', null);
+  if (companiesErr) throw new Error('lettura companies fallita: ' + companiesErr.message);
 
-  const { data: jobRows } = await supabase.from('job_listings').select('company_id');
-  const hasJobs = new Set(jobRows.map(r => r.company_id).filter(Boolean));
+  const { data: jobRows, error: jobRowsErr } = await supabase.from('job_listings').select('company_id');
+  if (jobRowsErr) throw new Error('lettura job_listings fallita: ' + jobRowsErr.message);
+  const hasJobs = new Set((jobRows || []).map(r => r.company_id).filter(Boolean));
 
-  const todo = companies
+  const todo = (companies || [])
     .filter(c => !doneIds.has(c.id))
     .map(c => ({ ...c, domain: extractDomain(c.website), hasJobs: hasJobs.has(c.id) }))
     .filter(c => c.domain)

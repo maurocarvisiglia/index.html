@@ -13,6 +13,15 @@ const SOURCE = 'gemini_ta_extraction';
 // di durata: 8 aziende * ~4s di pausa gia' arrivano vicino al bordo, con margine per
 // eventuali retry non si puo' salire senza rischiare FUNCTION_INVOCATION_TIMEOUT).
 const DAILY_LIMIT = Number(process.env.TA_DAILY_LIMIT || 8);
+// Rete di sicurezza vera (13/09/2026): DAILY_LIMIT da solo non basta, e' un
+// tetto ottimistico — con retry su 429/503 il tempo per azienda puo' superare
+// i 4s previsti, e la funzione serverless Vercel (maxDuration 60s) uccide
+// l'esecuzione a meta' senza salvare nulla del batch in corso (FUNCTION_
+// INVOCATION_TIMEOUT, osservato 3 giorni di fila l'11-13/09/2026). Stesso
+// guardrail gia' collaudato in apollo-enrichment-agent.js: si ferma DA SOLO
+// ben prima del limite reale, qualunque esso sia, restituendo un successo
+// parziale invece di farsi ammazzare a meta' lavoro.
+const TIME_BUDGET_MS = 45000;
 
 function isDailyQuotaExhausted(e) {
   // La sottostringa "PerDay" sta dentro error.details[].violations[].quotaId,
@@ -74,23 +83,53 @@ async function runTaExtractionDailyBatch() {
 
   push('🔬 ESTRAZIONE AREE TERAPEUTICHE — ' + new Date().toISOString());
 
-  const { data: taRows } = await supabase.from('therapeutic_areas').select('code');
-  const validCodes = taRows.map(t => t.code);
+  // Vocabolario: SOLO le aree realmente accettate a valle.
+  //  · in_use = true  -> esclude le 7 aree registrate ma non ancora presenti
+  //                      nella whitelist di index.html. Offrirle al modello
+  //                      significherebbe pagare una chiamata per un valore che
+  //                      il frontend poi scarta: dato perso in silenzio.
+  //  · kind  = 'area' -> esclude i marcatori `multiple` e `not_applicable`,
+  //                      che non sono aree terapeutiche. Qui l'assenza si
+  //                      esprime con un array vuoto, non con un codice.
+  // Prima di questo filtro la tabella era VUOTA: validCodes = [] e il
+  // .filter() finale scartava ogni risultato -> l'agente era un no-op.
+  const { data: taRows, error: taErr } = await supabase
+    .from('therapeutic_areas')
+    .select('code')
+    .eq('in_use', true)
+    .eq('kind', 'area')
+    .order('sort_order');
+  if (taErr) throw new Error('lettura therapeutic_areas fallita: ' + taErr.message);
+  const validCodes = (taRows || []).map(t => t.code);
+  // Fallire a voce alta invece di girare a vuoto: e' il difetto che ha tenuto
+  // aree_terapeutiche vuoto al 99% senza che nessun log lo segnalasse.
+  if (validCodes.length === 0) {
+    throw new Error('therapeutic_areas non contiene aree attive (in_use=true, kind=area): ' +
+                    'senza vocabolario ogni estrazione verrebbe scartata dal filtro.');
+  }
+  push(`Vocabolario: ${validCodes.length} aree attive`);
 
   const { data: doneRows } = await supabase.from('enrichment_log').select('company_id').eq('api_usata', SOURCE);
-  const doneIds = new Set(doneRows.map(r => r.company_id));
+  const doneIds = new Set((doneRows || []).map(r => r.company_id));
 
-  const { data: companies } = await supabase
+  const { data: companies, error: companiesErr } = await supabase
     .from('companies')
     .select('id, name, descrizione_aziendale')
     .not('descrizione_aziendale', 'is', null);
+  if (companiesErr) throw new Error('lettura companies fallita: ' + companiesErr.message);
 
-  const remaining = companies.filter(c => !doneIds.has(c.id));
+  const remaining = (companies || []).filter(c => !doneIds.has(c.id));
   const todo = remaining.slice(0, DAILY_LIMIT);
   push(`Rimanenti totali: ${remaining.length} | in questo batch: ${todo.length}`);
 
-  let extracted = 0, empty = 0, errors = 0, quotaExhausted = false;
+  const inizio = Date.now();
+  let extracted = 0, empty = 0, errors = 0, quotaExhausted = false, timeBudgetExceeded = false;
   for (const c of todo) {
+    if (Date.now() - inizio > TIME_BUDGET_MS) {
+      timeBudgetExceeded = true;
+      push(`⏱️ Budget di tempo esaurito (${TIME_BUDGET_MS}ms) — il resto del batch riprende al prossimo run.`);
+      break;
+    }
     try {
       const codes = await extractTA(c.descrizione_aziendale, validCodes);
       if (codes.length) {
@@ -120,7 +159,7 @@ async function runTaExtractionDailyBatch() {
     await new Promise(r => setTimeout(r, 4000));
   }
 
-  const summary = { attempted: todo.length, extracted, empty, errors, quotaExhausted, stillRemaining: remaining.length - extracted - empty - errors };
+  const summary = { attempted: todo.length, extracted, empty, errors, quotaExhausted, timeBudgetExceeded, stillRemaining: remaining.length - extracted - empty - errors };
   push('📊 RISULTATO: ' + JSON.stringify(summary));
   return { summary, log };
 }

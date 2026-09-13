@@ -46,6 +46,14 @@ const REGISTRO_TIPO = 'recupero_prodotti_sito_ufficiale';
 const argN = (process.argv.find((a) => a.startsWith('--n=')) || '').slice(4);
 const DAILY_LIMIT = Number(process.env.PRODOTTI_DAILY_LIMIT || argN || 15);
 const APPLY = process.argv.includes('--apply');
+// Rete di sicurezza vera per la corsa da Vercel Cron (13/09/2026): DAILY_LIMIT=15
+// e' un tetto ottimistico, non una garanzia di tempo — con fetch pagina + CORE
+// per azienda la funzione serverless (maxDuration 60s) e' andata in FUNCTION_
+// INVOCATION_TIMEOUT 3 giorni di fila (11-13/09/2026), perdendo l'intero lotto
+// (la scrittura avviene solo a fine ciclo). Stesso guardrail gia' collaudato in
+// apollo-enrichment-agent.js: si esce dal ciclo DA SOLO ben prima del limite
+// reale, cosi' quanto raccolto fino a quel momento viene comunque scritto.
+const TIME_BUDGET_MS = 45000;
 
 /**
  * L'UNICA via verso l'AI, identica a core-arricchimento-via-core.mjs: si
@@ -252,10 +260,16 @@ async function runProductRecoveryDailyBatch(limit = DAILY_LIMIT, apply = APPLY, 
   const campione = candidate.slice(0, limit);
   push(`Candidate senza prodotti ancora tentate: ${candidate.length} · in questo batch: ${campione.length} · ${apply ? 'SCRIVE' : 'solo misura'} · costo: 0,00 $`);
 
-  let trovate = 0, vuote = 0, senzaSito = 0, nonConfermate = 0, errori = 0;
+  let trovate = 0, vuote = 0, senzaSito = 0, nonConfermate = 0, errori = 0, timeBudgetExceeded = false;
   const daScrivere = [];
 
+  const inizio = Date.now();
   for (const az of campione) {
+    if (Date.now() - inizio > TIME_BUDGET_MS) {
+      timeBudgetExceeded = true;
+      push(`⏱️ Budget di tempo esaurito (${TIME_BUDGET_MS}ms) — il resto del batch riprende al prossimo run.`);
+      break;
+    }
     try {
       const pagine = await pagineAzienda(az.website);
       if (!pagine.length) { senzaSito++; await registra(az.id, 'sito_non_raggiungibile'); push(`   ⬜ "${az.name}" — sito non raggiungibile`); continue; }
@@ -320,7 +334,7 @@ async function runProductRecoveryDailyBatch(limit = DAILY_LIMIT, apply = APPLY, 
     else scritte = count ?? daScrivere.length;
   }
 
-  const summary = { attempted: campione.length, trovate, vuote, senzaSito, nonConfermate, errori, prodottiScritti: apply ? scritte : daScrivere.length, stillRemaining: candidate.length - campione.length };
+  const summary = { attempted: campione.length, trovate, vuote, senzaSito, nonConfermate, errori, timeBudgetExceeded, prodottiScritti: apply ? scritte : daScrivere.length, stillRemaining: candidate.length - campione.length };
   push('📊 RISULTATO: ' + JSON.stringify(summary));
   return { summary, log };
 }
