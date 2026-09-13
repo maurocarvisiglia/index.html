@@ -10,11 +10,16 @@
  * Rumors e Market Insight" — nomine, M&A, prodotti, partnership, dati
  * finanziari/regolatori rilevanti per il mercato Life Sciences italiano.
  *
- * FONTI (verificate con fetch reali il 12/09/2026, non da nome):
+ * FONTI (riverificate con fetch reali il 13/09/2026, non da nome — una
+ * ricontrollata periodicamente, non solo al momento della prima scelta):
  *   MedTech Dive, AboutPharma, Farmacista33, Confindustria Dispositivi Medici,
- *   Fierce Pharma, Pharmaceutical Technology, HealthTech360 — 7 con feed RSS
- *   funzionante e contenuto realmente rilevante (personale/aziende), non solo
- *   clinico/scientifico.
+ *   Fierce Pharma, HealthTech360 — 6 con feed RSS funzionante e contenuto
+ *   realmente rilevante (personale/aziende), non solo clinico/scientifico.
+ *
+ *   Pharmaceutical Technology ESCLUSA dal 13/09/2026: funzionava il 12/09, ora
+ *   il sito e' protetto da Datadome (blocco comportamentale anti-bot vero, non
+ *   un semplice controllo User-Agent) — 403 su ogni fetch semplice. Non si
+ *   tenta di aggirarlo: se in futuro torna raggiungibile va rivalutato.
  *
  *   Farmindustria e' l'ottava, ma diversa dalle altre: il suo feed RSS e' fermo
  *   al 2021 (la sezione comunicati usa un post-type WordPress non esposto ne'
@@ -27,7 +32,9 @@
  *   compromesso possibile dato che il sito non ne pubblica uno.
  *
  * COSTO: ZERO. Stesso schema di core-recupero-gratuito.mjs: fetch gratuito
- * (RSS + pagina articolo), estrazione sul piano gratuito Mistral.
+ * (RSS + pagina articolo), estrazione sul piano gratuito Mistral, con Gemini
+ * come ripiego (due quote indipendenti, stesso motore a cascata usato lato
+ * browser in callAIPowerful).
  *
  * COME SI DIFENDE DAL DATO INVENTATO
  *   1  vocabolario chiuso per tipo_segnale
@@ -44,57 +51,69 @@
  * articolo che supera la verifica della citazione finisce in market_rumors,
  * rilevante o no: chi decide cosa vedere e' chi legge, non lo script.
  *
- * COME SI DIFENDE DALLA PERDITA
- * Ogni lotto elaborato finisce su un giornale di bordo su disco PRIMA di
- * toccare il database. L'URL dell'articolo e' la chiave di deduplicazione:
- * un articolo gia' in market_rumors non viene ririchiesto all'IA.
+ * COME SI DIFENDE DALLA PERDITA (13/09/2026, dopo la diagnostica generale
+ * sull'arricchimento — "certo devono essere sempre salvati e non si devono
+ * perdere dati"):
+ *   1  ogni lotto elaborato finisce su un giornale di bordo su disco PRIMA di
+ *      toccare il database. L'URL dell'articolo e' la chiave di deduplicazione:
+ *      un articolo gia' in market_rumors non viene ririchiesto all'IA
+ *   2  la scrittura avviene FONTE PER FONTE, non tutta insieme a fine corsa:
+ *      se una fonte successiva fallisce o il tempo scade, quanto raccolto
+ *      dalle fonti gia' completate e' gia' al sicuro nel database
+ *   3  TIME_BUDGET_MS: stesso guardrail collaudato in apollo-enrichment-
+ *      agent.js/extract-ta-agent.js/core-prodotti-giornaliero.mjs — il ciclo
+ *      si ferma DA SOLO ben prima del limite di 60s della funzione serverless
+ *      Vercel, invece di farsi uccidere a meta' lavoro (FUNCTION_INVOCATION_
+ *      TIMEOUT, osservato su altre 2 pipeline l'11-13/09/2026)
+ *
+ * Le credenziali arrivano da process.env (dotenv in locale, variabili
+ * d'ambiente Vercel in produzione) — MAI piu' lette da index.html: quel
+ * trucco funzionava solo in locale e avrebbe reso questo script inutilizzabile
+ * come funzione serverless (il file potrebbe non essere incluso nel bundle).
  */
 
 import { readFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', D = '\x1b[2m', B = '\x1b[1m', Z = '\x1b[0m';
 
-const APPLY = process.argv.includes('--apply');
-const N_PER_FONTE = Number((process.argv.find((a) => a.startsWith('--n=')) || '').slice(4)) || 9999;
-const SOLO = ((process.argv.find((a) => a.startsWith('--solo=')) || '').slice(7) || '')
-  .split(',').map((s) => s.trim()).filter(Boolean);
-const DUMP = join(ROOT, 'dati-passate', `market-rumors-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.jsonl`);
+const MISTRAL = process.env.MISTRAL_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+// Non e' un segreto (e' solo il percorso del modello), nessun bisogno di
+// farlo viaggiare come variabile d'ambiente — stesso valore gia' in uso lato
+// browser (GEMINI_URL in index.html).
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent';
 
-const env = (n) => (readFileSync(join(ROOT, '.env'), 'utf8').match(new RegExp('^\\s*' + n + '=(.*)$', 'm')) || [])[1]?.trim();
-const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-const ANON = html.match(/eyJhbGciOiJIUzI1NiIs[A-Za-z0-9_.-]{40,}/)[0];
-const MISTRAL = (html.match(/const MISTRAL_API_KEY='([^']+)'/) || [])[1];
-const GEMINI_KEY = (html.match(/const GEMINI_API_KEY='([^']+)'/) || [])[1];
-const GEMINI_URL = (html.match(/const GEMINI_URL='([^']+)'/) || [])[1];
-const SERVICE = env('SUPABASE_SERVICE_ROLE_KEY');
-const SB = (env('SUPABASE_URL') || '').replace(/\/+$/, '') + '/rest/v1';
-
-async function sb(path, init = {}) {
-  const k = init.method && init.method !== 'GET' ? SERVICE : ANON;
-  const r = await fetch(`${SB}/${path}`, { ...init, headers: { apikey: k, Authorization: 'Bearer ' + k, 'Content-Type': 'application/json', ...(init.headers || {}) } });
-  if (!r.ok) throw new Error(`HTTP ${r.status} ${path}: ${(await r.text()).slice(0, 200)}`);
-  const t = await r.text();
-  return t ? JSON.parse(t) : null;
-}
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// Rete di sicurezza vera per la corsa serverless: si ferma DA SOLO ben prima
+// del limite reale di 60s, qualunque esso sia — stesso principio gia'
+// collaudato nelle altre 3 pipeline corrette il 13/09/2026.
+const TIME_BUDGET_MS = 45000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FONTI
 // ─────────────────────────────────────────────────────────────────────────────
-const FONTI = [
+const TUTTE_LE_FONTI = [
   { nome: 'MedTech Dive', feed: 'https://www.medtechdive.com/feeds/news/', lingua: 'en' },
   { nome: 'AboutPharma', feed: 'https://www.aboutpharma.com/feed/', lingua: 'it' },
   { nome: 'Farmacista33', feed: 'https://www.farmacista33.it/rss.xml', lingua: 'it' },
   { nome: 'Confindustria Dispositivi Medici', feed: 'https://www.confindustriadm.it/comunicati-stampa/feed/', lingua: 'it' },
   { nome: 'Fierce Pharma', feed: 'https://www.fiercepharma.com/rss/xml', lingua: 'en' },
-  { nome: 'Pharmaceutical Technology', feed: 'https://www.pharmaceutical-technology.com/feed/', lingua: 'en' },
+  // Pharmaceutical Technology ESCLUSO il 13/09/2026: funzionava il 12/09,
+  // ora il sito risponde 403 con Datadome attivo (x-datadome:'protected') —
+  // una vera protezione anti-bot comportamentale, non un semplice controllo
+  // di User-Agent come gli altri. Non e' un caso da aggirare con un fetch:
+  // se torna raggiungibile in futuro va rivalutato, non forzato.
   { nome: 'HealthTech360', feed: 'https://www.healthtech360.it/feed/', lingua: 'it' },
   // tipo:'html_farmindustria' — non e' un feed RSS, e' la pagina statica dei
   // comunicati: gestita a parte piu' sotto (parseFarmindustria), non da parseRss.
   { nome: 'Farmindustria', feed: 'https://www.farmindustria.it/documenticategory/comunicati/', lingua: 'it', tipo: 'html_farmindustria' },
-].filter((f) => !SOLO.length || SOLO.includes(f.nome));
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCARICO E PARSING (nessuna libreria XML: stesso stile leggero gia' in uso
@@ -225,6 +244,7 @@ Rispondi SOLO con questo JSON, per OGNI articolo (mai un campo vuoto senza motiv
  "prova":"frase esatta"}`;
 
 async function estraiMistral(utente) {
+  if (!MISTRAL) throw new Error('MISTRAL_API_KEY non configurata');
   let ultimoStato = 0;
   for (let t = 0; t < 3; t++) {
     if (t > 0) await new Promise((ok) => setTimeout(ok, 1300 * 2 ** t));
@@ -248,6 +268,7 @@ async function estraiMistral(utente) {
 // JSON nel prompt e si ripulisce l'eventuale recinto ```json, stesso schema
 // gia' in uso lato browser (callAIPowerful/planReportFromPrompt).
 async function estraiGemini(utente) {
+  if (!GEMINI_KEY) throw new Error('GEMINI_API_KEY non configurata');
   const r = await fetch(GEMINI_URL + '?key=' + GEMINI_KEY, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -288,122 +309,165 @@ async function risolviAzienda(nome, cache) {
   if (chiave.length < 3) { cache.set(chiave, null); return null; }
   let id = null;
   try {
-    const righe = await sb(`companies?select=id,name&is_active=eq.true&merged_into=is.null&name=ilike.*${encodeURIComponent(nome.trim())}*&limit=5`);
-    if (righe.length) id = righe[0].id;
+    const { data, error } = await supabase.from('companies').select('id,name')
+      .eq('is_active', true).is('merged_into', null)
+      .ilike('name', `%${nome.trim()}%`).limit(5);
+    if (!error && data?.length) id = data[0].id;
   } catch { /* un errore di rete sulla singola ricerca non deve fermare il lotto */ }
   cache.set(chiave, id);
   return id;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CORSA
+// CORSA — esportata per l'uso da cron (Vercel) e da CLI (locale)
 // ─────────────────────────────────────────────────────────────────────────────
-mkdirSync(dirname(DUMP), { recursive: true });
-console.log(`\n${B}Market Rumors · ingestione da fonti esterne${Z}`);
-console.log(`${D}fonti: ${FONTI.map((f) => f.nome).join(', ')}${Z}`);
-console.log(`${D}${APPLY ? 'SCRIVE' : 'solo misura'} · max ${N_PER_FONTE} per fonte · costo: 0,00 $ · giornale di bordo: ${DUMP}${Z}\n`);
+async function runMarketRumorsDailyBatch(opts = {}) {
+  const apply = opts.apply !== false; // il cron scrive sempre; il CLI decide con --apply
+  const nPerFonte = opts.nPerFonte || 9999;
+  const soloNomi = opts.solo || [];
+  const dump = opts.dumpPath || join(ROOT, 'dati-passate', `market-rumors-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.jsonl`);
 
-const urlGiaNoti = new Set((await sb('market_rumors?select=url&limit=5000')).map((r) => r.url));
-console.log(`${D}${urlGiaNoti.size} articoli gia' registrati (non ririchiesti all'IA)${Z}\n`);
+  const log = [];
+  const push = (m) => { console.log(m); log.push(m); };
 
-const cacheAziende = new Map();
-const daScrivere = [];
-let totNuovi = 0, totRilevanti = 0, totScartatiProva = 0, totNonRilevanti = 0, totErrori = 0;
+  const fonti = TUTTE_LE_FONTI.filter((f) => !soloNomi.length || soloNomi.includes(f.nome));
 
-for (const fonte of FONTI) {
-  process.stdout.write(`${B}${fonte.nome}${Z} `);
-  const xml = await scarica(fonte.feed);
-  if (!xml) { console.log(`${R}pagina/feed non raggiungibile${Z}`); continue; }
-  const items = (fonte.tipo === 'html_farmindustria' ? parseFarmindustria(xml, fonte.feed) : parseRss(xml)).slice(0, N_PER_FONTE);
-  const nuovi = items.filter((it) => !urlGiaNoti.has(it.link));
-  console.log(`${D}${items.length} nel feed, ${nuovi.length} nuovi${Z}`);
+  push(`Market Rumors · ingestione da fonti esterne — ${new Date().toISOString()}`);
+  push(`fonti: ${fonti.map((f) => f.nome).join(', ')}`);
+  push(`${apply ? 'SCRIVE' : 'solo misura'} · max ${nPerFonte} per fonte · costo: 0,00 $`);
 
-  for (const it of nuovi) {
-    process.stdout.write(`  ${D}▸${Z} ${it.titolo.slice(0, 60).padEnd(62)}`);
-    try {
-      // Preferisci il contenuto completo gia' incluso nel feed (content:encoded,
-      // es. AboutPharma) — zero fetch aggiuntivi. Altrimenti scarica la pagina.
-      let testo = soloTesto(it.contentEncoded || '');
-      if (testo.length < 300) {
-        const pagina = await scarica(it.link);
-        if (pagina) testo = soloTesto(pagina).slice(0, 8000);
+  const { data: notiRows, error: notiErr } = await supabase.from('market_rumors').select('url').limit(5000);
+  if (notiErr) throw new Error('lettura market_rumors fallita: ' + notiErr.message);
+  const urlGiaNoti = new Set((notiRows || []).map((r) => r.url));
+  push(`${urlGiaNoti.size} articoli gia' registrati (non ririchiesti all'IA)`);
+
+  mkdirSync(dirname(dump), { recursive: true });
+
+  const cacheAziende = new Map();
+  let totNuovi = 0, totRilevanti = 0, totNonRilevanti = 0, totScartatiProva = 0, totErrori = 0, totScritti = 0;
+  const inizio = Date.now();
+  let timeBudgetExceeded = false;
+
+  for (const fonte of fonti) {
+    if (Date.now() - inizio > TIME_BUDGET_MS) {
+      timeBudgetExceeded = true;
+      push(`⏱️ Budget di tempo esaurito (${TIME_BUDGET_MS}ms) — fonti restanti riprendono al prossimo run.`);
+      break;
+    }
+    const daScrivereFonte = [];
+    const xml = await scarica(fonte.feed);
+    if (!xml) { push(`${fonte.nome}: pagina/feed non raggiungibile`); continue; }
+    const items = (fonte.tipo === 'html_farmindustria' ? parseFarmindustria(xml, fonte.feed) : parseRss(xml)).slice(0, nPerFonte);
+    const nuovi = items.filter((it) => !urlGiaNoti.has(it.link));
+    push(`${fonte.nome}: ${items.length} nel feed, ${nuovi.length} nuovi`);
+
+    for (const it of nuovi) {
+      if (Date.now() - inizio > TIME_BUDGET_MS) {
+        timeBudgetExceeded = true;
+        push(`⏱️ Budget di tempo esaurito (${TIME_BUDGET_MS}ms) durante "${fonte.nome}" — il resto riprende al prossimo run.`);
+        break;
       }
-      if (testo.length < 200) {
-        testo = soloTesto(it.description || '');
+      try {
+        // Preferisci il contenuto completo gia' incluso nel feed (content:encoded,
+        // es. AboutPharma) — zero fetch aggiuntivi. Altrimenti scarica la pagina.
+        let testo = soloTesto(it.contentEncoded || '');
+        if (testo.length < 300) {
+          const pagina = await scarica(it.link);
+          if (pagina) testo = soloTesto(pagina).slice(0, 8000);
+        }
+        if (testo.length < 200) testo = soloTesto(it.description || '');
+        if (testo.length < 150) { push(`   ⬜ "${it.titolo.slice(0, 60)}" — testo insufficiente`); continue; }
+
+        // "rilevante" e' solo un'etichetta per filtrare in app, MAI un motivo
+        // per scartare qui — richiesto da Mauro il 12/09/2026: "voglio capire
+        // su che base decidi di scartare alcuni rumors, non ti ho dato
+        // indicazione di questo tipo". Chi decide cosa vedere e' chi legge.
+        const out = await estrai(it.titolo, testo);
+        const rilevante = out.rilevante !== false;
+
+        const tipo = TIPI_SEGNALE.includes(out.tipo_segnale) ? out.tipo_segnale : 'altro';
+        const sintesi = String(out.sintesi || '').trim();
+        const prova = String(out.prova || '').trim();
+        // Questa verifica invece resta un cancello vero: non e' un giudizio di
+        // interesse, e' la garanzia anti-invenzione gia' in uso in tutta l'app
+        // (company_facts, company_therapeutic_areas...) — una citazione che non
+        // esiste davvero nel testo scaricato non e' un dato affidabile, a
+        // prescindere da quanto l'articolo sia rilevante o meno.
+        if (!sintesi || prova.length < 15 || !compatta(testo).includes(compatta(prova).slice(0, 50))) {
+          totScartatiProva++; push(`   ⚠️ "${it.titolo.slice(0, 60)}" — scartato: prova non verificata nel testo`); continue;
+        }
+
+        const nomiAziende = Array.isArray(out.aziende_menzionate) ? out.aziende_menzionate.slice(0, 5) : [];
+        const idRisolti = [];
+        for (const nome of nomiAziende) {
+          const id = await risolviAzienda(String(nome || ''), cacheAziende);
+          if (id && !idRisolti.includes(id)) idRisolti.push(id);
+        }
+
+        let pubblicatoIl = null;
+        if (it.pubDate) { const d = new Date(it.pubDate); if (!isNaN(d)) pubblicatoIl = d.toISOString(); }
+
+        daScrivereFonte.push({
+          fonte: fonte.nome, fonte_url: fonte.feed, titolo: it.titolo, sintesi,
+          url: it.link, prova: prova.slice(0, 500), tipo_segnale: tipo, lingua: fonte.lingua,
+          pubblicato_il: pubblicatoIl, company_id_principale: idRisolti[0] || null,
+          companies_menzionate: idRisolti, worker: 'mistral-small-latest', rilevante,
+        });
+        urlGiaNoti.add(it.link);
+        totNuovi++;
+        if (rilevante) totRilevanti++; else totNonRilevanti++;
+        push(`   ✅ "${it.titolo.slice(0, 60)}" → ${tipo}${rilevante ? '' : ' (non rilevante)'}${idRisolti.length ? ` · ${idRisolti.length} aziende risolte` : ''}`);
+      } catch (e) {
+        totErrori++;
+        push(`   ❌ "${it.titolo.slice(0, 60)}" — errore: ${String(e.message || e).slice(0, 100)}`);
       }
-      if (testo.length < 150) { console.log(`${Y}testo insufficiente${Z}`); continue; }
+    }
 
-      // "rilevante" e' solo un'etichetta per filtrare in app, MAI un motivo
-      // per scartare qui — richiesto da Mauro il 12/09/2026: "voglio capire
-      // su che base decidi di scartare alcuni rumors, non ti ho dato
-      // indicazione di questo tipo". Chi decide cosa vedere e' chi legge.
-      const out = await estrai(it.titolo, testo);
-      const rilevante = out.rilevante !== false;
-
-      const tipo = TIPI_SEGNALE.includes(out.tipo_segnale) ? out.tipo_segnale : 'altro';
-      const sintesi = String(out.sintesi || '').trim();
-      const prova = String(out.prova || '').trim();
-      // Questa verifica invece resta un cancello vero: non e' un giudizio di
-      // interesse, e' la garanzia anti-invenzione gia' in uso in tutta l'app
-      // (company_facts, company_therapeutic_areas...) — una citazione che non
-      // esiste davvero nel testo scaricato non e' un dato affidabile, a
-      // prescindere da quanto l'articolo sia rilevante o meno.
-      if (!sintesi || prova.length < 15 || !compatta(testo).includes(compatta(prova).slice(0, 50))) {
-        totScartatiProva++; console.log(`${Y}scartato: prova non verificata nel testo${Z}`); continue;
+    // Scrittura FONTE PER FONTE (13/09/2026, "non si devono perdere dati"):
+    // prima si scriveva tutto insieme a fine corsa — un timeout a meta' avrebbe
+    // perso anche il lavoro delle fonti gia' completate. Giornale di bordo su
+    // disco PRIMA del database, come ovunque altro nella famiglia CORE.
+    if (daScrivereFonte.length) {
+      appendFileSync(dump, daScrivereFonte.map((r) => JSON.stringify(r)).join('\n') + '\n');
+      if (apply) {
+        const { error } = await supabase.from('market_rumors').upsert(daScrivereFonte, { onConflict: 'url', ignoreDuplicates: false });
+        if (error) push(`   ❌ errore scrittura "${fonte.nome}": ${error.message}`);
+        else totScritti += daScrivereFonte.length;
       }
-
-      const nomiAziende = Array.isArray(out.aziende_menzionate) ? out.aziende_menzionate.slice(0, 5) : [];
-      const idRisolti = [];
-      for (const nome of nomiAziende) {
-        const id = await risolviAzienda(String(nome || ''), cacheAziende);
-        if (id && !idRisolti.includes(id)) idRisolti.push(id);
-      }
-
-      let pubblicatoIl = null;
-      if (it.pubDate) { const d = new Date(it.pubDate); if (!isNaN(d)) pubblicatoIl = d.toISOString(); }
-
-      const riga = {
-        fonte: fonte.nome, fonte_url: fonte.feed, titolo: it.titolo, sintesi,
-        url: it.link, prova: prova.slice(0, 500), tipo_segnale: tipo, lingua: fonte.lingua,
-        pubblicato_il: pubblicatoIl, company_id_principale: idRisolti[0] || null,
-        companies_menzionate: idRisolti, worker: 'mistral-small-latest', rilevante,
-      };
-      daScrivere.push(riga);
-      urlGiaNoti.add(it.link);
-      totNuovi++;
-      if (rilevante) totRilevanti++; else totNonRilevanti++;
-      console.log(`${rilevante ? G : D}${tipo}${rilevante ? '' : ' (non rilevante)'}${Z}${idRisolti.length ? ` · ${idRisolti.length} aziende risolte` : ''}`);
-    } catch (e) {
-      totErrori++;
-      console.log(`${R}errore: ${String(e.message || e).slice(0, 80)}${Z}`);
     }
   }
+
+  const summary = {
+    nuoviValutati: totNuovi + totScartatiProva + totErrori,
+    salvati: totNuovi, rilevanti: totRilevanti, nonRilevanti: totNonRilevanti,
+    scartatiProva: totScartatiProva, errori: totErrori, timeBudgetExceeded,
+    scritti: apply ? totScritti : 0,
+  };
+  push(`RISULTATO: ${JSON.stringify(summary)}`);
+  return { summary, log };
 }
 
-if (daScrivere.length) {
-  appendFileSync(DUMP, daScrivere.map((r) => JSON.stringify(r)).join('\n') + '\n');
-}
+export { runMarketRumorsDailyBatch };
 
-console.log(`\n${B}Riepilogo${Z}`);
-console.log(`  nuovi articoli valutati: ${totNuovi + totScartatiProva + totErrori}`);
-console.log(`  salvati: ${G}${totNuovi}${Z} (di cui rilevanti: ${totRilevanti}, non rilevanti: ${totNonRilevanti}) · scartati per citazione non verificata: ${totScartatiProva} · errori: ${totErrori}`);
+// ─────────────────────────────────────────────────────────────────────────────
+// CLI — invariato nell'uso, ora e' solo il chiamante della funzione esportata
+// ─────────────────────────────────────────────────────────────────────────────
+const isCLI = process.argv[1] && process.argv[1].replace(/\\/g, '/').includes('market-rumors-giornaliero.mjs');
+if (isCLI) {
+  const apply = process.argv.includes('--apply');
+  const nPerFonte = Number((process.argv.find((a) => a.startsWith('--n=')) || '').slice(4)) || 9999;
+  const solo = ((process.argv.find((a) => a.startsWith('--solo=')) || '').slice(7) || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
 
-if (!APPLY) {
-  console.log(`\n${Y}solo misura — nessuna scrittura. Rilancia con --apply per salvare.${Z}\n`);
-  process.exit(0);
+  runMarketRumorsDailyBatch({ apply, nPerFonte, solo }).then(({ summary }) => {
+    console.log(`\n${B}Riepilogo${Z}`);
+    console.log(`  nuovi articoli valutati: ${summary.nuoviValutati}`);
+    console.log(`  salvati: ${G}${summary.salvati}${Z} (di cui rilevanti: ${summary.rilevanti}, non rilevanti: ${summary.nonRilevanti}) · scartati per citazione non verificata: ${summary.scartatiProva} · errori: ${summary.errori}`);
+    if (summary.timeBudgetExceeded) console.log(`${Y}⏱️ budget di tempo esaurito — corsa parziale, il resto riprende al prossimo run${Z}`);
+    if (!apply) console.log(`\n${Y}solo misura — nessuna scrittura. Rilancia con --apply per salvare.${Z}\n`);
+    else console.log(`\n${G}scritti ${summary.scritti} nuovi rumor su market_rumors${Z}\n`);
+  }).catch((e) => {
+    console.error(`${R}❌ ERRORE TOP-LEVEL: ${e.message}${Z}`);
+    process.exit(1);
+  });
 }
-
-let scritti = 0;
-for (let i = 0; i < daScrivere.length; i += 50) {
-  const lotto = daScrivere.slice(i, i + 50);
-  try {
-    await sb('market_rumors?on_conflict=url', {
-      method: 'POST', headers: { Prefer: 'return=minimal,resolution=merge-duplicates' },
-      body: JSON.stringify(lotto),
-    });
-    scritti += lotto.length;
-  } catch (e) {
-    console.log(`${R}errore scrittura lotto: ${e.message}${Z}`);
-  }
-}
-console.log(`\n${G}scritti ${scritti} nuovi rumor su market_rumors${Z}\n`);
