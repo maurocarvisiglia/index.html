@@ -21,15 +21,25 @@
  *   un semplice controllo User-Agent) — 403 su ogni fetch semplice. Non si
  *   tenta di aggirarlo: se in futuro torna raggiungibile va rivalutato.
  *
- *   Farmindustria e' l'ottava, ma diversa dalle altre: il suo feed RSS e' fermo
- *   al 2021 (la sezione comunicati usa un post-type WordPress non esposto ne'
- *   in RSS ne' nella REST API standard) — verificato con fetch reale il
- *   12/09/2026 che la pagina https://www.farmindustria.it/documenticategory/
- *   comunicati/ e' pero' HTML statico con gli ultimi comunicati per intero
- *   (non serve un fetch separato per articolo). Manca pero' un permalink
- *   singolo per comunicato: l'URL salvato e' la pagina reale + un'ancora
- *   sintetica (data+titolo), non un link diretto al solo comunicato — l'unico
- *   compromesso possibile dato che il sito non ne pubblica uno.
+ *   Farmindustria e' la settima, ma diversa dalle altre: il suo feed RSS e'
+ *   fermo al 2021 (la sezione comunicati usa un post-type WordPress non
+ *   esposto ne' in RSS ne' nella REST API standard) — verificato con fetch
+ *   reale il 12/09/2026 che la pagina https://www.farmindustria.it/
+ *   documenticategory/comunicati/ e' pero' HTML statico con gli ultimi
+ *   comunicati per intero (non serve un fetch separato per articolo). Manca
+ *   pero' un permalink singolo per comunicato: l'URL salvato e' la pagina
+ *   reale + un'ancora sintetica (data+titolo), non un link diretto al solo
+ *   comunicato — l'unico compromesso possibile dato che il sito non ne
+ *   pubblica uno.
+ *
+ *   Egualia e' l'ottava (aggiunta 14/09/2026, su richiesta di Mauro di
+ *   valutare fonti aggiuntive per il mercato dei farmaci equivalenti/
+ *   biosimilari): stesso caso di Farmindustria (Joomla, nessun feed RSS
+ *   pubblico — verificato con fetch reale), ma qui esiste un permalink reale
+ *   per ogni notizia (egualia.it/it/notizie/<id>-<slug>.html), quindi si legge
+ *   solo titolo/data/link dall'elenco e il testo lo scarica il ciclo
+ *   principale dalla pagina singola — stesso fallback gia' usato per le
+ *   fonti RSS con descrizione troppo corta (es. MedTech Dive).
  *
  * COSTO: ZERO. Stesso schema di core-recupero-gratuito.mjs: fetch gratuito
  * (RSS + pagina articolo), estrazione sul piano gratuito Mistral, con Gemini
@@ -113,6 +123,10 @@ const TUTTE_LE_FONTI = [
   // tipo:'html_farmindustria' — non e' un feed RSS, e' la pagina statica dei
   // comunicati: gestita a parte piu' sotto (parseFarmindustria), non da parseRss.
   { nome: 'Farmindustria', feed: 'https://www.farmindustria.it/documenticategory/comunicati/', lingua: 'it', tipo: 'html_farmindustria' },
+  // tipo:'html_egualia' — Joomla, nessun feed RSS pubblico, ma con permalink
+  // reale per notizia (parseEgualia legge solo l'elenco, il testo arriva dal
+  // fetch della pagina singola nel ciclo principale).
+  { nome: 'Egualia', feed: 'https://www.egualia.it/it/notizie.html', lingua: 'it', tipo: 'html_egualia' },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -214,6 +228,26 @@ function parseFarmindustria(html, paginaUrl) {
 
     const link = `${paginaUrl}#${slug(date[i])}-${slug(titolo)}`;
     items.push({ titolo, link, pubDate, contentEncoded: corpo, description: '' });
+  }
+  return items;
+}
+
+// Pagina elenco notizie Egualia (Joomla, com-content-category-blog): niente
+// feed RSS (verificato il 14/09/2026), ma a differenza di Farmindustria ogni
+// notizia ha un permalink reale — si estrae solo titolo/data/link, il testo
+// completo lo scarica il ciclo principale dalla pagina singola.
+function parseEgualia(html, paginaUrl) {
+  const base = new URL(paginaUrl).origin;
+  const blocchi = html.split(/<div class="com-content-category-blog__item\b/i).slice(1);
+  const items = [];
+  for (const blocco of blocchi) {
+    const titolo = soloTesto((blocco.match(/<h2>\s*([\s\S]*?)\s*<\/h2>/i) || [])[1] || '').trim();
+    const href = (blocco.match(/<a[^>]+href="([^"]+)"[^>]*aria-label="Leggi tutto/i) || [])[1] || '';
+    const dataIso = (blocco.match(/<time datetime="([^"]+)"/i) || [])[1] || '';
+    if (!titolo || !href) continue;
+    const link = href.startsWith('http') ? href : base + href;
+    const d = dataIso ? new Date(dataIso) : null;
+    items.push({ titolo, link, pubDate: d && !isNaN(d) ? d.toUTCString() : '', contentEncoded: '', description: '' });
   }
   return items;
 }
@@ -367,7 +401,9 @@ async function runMarketRumorsDailyBatch(opts = {}) {
     const daScrivereFonte = [];
     const xml = await scarica(fonte.feed);
     if (!xml) { push(`${fonte.nome}: pagina/feed non raggiungibile`); continue; }
-    const items = (fonte.tipo === 'html_farmindustria' ? parseFarmindustria(xml, fonte.feed) : parseRss(xml)).slice(0, nPerFonte);
+    const items = (fonte.tipo === 'html_farmindustria' ? parseFarmindustria(xml, fonte.feed)
+      : fonte.tipo === 'html_egualia' ? parseEgualia(xml, fonte.feed)
+      : parseRss(xml)).slice(0, nPerFonte);
     const nuovi = items.filter((it) => !urlGiaNoti.has(it.link));
     push(`${fonte.nome}: ${items.length} nel feed, ${nuovi.length} nuovi`);
 
