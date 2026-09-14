@@ -3135,6 +3135,22 @@ async function fetchListingsForReportFilters(filters){
       return r.toLowerCase().includes(target);
     });
   }
+  // Esclusione aziende per nome (richiesto da Mauro il 14/09/2026 dopo che Solenis/
+  // Synlab restavano nel report "Area Manager" nonostante la richiesta esplicita di
+  // escluderli: non esisteva ALCUN modo di escludere un'azienda da un report — la
+  // blocklist aziende agisce solo sulla creazione di nuove aziende in fase di
+  // import, mai su un report gia' generato. Lato client come "region" sopra: il
+  // nome commerciale (company_name) e la ragione sociale non coincidono sempre,
+  // quindi si controllano entrambi. Sostantivo/aggettivo parziale basta (ilike),
+  // stessa logica di inclusione gia' usata per "company".
+  if(filters.excluded_companies&&filters.excluded_companies.length){
+    const escludi=filters.excluded_companies.map(c=>c.toLowerCase());
+    listings=listings.filter(l=>{
+      const nome=(l.company_name||'').toLowerCase();
+      const ragione=(l.ragione_sociale||'').toLowerCase();
+      return !escludi.some(c=>nome.includes(c)||ragione.includes(c));
+    });
+  }
   if(truncated)listings._truncated=MAX_ROWS;
   return listings;
 }
@@ -3180,6 +3196,7 @@ che lo hanno nel database: sono gli UNICI valori esistenti, non usarne altri.
 - seniority_v2_exclude: array di zero o piu' valori dalla stessa lista di seniority_v2, da ESCLUDERE dal campione — usa questo campo (mai seniority_v2) quando la richiesta dice "escludi/senza/tranne/tutti tranne X" riferito alla seniority (es. "escludi i Manager" -> seniority_v2_exclude:["manager"]). seniority_v2 e seniority_v2_exclude sono alternativi: non impostarli entrambi sulla stessa entita' a meno che la richiesta non lo richieda esplicitamente (es. "solo senior, escludi i director" e' un caso limite raro).
 - contract_type: uno tra ${fmtVals('contract_type')}
 - company: nome azienda (testo libero, null se non specificato)
+- excluded_companies: array di nomi azienda (testo libero) da ESCLUDERE dal campione — usa questo campo (mai "company", che invece INCLUDE solo quell'azienda) quando la richiesta dice "escludi/senza/tranne l'azienda X" riferito a una o piu' aziende specifiche per nome (es. "escludi Solenis e Synlab dal report" -> excluded_companies:["Solenis","Synlab"]). Array vuoto se la richiesta non nomina esplicitamente aziende da escludere.
 - region: nome regione italiana (testo libero, null se non specificato)
 - date_from / date_to: date in formato YYYY-MM-DD per limitare il periodo degli annunci. Traduci le espressioni relative usando la DATA DI OGGI sopra: "ultimi 3 mesi" -> date_from = oggi meno 3 mesi, "da giugno" -> date_from = primo giugno dell'anno corrente, "nel 2026" -> date_from=2026-01-01 e date_to=2026-12-31. ATTENZIONE: lascia ENTRAMBI a null a meno che la richiesta contenga un riferimento temporale ESPLICITO (una data, un mese, un anno, o espressioni come "ultimi N mesi", "recenti", "quest'anno"). Non dedurre un periodo dal fatto che i dati siano recenti e non usare mai la data di oggi come date_from di default: un filtro temporale non richiesto riduce il campione senza che l'utente lo sappia.
 
@@ -3203,7 +3220,7 @@ Rispondi SOLO con questo JSON, nessun altro testo:
 {
   "title": "<titolo breve e descrittivo del report>",
   "mode": "single oppure comparison",
-  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"seniority_v2_exclude":[],"contract_type":null,"company":null,"region":null,"date_from":null,"date_to":null}}],
+  "entities": [{"label":"<nome leggibile>","filters":{"canonical_role":null,"functional_area":null,"sector_v2":null,"therapeutic_area":null,"seniority_v2":null,"seniority_v2_exclude":[],"contract_type":null,"company":null,"excluded_companies":[],"region":null,"date_from":null,"date_to":null}}],
   "sections": ["<sottoinsieme di: seniority_mix, therapeutic_area_mix, geo_mix, contract_type_mix>"],
   "primary_focus": "<una delle sezioni sopra se la richiesta ha un focus esplicito, altrimenti null>"
 }`;
@@ -3251,6 +3268,11 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   const rolesByLengthDesc=roleNames.slice().sort((a,b)=>b.length-a.length);
   plan.entities.forEach(e=>{
     if(!e.filters)e.filters={};
+    // Testo libero come "company": nessuna lista chiusa da validare, solo la
+    // forma (array di stringhe non vuote) — un valore malformato viene scartato
+    // invece di rompere silenziosamente il filtro sotto.
+    if(!Array.isArray(e.filters.excluded_companies))e.filters.excluded_companies=[];
+    else e.filters.excluded_companies=e.filters.excluded_companies.filter(c=>typeof c==='string'&&c.trim()).map(c=>c.trim());
     if(e.filters.canonical_role&&!validRoles.has(e.filters.canonical_role)){
       console.warn('planReportFromPrompt: ruolo non valido scartato:',e.filters.canonical_role);
       e.filters.canonical_role=null;
@@ -3402,7 +3424,7 @@ function computeRalBySeniority(listings){
   // 113k in una riga "Senior Specialist" con MAX RAL aggregato dichiarato a
   // 31k nello stesso report — la tabella non poteva mostrare un dato che il
   // resto del report aveva gia' escluso come non rappresentativo.
-  const{kept,excludedCount}=filterRalOutlierListings(listings);
+  const{kept,excludedCount,excludedLowCount,excludedHighCount}=filterRalOutlierListings(listings);
   // Per segnalare SU QUALE livello e' caduta l'esclusione (non solo un
   // conteggio totale in fondo alla tabella) — richiesto da Mauro il
   // 10/09/2026: "va segnalato che un caso e' fuori scala e quindi escluso
@@ -3450,7 +3472,7 @@ function computeRalBySeniority(listings){
       avg: Math.round(rals.reduce((a, b) => a + b, 0) / rals.length)
     };
   });
-  return {stats, excludedCount, excludedBySen};
+  return {stats, excludedCount, excludedLowCount, excludedHighCount, excludedBySen};
 }
 
 // Un annuncio per provincia con stesso titolo/RAL non e' una decisione retributiva
@@ -3477,10 +3499,11 @@ function computePricingDecisions(listings){
 // bucket basso) e' esattamente l'informazione che l'istogramma deve mostrare.
 function computeRalHistogram(listings){
   // Esclude prima gli outlier statistici (IQR) — un singolo valore anomalo non deve
-  // dettare il range dell'intero grafico. Il conteggio escluso resta tracciato.
-  const{kept,excludedCount}=filterRalOutlierListings(listings);
+  // dettare il range dell'intero grafico. Il conteggio escluso resta tracciato,
+  // separato per direzione (troppo basso/troppo alto).
+  const{kept,excludedCount,excludedLowCount,excludedHighCount}=filterRalOutlierListings(listings);
   const vals=kept.map(l=>l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));
-  if(!vals.length)return{buckets:[],total:0,excludedCount};
+  if(!vals.length)return{buckets:[],total:0,excludedCount,excludedLowCount,excludedHighCount};
 
   // Numero di bucket adattivo (target ~10) invece di una larghezza fissa: con gli
   // outlier gia' rimossi il range e' contenuto, ma restiamo adattivi per ogni campione.
@@ -3496,7 +3519,7 @@ function computeRalHistogram(listings){
   for(let b=min;b<max;b+=bucketSize){
     buckets.push({from:b,to:b+bucketSize,count:vals.filter(v=>v>=b&&v<b+bucketSize).length});
   }
-  return{buckets,total:vals.length,excludedCount};
+  return{buckets,total:vals.length,excludedCount,excludedLowCount,excludedHighCount};
 }
 
 // Segmentazione in fasce retributive: individua i salti (gap) piu' ampi nella
@@ -3541,7 +3564,7 @@ function computeRalByCompany(listings,maxCompanies){
   maxCompanies=maxCompanies||10;
   // Stesso filtro IQR dell'istogramma: un'azienda con un solo annuncio a RAL
   // anomala non deve dominare la scala del grafico a scapito di tutte le altre.
-  const{kept,excludedCount}=filterRalOutlierListings(listings);
+  const{kept,excludedCount,excludedLowCount,excludedHighCount}=filterRalOutlierListings(listings);
   const byCo={};
   kept.forEach(l=>{
     const ral=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
@@ -3555,7 +3578,7 @@ function computeRalByCompany(listings,maxCompanies){
   if(rows.length>maxCompanies){
     rows=rows.sort((a,b)=>b.count-a.count).slice(0,maxCompanies);
   }
-  return{rows:rows.sort((a,b)=>a.median-b.median),excludedCount};
+  return{rows:rows.sort((a,b)=>a.median-b.median),excludedCount,excludedLowCount,excludedHighCount};
 }
 
 // ── REPORT BUILDER — Step 2: esecuzione deterministica del piano (query + calcoli,
@@ -3580,10 +3603,10 @@ async function executeReportPlan(plan){
 
     // Distribuzioni settori + RAL per seniority + istogramma/fasce RAL + gap analysis
     const sector_distribution = computeSectorDistribution(listings);
-    const{stats:ral_by_seniority,excludedCount:ral_by_seniority_excluded,excludedBySen:ral_by_seniority_excluded_by_level}=computeRalBySeniority(listings);
+    const{stats:ral_by_seniority,excludedCount:ral_by_seniority_excluded,excludedLowCount:ral_by_seniority_excluded_low,excludedHighCount:ral_by_seniority_excluded_high,excludedBySen:ral_by_seniority_excluded_by_level}=computeRalBySeniority(listings);
     const ral_histogram = computeRalHistogram(listings);
     const ral_segments = computeRalSegments(listings);
-    const{rows:ral_by_company,excludedCount:ral_by_company_excluded}=computeRalByCompany(listings);
+    const{rows:ral_by_company,excludedCount:ral_by_company_excluded,excludedLowCount:ral_by_company_excluded_low,excludedHighCount:ral_by_company_excluded_high}=computeRalByCompany(listings);
     const pricing_decisions = computePricingDecisions(listings);
     // Elementi del pacchetto economico (auto aziendale, bonus, LTI, welfare...) —
     // non un toggle opzionale come seniority_mix/geo_mix: e' la stessa categoria
@@ -3599,7 +3622,7 @@ async function executeReportPlan(plan){
     const ral_by_seniority_diversified = benchmark.concentration_flag
       ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company)).stats
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_excluded_by_level,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,pricing_decisions,benefits_mix});
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_excluded_low,ral_by_seniority_excluded_high,ral_by_seniority_excluded_by_level,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,ral_by_company_excluded_low,ral_by_company_excluded_high,pricing_decisions,benefits_mix});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -3729,6 +3752,16 @@ function renderReportHTML(plan,entityResults,narration){
   const SECTION_TITLES={seniority_mix:'Seniority mix',therapeutic_area_mix:'Area terapeutica',geo_mix:'Area geografica',contract_type_mix:'Tipo contratto'};
   const SECTION_COLORS={seniority_mix:DARK,therapeutic_area_mix:TAN,geo_mix:'#8a9bb0',contract_type_mix:'#e8c96a'};
 
+  // Specifica la direzione dell'esclusione IQR quando nota (richiesto da Mauro il
+  // 14/09/2026: un conteggio unico "N esclusi" non diceva se erano troppo bassi o
+  // troppo alti — distinzione che cambia la lettura del dato, es. uno stage
+  // sfuggito alla classificazione seniority vs una posizione executive fuori scala.
+  function direzioneAnomalia(low,high){
+    if(!low&&!high)return '';
+    if(low&&high)return ` (${low} troppo bassi, ${high} troppo alti)`;
+    if(low)return ` (tutti troppo bassi)`;
+    return ` (tutti troppo alti)`;
+  }
   function barRows(mixSection,color){
     if(!mixSection||!mixSection.breakdown||!mixSection.breakdown.length)return '<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>';
     const rows=mixSection.breakdown.slice(0,8);
@@ -3879,7 +3912,7 @@ function renderReportHTML(plan,entityResults,narration){
           <table><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Annunci</th><th style="text-align:right;">P25–P75</th></tr>
             ${rows}
           </table>
-          ${e.ral_by_seniority_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:-10px;">* ${e.ral_by_seniority_excluded} annunci esclusi in totale per RAL statisticamente anomala (metodo IQR) — vedi il livello segnalato sopra</div>`:''}`;
+          ${e.ral_by_seniority_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:-10px;">* ${e.ral_by_seniority_excluded} annunci esclusi in totale per RAL statisticamente anomala (metodo IQR)${direzioneAnomalia(e.ral_by_seniority_excluded_low,e.ral_by_seniority_excluded_high)} — vedi il livello segnalato sopra</div>`:''}`;
       }
     }
 
@@ -3935,11 +3968,11 @@ function renderReportHTML(plan,entityResults,narration){
       ${e.ral_histogram&&e.ral_histogram.buckets&&e.ral_histogram.buckets.length?`
       <div class="section-title" style="margin-top:24px;">Distribuzione RAL (n=${e.ral_histogram.total})</div>
       <div class="chart-box">${histogramChart(e.ral_histogram,b.concentration_flag?b.concentration_flag.company_median_ral:null)}
-      ${e.ral_histogram.excludedCount?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_histogram.excludedCount} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)</div>`:''}</div>`:''}
+      ${e.ral_histogram.excludedCount?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_histogram.excludedCount} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)${direzioneAnomalia(e.ral_histogram.excludedLowCount,e.ral_histogram.excludedHighCount)}</div>`:''}</div>`:''}
       ${e.ral_by_company&&e.ral_by_company.length>1?`
       <div class="section-title" style="margin-top:24px;">RAL per azienda</div>
       <div class="chart-box">${axisBarChart(e.ral_by_company,{colorFn:r=>b.concentration_flag&&r.company===b.concentration_flag.company?TAN:(r.median>=(e.ral_segments&&e.ral_segments.length?e.ral_segments[e.ral_segments.length-1].min:Infinity)?GOLD:DARK)})}
-      ${e.ral_by_company_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_by_company_excluded} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)</div>`:''}</div>`:''}
+      ${e.ral_by_company_excluded?`<div style="font-size:10px;color:#999;font-style:italic;margin-top:6px;">* ${e.ral_by_company_excluded} annunci esclusi dal grafico per RAL statisticamente anomala (metodo IQR)${direzioneAnomalia(e.ral_by_company_excluded_low,e.ral_by_company_excluded_high)}</div>`:''}</div>`:''}
       <div class="section-title">Talent Scarcity</div>
       <div class="chart-box">
         <div class="chart-title">Top datori (${b.n_companies} aziende, top 3 = ${b.top3_share_pct}%)</div>
@@ -4093,6 +4126,13 @@ td.num{text-align:right;font-weight:700;}
     if(!totalExcluded)return '';
     const examples=[...new Set(entityResults.flatMap(e=>e.excludedForeign.map(x=>x.location)))].slice(0,4);
     return `<div style="font-size:11px;color:#aaa;margin-bottom:20px;font-style:italic;">* Esclusi dall'analisi ${totalExcluded} annunci relativi a sedi estere (${examples.join(', ')}${examples.length<[...new Set(entityResults.flatMap(e=>e.excludedForeign.map(x=>x.location)))].length?', ...':''}) — report limitato al mercato Italia.</div>`;
+  })()}
+  ${(()=>{
+    // Trasparenza sulle esclusioni azienda richieste esplicitamente nel prompt —
+    // mai un'azienda tolta in silenzio (stesso principio degli annunci esteri sopra).
+    const escluse=[...new Set(entityResults.flatMap(e=>e.filters&&e.filters.excluded_companies||[]))];
+    if(!escluse.length)return '';
+    return `<div style="font-size:11px;color:#aaa;margin-bottom:20px;font-style:italic;">* Escluse su richiesta: ${escluse.join(', ')}.</div>`;
   })()}
 
   <div class="section-title">Sintesi esecutiva</div>
@@ -7223,14 +7263,21 @@ function filterRalOutlierListings(listings){
     .filter(l=>l.ral_min||l.ral_max)
     .map(l=>({l,v:l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max)}))
     .filter(x=>x.v>=16000&&x.v<=350000);
-  if(withVal.length<6)return{kept:withVal.map(x=>x.l),excludedCount:0};
+  if(withVal.length<6)return{kept:withVal.map(x=>x.l),excludedCount:0,excludedLowCount:0,excludedHighCount:0};
   const sorted=withVal.map(x=>x.v).slice().sort((a,b)=>a-b);
   const q1=sorted[Math.floor(sorted.length*0.25)];
   const q3=sorted[Math.floor(sorted.length*0.75)];
   const iqr=q3-q1;
   const lowerFence=q1-1.5*iqr,upperFence=q3+1.5*iqr;
   const kept=withVal.filter(x=>x.v>=lowerFence&&x.v<=upperFence).map(x=>x.l);
-  return{kept,excludedCount:withVal.length-kept.length};
+  // Direzione dell'esclusione tracciata separatamente (richiesto da Mauro il
+  // 14/09/2026: "facciamo una specifica" per i dati troppo difformi) — un conteggio
+  // unico "N esclusi" non diceva se il mercato aveva outlier verso l'alto o verso
+  // il basso, informazione che cambia la lettura (es. uno stage mal classificato
+  // vs una posizione executive fuori scala sono letture opposte).
+  const excludedLowCount=withVal.filter(x=>x.v<lowerFence).length;
+  const excludedHighCount=withVal.filter(x=>x.v>upperFence).length;
+  return{kept,excludedCount:withVal.length-kept.length,excludedLowCount,excludedHighCount};
 }
 
 /* ═══ REPORT BUILDER — funzioni di analisi generiche, deterministiche, nessuna IA ═══
