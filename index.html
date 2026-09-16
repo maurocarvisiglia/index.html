@@ -9873,6 +9873,11 @@ async function planCompanySearchFromPrompt(userPrompt){
   const fv=await loadCompanySearchFilterValues();
   const fmtVals=f=>(fv[f]||[]).map(x=>`${x.value} (${x.count})`).join(', ')||'nessun valore presente nei dati';
   const tipiCore=CORE_TIPO_ORDINE.map(t=>`${t} = ${CORE_TIPO_LABEL[t]}`).join(', ');
+  // Stessa tassonomia gia' usata dal Report Builder (planReportFromPrompt) —
+  // riusata qui SOLO per il benchmark RAL opzionale nel report concorrenti,
+  // mai per interpretare l'azienda/modalita' della richiesta.
+  await loadTaxonomy();
+  const ruoliValidi=(_taxonomyCache||[]).map(t=>t.canonical_role);
   const planPrompt=`Sei un pianificatore di ricerche aziende per LS Job Intelligence, piattaforma di market intelligence Life Sciences italiana.
 Il tuo compito e' SOLO interpretare la richiesta e tradurla in un piano JSON di filtri su aziende. NON calcoli nulla, NON scrivi testo — solo struttura.
 
@@ -9886,6 +9891,7 @@ FILTRI DISPONIBILI (tutti opzionali, null se non specificati dalla richiesta):
 - gruppo: nome del gruppo aziendale in testo libero se la richiesta lo nomina (es. "Bayer", "Menarini"), altrimenti null
 - core_fact_tipo: uno tra questi (usa la chiave a sinistra dell'uguale, mai l'etichetta): ${tipiCore} — solo se la richiesta chiede esplicitamente una di queste caratteristiche, altrimenti null
 - prodotto_categoria: "principio_attivo" se la richiesta chiede aziende che PRODUCONO una materia prima/principio attivo, "commercializzato" se chiede aziende che vendono farmaci/dispositivi finiti, altrimenti null
+- includi_benchmark_ral_ruolo: SOLO per modalita' "concorrenti" — uno di questi ruoli esatti: ${ruoliValidi.join(', ')} — se la richiesta chiede esplicitamente di aggiungere/includere un benchmark RAL, retributivo o di pacchetto per una figura specifica (es. "concorrenti di Orion, con il benchmark RAL per Medical Science Liaison"). Il ruolo deve essere nominato esplicitamente e in modo riconoscibile; se la richiesta parla solo di concorrenti senza nominare una figura professionale, lascia null — non e' un campo di default.
 
 MODALITA' — scegli UNA tra queste tre, guardando cosa chiede davvero la richiesta:
 - "confronto": la richiesta chiede esplicitamente di CONFRONTARE, mettere a confronto, vedere le DIFFERENZE tra DUE O PIU' aziende NOMINATE per nome (es. "confronta Steris e Stryker", "differenze tra Bayer e Menarini"). Riporta in aziende_da_confrontare i nomi ESATTAMENTE come scritti dall'utente (non correggerli, non completarli, non inventare la ragione sociale — verranno cercati nel database separatamente). azienda_target resta null.
@@ -9895,7 +9901,7 @@ MODALITA' — scegli UNA tra queste tre, guardando cosa chiede davvero la richie
 Attenzione a non confondere "concorrenti" con "lista": una richiesta che nomina un'azienda specifica e chiede chi le fa concorrenza e' SEMPRE modalita="concorrenti", mai un filtro di settore (il nome dell'azienda spesso contiene parole che assomigliano a un settore, es. "Orion Pharma" contiene "Pharma", ma non significa impostare sector_v2="Pharma" — significa cercare i concorrenti di quella azienda specifica).
 
 Rispondi SOLO con questo JSON, nessun altro testo:
-{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"azienda_target":null,"limite_risultati":null,"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
+{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"azienda_target":null,"limite_risultati":null,"includi_benchmark_ral_ruolo":null,"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
 
   const raw=await callAIPowerful(planPrompt,400);
   const clean=raw.replace(/```json|```/g,'').trim();
@@ -9923,6 +9929,13 @@ Rispondi SOLO con questo JSON, nessun altro testo:
     plan.modalita='lista'; // "concorrenti" senza un nome d'azienda non e' eseguibile
   }
   plan.limite_risultati=Number.isInteger(plan.limite_risultati)&&plan.limite_risultati>0?plan.limite_risultati:null;
+  // Solo su "concorrenti": un ruolo non valido o su una modalita' diversa
+  // viene scartato in silenzio nei filtri, mai forzato — e' un'aggiunta
+  // opzionale al report, non un filtro di ricerca azienda.
+  if(plan.modalita!=='concorrenti'||typeof plan.includi_benchmark_ral_ruolo!=='string'||!ruoliValidi.includes(plan.includi_benchmark_ral_ruolo)){
+    if(plan.includi_benchmark_ral_ruolo)dropped.push(`benchmark RAL per ruolo "${plan.includi_benchmark_ral_ruolo}" non riconosciuto o non applicabile a questa modalita'`);
+    plan.includi_benchmark_ral_ruolo=null;
+  }
   return plan;
 }
 
@@ -10051,6 +10064,7 @@ async function generaReportUnico(){
   if(_raSelectedCompany) return generateCompanyReport();
 
   const promptText=(document.getElementById('ra-prompt')?.value||'').trim();
+  const noteRicerca=(document.getElementById('ra-note-ricerca')?.value||'').trim();
   const erroriEl=document.getElementById('ra-search-results');
   const btn=document.getElementById('btn-generate-company-report');
   erroriEl.innerHTML='';
@@ -10098,12 +10112,12 @@ async function generaReportUnico(){
         if(win&&!win.closed)win.close();
         return;
       }
-      const {concorrentiFarmaci,concorrentiDispositivi,partnership,partnershipRilevate,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,dispositiviMarginaliPerTarget,sintesiEsecutiva}=await trovaConcorrenti(risolta.azienda.id);
+      const {concorrentiFarmaci,concorrentiDispositivi,partnership,partnershipRilevate,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,dispositiviMarginaliPerTarget,sintesiEsecutiva,benchmarkRal}=await trovaConcorrenti(risolta.azienda.id,plan.includi_benchmark_ral_ruolo);
       // "primi N" si applica per gruppo, non sul totale misto — altrimenti
       // "primi 3 concorrenti" mostrerebbe solo dispositivi se quel gruppo ha
       // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
       const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
-      html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva);
+      html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva,benchmarkRal,noteRicerca);
     }else{
       const aziende=await executeCompanySearchPlan(plan);
       if(!aziende.length){
@@ -10455,7 +10469,7 @@ function categoriaDispositivoGenerica(valore){
 // compete su piu' fronti mostra sempre lo stesso nome di mercato ovunque.
 const MERCATO_LABEL={farmaco:'Farmaci', dispositivo:'Dispositivi', classe_terapeutica:'Classe terapeutica'};
 
-async function trovaConcorrenti(companyId){
+async function trovaConcorrenti(companyId, ruoloBenchmark=null){
   // Caricato una sola volta per sessione (cache interna) — serve a
   // formattaNomeIngrediente() per mostrare "budesonide + formoterolo" invece
   // del valore grezzo di matching "budesonideformoterolo".
@@ -10517,7 +10531,7 @@ async function trovaConcorrenti(companyId){
     (p.active_ingredients_norm||[]).forEach(i=>{ if(i) aggiungi('active_ingredients_norm', i, p.category, p.brand_name, p.regime_farmaco); });
     if(p.device_category) aggiungi('device_category', p.device_category, p.category, p.brand_name, null);
   });
-  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
+  if(!coppie.size)return {valori:[], concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null, benchmarkRal:null};
 
   // company_id + valore condiviso -> nomi prodotto (propri e del concorrente)
   // + regime farmaco, per poter mostrare "in comune su" con contesto invece
@@ -10586,7 +10600,7 @@ async function trovaConcorrenti(companyId){
     await Promise.all(lotto.map(raccogliClasse));
   }
 
-  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null};
+  if(!perAzienda.size&&!perAziendaClasse.size)return {valori:listaCompiti.map(c=>c.valore), concorrentiFarmaci:[], concorrentiDispositivi:[], concorrentiClasseTerapeutica:[], partnership, partnershipRilevate:[], segnaliTarget, sintesiPipelineTarget, coperturaOrganico:{nConDati:0,nTotale:0,percentuale:0,aziende:[]}, dispositiviMarginaliPerTarget, sintesiEsecutiva:null, benchmarkRal:null};
 
   const idsConcorrenti=[...new Set([...perAzienda.keys(),...perAziendaClasse.keys()])];
   const aziende=[];
@@ -10955,6 +10969,46 @@ async function trovaConcorrenti(companyId){
 
   const sintesiEsecutiva=await sintetizzaMinacceCompetitive(targetRows[0]?.name||'questa azienda',concorrentiFarmaciConFronti,concorrentiDispositiviConFronti,concorrentiClasseTerapeuticaConFronti,dispositiviMarginaliPerTarget);
 
+  // Benchmark RAL/pacchetto opzionale per una figura professionale — mai di
+  // default (solo se richiesto esplicitamente nel prompt, vedi
+  // planCompanySearchFromPrompt). Riusa al 100% le funzioni pure gia' scritte
+  // per il Report Builder (mercato Italia, non filtrato per regione: sulle
+  // figure di nicchia un filtro regionale lascia troppi pochi annunci per un
+  // dato onesto, stesso principio verificato sul progetto Orion il 16/09/2026).
+  let benchmarkRal=null;
+  if(ruoloBenchmark){
+    try{
+      const annunciRuolo=await fetchListingsForReportFilters({canonical_role:ruoloBenchmark});
+      const{kept:annunciItalia}=filterOutForeignListings(annunciRuolo);
+      if(annunciItalia.length){
+        const benchmark=computeRalBenchmarkSection(annunciItalia,ruoloBenchmark);
+        const{stats:perSeniorityStats}=computeRalBySeniority(annunciItalia);
+        const{rows:perAziendaRows}=computeRalByCompany(annunciItalia,8);
+        const benefits=computeBenefitsSection(annunciItalia);
+        const pricing=computePricingDecisions(annunciItalia);
+        benchmarkRal={
+          ruolo:ruoloBenchmark,
+          dati:{
+            benchmark:{
+              min:benchmark.min, media:benchmark.avg, mediana:benchmark.median, max:benchmark.max,
+              p25:benchmark.p25, p75:benchmark.p75,
+              nAziende:benchmark.n_companies, top3SharePct:benchmark.top3_share_pct,
+              top3Nomi:(benchmark.top_employers||[]).slice(0,3).map(e=>e.company),
+            },
+            // Solo fasce con almeno 5 decisioni: sotto quella soglia una mediana
+            // non e' un dato di mercato, e' il valore di poche posizioni isolate
+            // (stesso principio gia' applicato nel dossier Orion il 16/09/2026).
+            perSeniority:Object.entries(perSeniorityStats||{}).filter(([,s])=>s.count>=5).map(([sen,s])=>({seniority:sen,mediana:s.median,count:s.count,p25:s.p25,p75:s.p75})),
+            perAzienda:(perAziendaRows||[]).map(r=>({nome:r.company,mediana:r.median,count:r.count})),
+            benefitsBreakdown:(benefits.breakdown||[]).map(b=>({nome:b.key,pct:b.pct})),
+            nAnnunciGrezzi:annunciItalia.length,
+            nDecisioni:pricing.totalDecisions,
+          }
+        };
+      }
+    }catch(e){ console.warn('Benchmark RAL non disponibile per',ruoloBenchmark,':',e.message); }
+  }
+
   return {
     valori:listaCompiti.map(c=>c.valore),
     concorrentiFarmaci:concorrentiFarmaciConFronti,
@@ -10967,6 +11021,7 @@ async function trovaConcorrenti(companyId){
     coperturaOrganico,
     dispositiviMarginaliPerTarget,
     sintesiEsecutiva,
+    benchmarkRal,
   };
 }
 
@@ -11227,7 +11282,50 @@ function descrizioneRecruitingRelevance(copertura){
   return `<br><br><strong>🎯 Recruiting Relevance</strong>: tra i ${copertura.nTotale} concorrenti mappati, ${copertura.nConDati} ${copertura.nConDati===1?'ha':'hanno'} dati di organico disponibili (${copertura.percentuale}% del campione): ${elenco}${altre}.${guida} È il numero totale di persone in organico, su tutte le funzioni aziendali e senza alcun vincolo di ruolo — utile sia per un competitor commerciale sia per una CDMO/produttore, dove il bacino di reclutamento reale è più spesso chimica/produzione/quality che vendite. Le aziende senza questo dato non mostrano alcuna indicazione: l'assenza del dato non significa assenza di organico nella realtà.`;
 }
 
-function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva){
+// Sezione benchmark RAL/pacchetto per una figura professionale, opzionale nel
+// report concorrenti (vedi trovaConcorrenti/planCompanySearchFromPrompt) —
+// funzione pura: dati gia' calcolati in ingresso, solo HTML in uscita, nessun
+// accesso a variabili globali. Riusa le classi CSS aggiunte sopra al template
+// di renderCompetitorReportHTML (unica chiamante).
+function renderBenchmarkRalSection(dati,ruolo){
+  const fmt=v=>(typeof v==='number'&&!isNaN(v))?'€'+Math.round(v/1000)+'k':'—';
+  const b=dati.benchmark||{};
+  const salaryBar=`<div class="salary-bar">
+    <div class="sal-item"><div class="sal-label">Min RAL</div><div class="sal-value">${fmt(b.min)}</div></div>
+    <div class="sal-item"><div class="sal-label">Media</div><div class="sal-value">${fmt(b.media)}</div></div>
+    <div class="sal-item"><div class="sal-label">Mediana</div><div class="sal-value">${fmt(b.mediana)}</div></div>
+    <div class="sal-item"><div class="sal-label">Max RAL</div><div class="sal-value">${fmt(b.max)}</div></div>
+  </div>`;
+  const tabellaBase=`<table><colgroup><col><col style="width:35%;"></colgroup><tbody>
+    <tr><td>Annunci reali analizzati</td><td class="num">${dati.nAnnunciGrezzi??'—'}</td></tr>
+    <tr><td>Decisioni retributive indipendenti</td><td class="num">${dati.nDecisioni??'—'}</td></tr>
+    <tr><td>Aziende attive</td><td class="num">${b.nAziende??'—'}</td></tr>
+    <tr><td>Top 3 datori (quota)</td><td class="num">${b.top3SharePct!=null?b.top3SharePct+'%':'—'}${(b.top3Nomi||[]).length?' ('+b.top3Nomi.join(', ')+')':''}</td></tr>
+    <tr><td>Range P25–P75</td><td class="num">${fmt(b.p25)} – ${fmt(b.p75)}</td></tr>
+  </tbody></table>`;
+  const blocco1=`<div class="chart-box"><div class="chart-title">Benchmark RAL — ${ruolo}, mercato Italia</div>${salaryBar}${tabellaBase}</div>`;
+
+  const perSeniority=dati.perSeniority||[];
+  const blocco2=perSeniority.length?`<div class="chart-box"><div class="chart-title">RAL per seniority level</div>
+    <table><thead><tr><th>Seniority</th><th style="text-align:right;">Mediana</th><th style="text-align:right;">Decisioni</th><th style="text-align:right;">P25–P75</th></tr></thead><tbody>
+    ${perSeniority.map(s=>`<tr><td>${s.seniority}</td><td class="num">${fmt(s.mediana)}</td><td class="num">${s.count}</td><td class="num">${fmt(s.p25)} – ${fmt(s.p75)}</td></tr>`).join('')}
+    </tbody></table></div>`:'';
+
+  const perAzienda=dati.perAzienda||[];
+  const maxAzienda=perAzienda.length?Math.max(...perAzienda.map(a=>a.mediana||0),1):1;
+  const blocco3=perAzienda.length?`<div class="chart-box"><div class="chart-title">RAL mediana per azienda</div>
+    ${perAzienda.map(a=>`<div class="bar-row"><div class="bar-label">${a.nome} (n=${a.count})</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round((a.mediana||0)/maxAzienda*100)}%;background:#1c1c1c;"></div></div><div class="bar-count">${fmt(a.mediana)}</div></div>`).join('')}
+    </div>`:'';
+
+  const benefitsBreakdown=dati.benefitsBreakdown||[];
+  const blocco4=benefitsBreakdown.length?`<div class="chart-box"><div class="chart-title">Composizione del pacchetto oltre la RAL</div>
+    ${benefitsBreakdown.map(x=>`<div class="bar-row"><div class="bar-label">${x.nome}</div><div class="bar-track"><div class="bar-fill" style="width:${x.pct}%;background:#8b5cf6;"></div></div><div class="bar-count">${x.pct}%</div></div>`).join('')}
+    </div>`:'';
+
+  return blocco1+blocco2+blocco3+blocco4;
+}
+
+function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva,benchmarkRal,noteRicerca){
   concorrentiClasseTerapeutica=concorrentiClasseTerapeutica||[];
   segnaliTarget=segnaliTarget||[];
   coperturaOrganico=coperturaOrganico||{nConDati:0,nTotale:0,percentuale:0,aziende:[]};
@@ -11323,6 +11421,12 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   const haSegnaliAlcuno=gruppiPipelineTarget.length||[...concorrentiFarmaci,...concorrentiDispositivi,...concorrentiClasseTerapeutica].some(c=>c.segnaliPipeline&&c.segnaliPipeline.length);
   const notaCoperturaPipeline=haSegnaliAlcuno?`<div style="font-size:10px;color:#aaa;font-style:italic;margin:-10px 0 20px;">Segnali di pipeline/studi clinici mostrati solo per le aziende con fatti CORE già raccolti in archivio: l'assenza non significa assenza di studi clinici nella realtà.</div>`:'';
 
+  // Entrambe opzionali, mai presenti di default — vedi trovaConcorrenti
+  // (benchmarkRal) e il campo ra-note-ricerca (testo libero, MAI passato
+  // all'IA: inserito verbatim, cosi' com'e' stato scritto).
+  const benchmarkRalHtml=benchmarkRal?`<div class="section-title">Benchmark RAL &amp; pacchetto — ${escHtml(benchmarkRal.ruolo)}</div>${renderBenchmarkRalSection(benchmarkRal.dati,benchmarkRal.ruolo)}`:'';
+  const noteRicercaHtml=noteRicerca?`<div class="section-title">Note di ricerca aggiuntive</div><div class="summary-box" style="white-space:pre-wrap;">${escHtml(noteRicerca)}</div>`:'';
+
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Concorrenti — ${target.name}</title>
 <style>
@@ -11339,7 +11443,21 @@ tr{break-inside:avoid;page-break-inside:avoid;}
 table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
 th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};overflow-wrap:break-word;}
 td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
+td.num{text-align:right;font-weight:700;}
 .footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+.chart-box{background:${CREAM};border-radius:8px;padding:16px 18px;margin-bottom:16px;}
+.chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:12px;}
+.salary-bar{background:${DARK};border-radius:12px;padding:18px 22px;margin:12px 0;display:grid;grid-template-columns:repeat(4,1fr);}
+.sal-item{text-align:center;border-right:1px solid rgba(255,255,255,0.1);}
+.sal-item:last-child{border-right:none;}
+.sal-label{font-size:9px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;}
+.sal-value{font-size:18px;font-weight:700;color:#fff;}
+.bar-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.bar-label{font-size:11px;color:#555;width:180px;flex-shrink:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bar-track{flex:1;background:${BORDER};border-radius:4px;height:14px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:4px;}
+.bar-count{font-size:11px;font-weight:700;color:${DARK};min-width:40px;}
+.note{font-size:10px;color:#999;font-style:italic;margin-top:6px;}
 </style></head><body>
 <div class="page">
   <div class="header">
@@ -11360,6 +11478,8 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   ${tabella('Concorrenti nella stessa classe terapeutica (ATC, molecola diversa)',concorrentiClasseTerapeutica,true)}
   ${partnershipRilevateHtml}
   ${notaCoperturaPipeline}
+  ${benchmarkRalHtml}
+  ${noteRicercaHtml}
   <div class="footer">
     Report generato da LS Job Intelligence in base ai prodotti/principi attivi registrati per ciascuna azienda.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
@@ -13120,7 +13240,15 @@ function renderDemandScatter(){
       <div id="ra-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:260px;overflow-y:auto;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.25);"></div>
     </div>
 
-    <textarea id="ra-prompt" placeholder="...oppure descrivi cosa vuoi: aziende in Lombardia con certificazione GMP attiva · confronta Steris e Stryker · concorrenti di Orion Pharma" style="width:100%;height:70px;font-size:13px;padding:12px 14px;margin-top:12px;resize:vertical;" oninput="_raSelectedCompany=null; aggiornaBottoneGenera();"></textarea>
+    <textarea id="ra-prompt" placeholder="...oppure descrivi cosa vuoi: aziende in Lombardia con certificazione GMP attiva · confronta Steris e Stryker · concorrenti di Orion Pharma (con benchmark RAL per Medical Science Liaison)" style="width:100%;height:70px;font-size:13px;padding:12px 14px;margin-top:12px;resize:vertical;" oninput="_raSelectedCompany=null; aggiornaBottoneGenera();"></textarea>
+
+    <!-- Testo libero, MAI inviato all'IA: inserito verbatim in una sezione a
+    parte del report concorrenti, solo se compilato. Serve per i risultati di
+    ricerca professionale (mappatura LinkedIn, dati aggregati da selezioni
+    indipendenti) che non sono automatizzabili — richiesto da Mauro il
+    16/09/2026 dopo il dossier Orion, dove questi input erano stati incollati
+    a mano nel documento finale. -->
+    <textarea id="ra-note-ricerca" placeholder="Opzionale — note di ricerca aggiuntive (es. mappatura LinkedIn, dati aggregati da selezioni): inserite così come scritte, in una sezione a parte del report concorrenti. Mai inviate all'IA." style="width:100%;height:50px;font-size:12px;padding:10px 14px;margin-top:8px;resize:vertical;color:var(--text2);"></textarea>
 
     <div style="display:flex;gap:10px;align-items:center;margin-top:12px;">
       <button class="btn btn-primary" id="btn-generate-company-report" onclick="generaReportUnico()" disabled style="background:#8b5cf6;border-color:#8b5cf6;opacity:.5;">📄 Genera Report</button>
