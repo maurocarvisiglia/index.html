@@ -4420,13 +4420,14 @@ function toggleInsightMic(){
 async function estraiInsightRecruiter(testo){
   const prompt=`Sei un assistente che elabora note di mercato scritte o dettate a voce da recruiter Life Sciences italiani. Il testo riguarda un'osservazione su un'azienda (pacchetto retributivo, benefit, RAL, bonus, struttura commerciale...) raccolta durante un colloquio o un contatto con un candidato. Il testo puo' contenere imperfezioni di trascrizione (e' dettato a voce).
 
-REGOLA ASSOLUTA, NON NEGOZIABILE: il testo che produci in "insight_anonimizzato" e in "punti_chiave" NON DEVE MAI contenere il nome o cognome di una persona (candidato, dipendente, recruiter, referente), anche se il testo originale lo contiene esplicitamente. Sostituisci qualunque nome proprio di persona con un riferimento generico e neutro ("il candidato", "la candidata", "una risorsa", "un profilo [ruolo]"), MAI un'iniziale, MAI un nome parziale, MAI un nickname. Se hai anche solo il dubbio che una parola sia il nome di una persona, trattala come tale. I nomi di aziende, marchi di prodotto e ruoli professionali NON sono nomi di persona: quelli vanno mantenuti.
+REGOLA ASSOLUTA, NON NEGOZIABILE: il testo che produci in "insight_anonimizzato", in "testo_originale_redatto" e in "punti_chiave" NON DEVE MAI contenere il nome o cognome di una persona (candidato, dipendente, recruiter, referente), anche se il testo originale lo contiene esplicitamente. Sostituisci qualunque nome proprio di persona con un riferimento generico e neutro ("il candidato", "la candidata", "una risorsa", "un profilo [ruolo]"), MAI un'iniziale, MAI un nome parziale, MAI un nickname. Se hai anche solo il dubbio che una parola sia il nome di una persona, trattala come tale. I nomi di aziende, marchi di prodotto e ruoli professionali NON sono nomi di persona: quelli vanno mantenuti.
 
 Restituisci ESATTAMENTE questo JSON, nessun altro testo prima o dopo:
 {
   "azienda_menzionata": "<nome dell'azienda a cui si riferisce l'insight, cosi' come si capisce dal testo, o null se non è chiaro>",
   "ruolo_contesto": "<ruolo/funzione menzionato nel testo, es. 'MSL', 'Area Manager', o null se non presente>",
   "insight_anonimizzato": "<il contenuto informativo del testo, riscritto in italiano chiaro, MANTENENDO TUTTI i dettagli fattuali del testo originale (ogni cifra, ogni benefit, ogni condizione particolare) — non sintetizzare, non accorciare e non omettere nulla per brevità: usa quante frasi servono, l'unica cosa da togliere sono i nomi di persona>",
+  "testo_originale_redatto": "<il testo COSÌ COME SCRITTO/DETTATO dal recruiter, stessa forma, stesse frasi, stesso ordine, correggendo solo gli errori di trascrizione vocale evidenti — NON riscrivere, NON sintetizzare, NON riformulare: l'unica modifica ammessa è sostituire i nomi di persona come sopra>",
   "punti_chiave": ["<elenco dei singoli elementi fattuali estratti, es. 'Auto aziendale', 'Bonus ~28% della RAL', 'Welfare 2.000€/anno'>"]
 }
 
@@ -4466,6 +4467,7 @@ async function analizzaInsightRecruiter(){
       nomeAziendaOriginale:estratto.azienda_menzionata,
       ruoloContesto:estratto.ruolo_contesto||null,
       testoAnonimizzato:estratto.insight_anonimizzato,
+      testoOriginaleRedatto:estratto.testo_originale_redatto||null,
       puntiChiave:Array.isArray(estratto.punti_chiave)?estratto.punti_chiave:[],
     };
     renderInsightReview();
@@ -4503,6 +4505,9 @@ function renderInsightReview(){
 
   testoEl.value=(p.ruoloContesto?'['+p.ruoloContesto+'] ':'')+p.testoAnonimizzato;
 
+  const testoOrigEl=document.getElementById('insight-testo-originale');
+  if(testoOrigEl)testoOrigEl.value=p.testoOriginaleRedatto||'';
+
   const puntiBox=document.getElementById('insight-punti-chiave');
   if(puntiBox){
     puntiBox.innerHTML=p.puntiChiave&&p.puntiChiave.length?
@@ -4537,17 +4542,35 @@ async function confermaSalvaInsight(){
   if(!p.azienda){toast('Seleziona o trova l\'azienda prima di salvare','warning');return;}
   const testoFinale=(document.getElementById('insight-testo-anonimizzato')?.value||'').trim();
   if(!testoFinale){toast('Il testo da salvare non può essere vuoto','warning');return;}
+  const testoOriginaleFinale=(document.getElementById('insight-testo-originale')?.value||'').trim();
+  const worker=_currentUser?.full_name||_currentUser?.email||'sconosciuto';
 
   const btn=document.getElementById('btn-salva-insight');
   btn.disabled=true;
   try{
-    await api('company_facts','POST',{
+    const [salvato]=await api('company_facts','POST',{
       company_id:p.azienda.id,
       tipo:'insight_recruiter',
       valore:testoFinale,
       fonte:'manuale',
-      worker:_currentUser?.full_name||_currentUser?.email||'sconosciuto',
+      worker,
     });
+    // Testo originale in una tabella separata, mai letta da schede/report
+    // (vedi commento sulla migration) — se manca (AI non l'ha prodotto, o
+    // l'utente l'ha svuotato in revisione) si salva solo la versione
+    // anonimizzata, mai un fallback che rischi di portare un nome non redatto.
+    if(testoOriginaleFinale&&salvato?.id){
+      try{
+        await api('insight_recruiter_originali','POST',{
+          company_fact_id:salvato.id,
+          company_id:p.azienda.id,
+          testo_originale:testoOriginaleFinale,
+          worker,
+        });
+      }catch(err){
+        console.warn('Salvataggio testo originale non riuscito (insight anonimizzato comunque salvato):',err.message);
+      }
+    }
     toast('✅ Insight salvato su '+p.azienda.name,'success');
     document.getElementById('insight-testo-libero').value='';
     document.getElementById('insight-review-panel').style.display='none';
@@ -4571,7 +4594,7 @@ async function loadInsightCounter(){
   const box=document.getElementById('insight-counter-panel');
   if(!box)return;
   try{
-    const righe=await api('company_facts?select=worker,rilevato_il,valore,company:companies(name)&tipo=eq.insight_recruiter&order=rilevato_il.desc&limit=500');
+    const righe=await api('company_facts?select=worker,rilevato_il,valore,company:companies(name),originale:insight_recruiter_originali(testo_originale)&tipo=eq.insight_recruiter&order=rilevato_il.desc&limit=500');
     if(!righe.length){
       box.innerHTML='<div style="font-size:12px;color:var(--text2);">Ancora nessun insight registrato — sarai il primo.</div>';
       return;
@@ -4582,12 +4605,18 @@ async function loadInsightCounter(){
     const righeClassifica=classifica.map(([nome,n])=>
       `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>${escHtml(nome)}</span><span style="font-weight:700;color:#ec4899;">${n}</span></div>`
     ).join('');
-    const recenti=righe.slice(0,8).map(r=>
-      `<div style="font-size:11px;color:var(--text2);padding:6px 0;border-top:1px solid var(--border);">
-         <div><strong>${escHtml(r.company?.name||'—')}</strong> · ${escHtml(r.worker||'')} · ${new Date(r.rilevato_il).toLocaleDateString('it-IT')}</div>
-         <div style="font-size:12px;color:var(--text);margin-top:2px;">${escHtml(r.valore||'')}</div>
-       </div>`
-    ).join('');
+    // Sintetica di default (solo azienda/recruiter/data, come prima) — un
+    // click espande il testo originale scritto dal recruiter (non quello
+    // anonimizzato che finisce sulla scheda azienda): richiesto da Mauro il
+    // 16/09/2026 per non appesantire la lista, ma senza perdere il dettaglio.
+    const recenti=righe.slice(0,8).map(r=>{
+      const originale=r.originale&&r.originale[0]?r.originale[0].testo_originale:'';
+      const dettaglio=originale?escHtml(originale):'<span style="font-style:italic;">Testo originale non disponibile per questo insight.</span>';
+      return `<div style="font-size:11px;color:var(--text2);padding:4px 0;border-top:1px solid var(--border);cursor:pointer;" onclick="const d=this.nextElementSibling;d.style.display=d.style.display==='none'?'':'none';">
+         <strong>${escHtml(r.company?.name||'—')}</strong> · ${escHtml(r.worker||'')} · ${new Date(r.rilevato_il).toLocaleDateString('it-IT')} <span style="opacity:.6;">▸ mostra testo</span>
+       </div>
+       <div style="display:none;font-size:12px;color:var(--text);padding:4px 0 6px 0;">${dettaglio}</div>`;
+    }).join('');
     box.innerHTML=`<div style="display:flex;gap:16px;flex-wrap:wrap;">
         <div style="flex:1;min-width:180px;max-width:240px;border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface);">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:8px;">🏆 Insight per recruiter</div>
@@ -13419,6 +13448,10 @@ function renderDemandScatter(){
       <div style="font-size:11px;color:#f0a020;margin-top:6px;">⚠️ Controlla che non compaia alcun nome di persona (candidato, dipendente, referente) prima di salvare — modifica il testo se serve.</div>
 
       <div id="insight-punti-chiave" style="margin-top:10px;"></div>
+
+      <label class="form-label" style="margin-top:14px;display:block;">Testo originale (visibile solo qui, mai sulla scheda azienda)</label>
+      <textarea id="insight-testo-originale" style="width:100%;height:80px;font-size:13px;padding:10px 12px;resize:vertical;margin-top:6px;"></textarea>
+      <div style="font-size:11px;color:#f0a020;margin-top:6px;">⚠️ Anche qui: controlla che non compaia alcun nome di persona prima di salvare.</div>
 
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="btn btn-primary" id="btn-salva-insight" onclick="confermaSalvaInsight()" style="background:#ec4899;border-color:#ec4899;">💾 Salva Insight</button>
