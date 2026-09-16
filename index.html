@@ -11005,6 +11005,8 @@ async function trovaConcorrenti(companyId, ruoloBenchmark=null){
             nDecisioni:pricing.totalDecisions,
           }
         };
+        try{ benchmarkRal.narrazione=await narraBenchmarkRal(ruoloBenchmark,benchmarkRal.dati); }
+        catch(e){ console.warn('Narrazione benchmark RAL non disponibile:',e.message); benchmarkRal.narrazione=narraBenchmarkRalFallback(ruoloBenchmark,benchmarkRal.dati); }
       }
     }catch(e){ console.warn('Benchmark RAL non disponibile per',ruoloBenchmark,':',e.message); }
   }
@@ -11282,12 +11284,57 @@ function descrizioneRecruitingRelevance(copertura){
   return `<br><br><strong>🎯 Recruiting Relevance</strong>: tra i ${copertura.nTotale} concorrenti mappati, ${copertura.nConDati} ${copertura.nConDati===1?'ha':'hanno'} dati di organico disponibili (${copertura.percentuale}% del campione): ${elenco}${altre}.${guida} È il numero totale di persone in organico, su tutte le funzioni aziendali e senza alcun vincolo di ruolo — utile sia per un competitor commerciale sia per una CDMO/produttore, dove il bacino di reclutamento reale è più spesso chimica/produzione/quality che vendite. Le aziende senza questo dato non mostrano alcuna indicazione: l'assenza del dato non significa assenza di organico nella realtà.`;
 }
 
+// Narrazione del benchmark RAL/pacchetto — stesso principio di
+// sintetizzaMinacceCompetitive: l'IA legge SOLO i numeri gia' calcolati in
+// modo deterministico, non ne produce di nuovi. Separata in tre campi
+// (evidenza/interpretazione/implicazione, non tre frasi libere) cosi' il
+// rendering può etichettarli distintamente — stessa disciplina richiesta da
+// Mauro il 16/09/2026 sul dossier Orion: mai un'interpretazione presentata
+// come fatto osservato.
+function narraBenchmarkRalFallback(ruolo,dati){
+  const b=dati.benchmark||{};
+  const fmt=v=>(typeof v==='number'&&!isNaN(v))?'€'+Math.round(v/1000)+'k':'n.d.';
+  return{
+    evidenza:`Il benchmark su ${dati.nDecisioni??'—'} decisioni retributive indipendenti per ${ruolo} mostra una mediana di ${fmt(b.mediana)} (range P25-P75 ${fmt(b.p25)}-${fmt(b.p75)}).`,
+    interpretazione:'Sintesi generata senza AI (provider non disponibili) direttamente dai numeri calcolati — nessuna lettura aggiuntiva disponibile.',
+    implicazione:''
+  };
+}
+async function narraBenchmarkRal(ruolo,dati){
+  const b=dati.benchmark||{};
+  const fmt=v=>(typeof v==='number'&&!isNaN(v))?'€'+Math.round(v/1000)+'k':null;
+  const ltiVoce=(dati.benefitsBreakdown||[]).find(x=>/lungo termine|lti/i.test(x.nome));
+  const prompt=`Sei un analista Life Sciences. Ricevi SOLO dati gia' calcolati in modo deterministico su un benchmark retributivo per la figura "${ruolo}" — non aggiungere aziende, numeri o affermazioni che non siano ricavabili da questi dati, non inventare nulla.
+
+DATI:
+- decisioni retributive indipendenti analizzate: ${dati.nDecisioni}
+- RAL: min ${fmt(b.min)||'n.d.'}, mediana ${fmt(b.mediana)||'n.d.'}, media ${fmt(b.media)||'n.d.'}, max ${fmt(b.max)||'n.d.'}, range P25-P75 ${fmt(b.p25)||'n.d.'}-${fmt(b.p75)||'n.d.'}
+- aziende attive: ${b.nAziende}, top 3 datori: ${(b.top3Nomi||[]).join(', ')||'n.d.'} (${b.top3SharePct}% del campione)
+- RAL per seniority: ${(dati.perSeniority||[]).map(s=>`${s.seniority} mediana ${fmt(s.mediana)} (n=${s.count})`).join('; ')||'nessun dato per fascia'}
+- componente LTI/azioni dichiarata: ${ltiVoce?ltiVoce.pct+'% delle decisioni':'nessuna decisione la dichiara'}
+
+Rispondi SOLO con questo JSON, nessun altro testo:
+{"evidenza":"<1 frase, SOLO i numeri sopra, in italiano>",
+"interpretazione":"<1 frase che inizia esplicitamente segnalando che è una lettura/un modello, non un fatto osservato — es. su cosa potrebbe significare il differenziale RAL o la presenza/assenza di LTI per la retention, SENZA affermare che un'uscita o un rischio siano gia' avvenuti>",
+"implicazione":"<1 frase su cosa verificare o considerare operativamente, mai una certezza>"}`;
+  try{
+    const raw=await callAIPowerful(prompt,320);
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    if(!parsed.evidenza)throw new Error('risposta incompleta');
+    return parsed;
+  }catch(e){
+    console.warn('Narrazione benchmark RAL non disponibile:',e.message);
+    return narraBenchmarkRalFallback(ruolo,dati);
+  }
+}
+
 // Sezione benchmark RAL/pacchetto per una figura professionale, opzionale nel
 // report concorrenti (vedi trovaConcorrenti/planCompanySearchFromPrompt) —
 // funzione pura: dati gia' calcolati in ingresso, solo HTML in uscita, nessun
 // accesso a variabili globali. Riusa le classi CSS aggiunte sopra al template
 // di renderCompetitorReportHTML (unica chiamante).
-function renderBenchmarkRalSection(dati,ruolo){
+function renderBenchmarkRalSection(dati,ruolo,narrazione){
   const fmt=v=>(typeof v==='number'&&!isNaN(v))?'€'+Math.round(v/1000)+'k':'—';
   const b=dati.benchmark||{};
   const salaryBar=`<div class="salary-bar">
@@ -11322,7 +11369,14 @@ function renderBenchmarkRalSection(dati,ruolo){
     ${benefitsBreakdown.map(x=>`<div class="bar-row"><div class="bar-label">${x.nome}</div><div class="bar-track"><div class="bar-fill" style="width:${x.pct}%;background:#8b5cf6;"></div></div><div class="bar-count">${x.pct}%</div></div>`).join('')}
     </div>`:'';
 
-  return blocco1+blocco2+blocco3+blocco4;
+  const righeNarrazione=[
+    narrazione?.evidenza?['Evidenza',narrazione.evidenza]:null,
+    narrazione?.interpretazione?['Interpretazione (lettura, non fatto osservato)',narrazione.interpretazione]:null,
+    narrazione?.implicazione?['Implicazione',narrazione.implicazione]:null,
+  ].filter(Boolean);
+  const blocco5=righeNarrazione.length?`<div class="interpretation-box">${righeNarrazione.map(([tag,testo])=>`<div class="interpretation-tag">${tag}</div>${escHtml(testo)}`).join('<br><br>')}</div>`:'';
+
+  return blocco1+blocco2+blocco3+blocco4+blocco5;
 }
 
 function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDispositivi,partnership,concorrentiClasseTerapeutica,segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva,benchmarkRal,noteRicerca){
@@ -11424,7 +11478,7 @@ function renderCompetitorReportHTML(target,concorrentiFarmaci,concorrentiDisposi
   // Entrambe opzionali, mai presenti di default — vedi trovaConcorrenti
   // (benchmarkRal) e il campo ra-note-ricerca (testo libero, MAI passato
   // all'IA: inserito verbatim, cosi' com'e' stato scritto).
-  const benchmarkRalHtml=benchmarkRal?`<div class="section-title">Benchmark RAL &amp; pacchetto — ${escHtml(benchmarkRal.ruolo)}</div>${renderBenchmarkRalSection(benchmarkRal.dati,benchmarkRal.ruolo)}`:'';
+  const benchmarkRalHtml=benchmarkRal?`<div class="section-title">Benchmark RAL &amp; pacchetto — ${escHtml(benchmarkRal.ruolo)}</div>${renderBenchmarkRalSection(benchmarkRal.dati,benchmarkRal.ruolo,benchmarkRal.narrazione)}`:'';
   const noteRicercaHtml=noteRicerca?`<div class="section-title">Note di ricerca aggiuntive</div><div class="summary-box" style="white-space:pre-wrap;">${escHtml(noteRicerca)}</div>`:'';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -11458,6 +11512,8 @@ td.num{text-align:right;font-weight:700;}
 .bar-fill{height:100%;border-radius:4px;}
 .bar-count{font-size:11px;font-weight:700;color:${DARK};min-width:40px;}
 .note{font-size:10px;color:#999;font-style:italic;margin-top:6px;}
+.interpretation-box{background:#fbf6ec;border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
+.interpretation-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${GOLD};margin-bottom:6px;}
 </style></head><body>
 <div class="page">
   <div class="header">
