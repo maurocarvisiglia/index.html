@@ -1811,7 +1811,12 @@ async function importVocationsCSV(event){
   // i formati per non rompere l'import se Vocations torna alle etichette italiane.
   const sectorMap={
     'Farmaceutico':'Pharma','Chimico e Farmaceutico':'Pharma','Chimico':'Chimico','Medicale':'Medical Devices','Biomedico':'Biotech','Biomedicale':'Biotech','Biotecnologico':'Biotech','Cosmetico':'Cosmetics','Nutraceutico':'Nutraceutical','Veterinario':'Veterinary','Manifatturiero e Industriale':'Altro','Ingegneria Industriale e Servizi Ingegneristici':'Altro','Cybersecurity e Informatica':'Altro','Sanità e Igiene':'Healthcare Services','Tecnologia':'Digital Health','Scienza e Dati':'Digital Health',
-    'pharmaceutical':'Pharma','medical':'Medical Devices','healthHygiene':'Healthcare Services','consumerGoods':'Consumer Health','biomedical':'Biotech','chemical':'Chimico','technologyScienceData':'Digital Health','manufacturingIndustrial':'Altro','environmentSustainabilityEcology':'EHS/HSE Consulting','consultingITConsulting':'Consulenza','multiservices':'Altro','retail':'Farmacia/Retail','cosmetic':'Cosmetics','nutraceutical':'Nutraceutical','veterinary':'Veterinary'
+    'pharmaceutical':'Pharma','medical':'Medical Devices','healthHygiene':'Healthcare Services','consumerGoods':'Consumer Health','biomedical':'Biotech','chemical':'Chimico','technologyScienceData':'Digital Health','manufacturingIndustrial':'Altro','environmentSustainabilityEcology':'EHS/HSE Consulting','consultingITConsulting':'Consulenza','multiservices':'Altro','retail':'Farmacia/Retail','cosmetic':'Cosmetics','nutraceutical':'Nutraceutical','veterinary':'Veterinary',
+    // Codici emersi dal CSV vocations-positions-1789554024 (16/09/2026, 6 annunci
+    // senza sector_v2 su aziende non-Life-Sciences finite comunque nell'export
+    // Vocations): stesso bucket generico gia' usato per manufacturingIndustrial/
+    // multiservices, non una nuova categoria dedicata per 3 annunci isolati.
+    'food':'Altro','automotive':'Altro','outsourcingBusinessServices':'Altro'
   };
   let ok=0,skip=0,errors=0,blocked=0;
   await loadTaxonomy(); // dizionario alias/tassonomia — una sola volta, poi solo regex in memoria
