@@ -668,6 +668,13 @@ a.job-link:hover{text-decoration:underline;}
       <div class="section-title">🏢 Aziende</div>
       <div style="display:flex;gap:8px;">
         <input type="text" id="co-search" placeholder="Cerca azienda..." oninput="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
+        <select id="co-account-filter" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);" title="Filtra per chi segue l'azienda">
+          <option value="">Tutti gli account</option>
+          <option value="Mauro">Mauro</option>
+          <option value="Caterina">Caterina</option>
+          <option value="Sofia">Sofia</option>
+          <option value="__none__">Non assegnata</option>
+        </select>
         <select id="co-sort" onchange="loadCompanies()" style="font-size:13px;padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);">
           <option value="name_asc">Nome A-Z</option>
           <option value="name_desc">Nome Z-A</option>
@@ -787,6 +794,15 @@ a.job-link:hover{text-decoration:underline;}
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Codice Ateco</label>
           <input type="text" id="cd-edit-ateco" placeholder="es. 46.46.10" style="width:100%;">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Account</label>
+          <select id="cd-edit-account" style="width:100%;">
+            <option value="">— non assegnata —</option>
+            <option value="Mauro">Mauro</option>
+            <option value="Caterina">Caterina</option>
+            <option value="Sofia">Sofia</option>
+          </select>
         </div>
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Settore</label>
@@ -9251,6 +9267,7 @@ async function loadCompanies(offset=0){
   try{
     const search=(document.getElementById('co-search')?.value||'').trim();
     const sort=document.getElementById('co-sort')?.value||'name_asc';
+    const accountFilter=document.getElementById('co-account-filter')?.value||'';
 
     // Build query
     // merged_into=is.null: nasconde i record fusi in un duplicato canonico (restano
@@ -9263,6 +9280,8 @@ async function loadCompanies(offset=0){
 
     // Filtri
     if(search)q+=`&name=ilike.*${encodeURIComponent(search)}*`;
+    if(accountFilter==='__none__')q+=`&account=is.null`;
+    else if(accountFilter)q+=`&account=eq.${encodeURIComponent(accountFilter)}`;
 
     // Ordinamento
     if(sort==='name_asc')q+=`&order=name.asc`;
@@ -9291,6 +9310,8 @@ async function loadCompanies(offset=0){
     // Totale con filtri
     let countQ=`companies?select=id&merged_into=is.null&sede_italia=eq.true`;
     if(search)countQ+=`&name=ilike.*${encodeURIComponent(search)}*`;
+    if(accountFilter==='__none__')countQ+=`&account=is.null`;
+    else if(accountFilter)countQ+=`&account=eq.${encodeURIComponent(accountFilter)}`;
     const countResp=await fetch(`${SB_URL}/rest/v1/${countQ}`,{
       headers:{...H,'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}
     });
@@ -9320,6 +9341,7 @@ async function loadCompanies(offset=0){
       <td><span class="count-badge ${c._cnt>0?'has-data':''}">${c._cnt}</span></td>
       <td>${c.website?`<a class="job-link" href="${c.website}" target="_blank">${c.website.replace('https://','').replace('http://','').split('/')[0]}</a>`:'—'}</td>
       <td>${c.linkedin_url?`<a class="job-link" href="${c.linkedin_url}" target="_blank">↗ LinkedIn</a>`:'—'}</td>
+      <td>${c.account?`<span class="badge" style="background:var(--surface2);border:1px solid var(--border);">${c.account}</span>`:'<span style="color:var(--text2);">—</span>'}</td>
       <td><span class="badge ${c.is_active?'badge-active':'badge-inactive'}">${c.is_active?'Attiva':'Inattiva'}</span></td>
       <td style="white-space:nowrap;">
         <button onclick="toggleCo('${c.id}',${c.is_active})" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:12px;">${c.is_active?'Disattiva':'Attiva'}</button>
@@ -9329,7 +9351,7 @@ async function loadCompanies(offset=0){
 
     const hasMore=offset+pageSize<total;
     const tableHTML=`<table><thead><tr>
-      <th>Nome azienda</th><th>Tipo</th><th>Annunci</th><th>Sito web</th><th>LinkedIn</th><th>Stato</th><th></th>
+      <th>Nome azienda</th><th>Tipo</th><th>Annunci</th><th>Sito web</th><th>LinkedIn</th><th>Account</th><th>Stato</th><th></th>
     </tr></thead><tbody id="companies-rows-body">${rowsHTML}</tbody></table>
     ${hasMore?`<div style="text-align:center;padding:16px;border-top:1px solid var(--border);"><button class="btn btn-secondary" onclick="loadCompanies(${offset+pageSize})">Carica altre aziende (${offset+pageSize}/${total})</button></div>`:''}`;
 
@@ -9378,6 +9400,7 @@ async function loadCompanyDetail(company){
   // Profilo azienda — dai campi propri di companies (fonte primaria, non da job_listings)
   document.getElementById('cd-edit-dipendenti').value=company.dipendenti||'';
   document.getElementById('cd-edit-ateco').value=company.codice_ateco||'';
+  document.getElementById('cd-edit-account').value=company.account||'';
   document.getElementById('cd-edit-sector').value=company.sector_v2||'';
   document.getElementById('cd-edit-description').value=company.activity_description||'';
 
@@ -12132,6 +12155,7 @@ async function saveCompanyProfile(){
   const patch={
     dipendenti:dipendentiRaw?parseInt(dipendentiRaw):null,
     codice_ateco:document.getElementById('cd-edit-ateco').value.trim()||null,
+    account:document.getElementById('cd-edit-account').value||null,
     sector_v2:document.getElementById('cd-edit-sector').value||null,
     activity_description:document.getElementById('cd-edit-description').value.trim()||null
   };
@@ -12172,7 +12196,7 @@ async function saveCompany(){
 const COMPANY_CSV_FIELD_MAP={
   'Nome azienda':'name','Ragione Sociale':'ragione_sociale','Tipo':'entity_type','Attiva':'is_active',
   'Sito Web':'website','LinkedIn':'linkedin_url','Indeed':'indeed_url',
-  'N. Dipendenti':'dipendenti','Codice Ateco':'codice_ateco','Settore':'sector_v2','Descrizione Attività':'activity_description'
+  'N. Dipendenti':'dipendenti','Codice Ateco':'codice_ateco','Account':'account','Settore':'sector_v2','Descrizione Attività':'activity_description'
 };
 const COMPANY_CSV_HEADER=['ID',...Object.keys(COMPANY_CSV_FIELD_MAP)];
 
