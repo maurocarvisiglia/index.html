@@ -7196,13 +7196,24 @@ function renderClickableBar(id, data, cls, field, allListings){
     </div>`).join('');
 }
 
+// Stesso fallback "_v2 || legacy" gia' in uso nel resto della pagina (es. tabella
+// Annunci, riga ~8294): gli annunci importati dal CSV valorizzano solo i campi
+// _v2, mai i campi legacy (confermato: 0/221 sull'ultimo import hanno seniority
+// legacy popolato, contro 1647/2989 sugli annunci piu' vecchi arricchiti in
+// passato da una riclassificazione manuale) — leggere solo il campo legacy qui
+// faceva sparire gli annunci recenti nel bucket "N/D" invece del bucket reale.
+function campoConFallback(l,field){
+  if(field==='functional_area')return l.functional_area_v2||l.functional_area;
+  if(field==='seniority')return l.seniority_v2||l.seniority;
+  return l[field];
+}
 function showDetail(field, value){
   const listings=_dashListings;
-  const filtered=listings.filter(l=>(l[field]||'N/D')===value);
+  const filtered=listings.filter(l=>(campoConFallback(l,field)||'N/D')===value);
   const panel=document.getElementById('detail-panel');
   const title=document.getElementById('detail-title');
   const body=document.getElementById('detail-body');
-  
+
   const fieldLabel=field==='functional_area'?'Area':field==='seniority'?'Seniority':'Settore';
   title.textContent=`${fieldLabel}: ${value} — ${filtered.length} annunci`;
   panel.style.display='block';
@@ -7215,7 +7226,7 @@ function showDetail(field, value){
 
   // Breakdown per seniority
   const bySeniority={};
-  filtered.forEach(l=>{const k=l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
+  filtered.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
   const seniorityBreakdown=Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;margin-right:6px;">${k}: <strong>${v}</strong></span>`).join('');
 
   body.innerHTML=`
@@ -7229,17 +7240,24 @@ function showDetail(field, value){
       Distribuzione seniority: ${seniorityBreakdown||'—'}
     </div>
     <div style="overflow-x:auto;">
-    <table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th></tr></thead>
-    <tbody>${filtered.map(l=>`<tr>
+    <table><thead><tr><th>Ruolo</th><th>Azienda</th><th>Settore</th><th>Seniority</th><th>Benefit</th><th>RAL</th><th>Contratto</th><th>Sede</th><th>Data</th></tr></thead>
+    <tbody>${filtered.map(l=>{
+      // Stesso fix del bug "N/A" della tabella Annunci: "N/A" e' un valore
+      // letterale del CSV per "nessun benefit dichiarato", non un benefit vero.
+      const benefitCell=(l.benefits&&l.benefits!=='N/A')?
+        `<div class="benefit-badge">⭐<div class="benefit-tooltip">${l.benefits.split(',').map(b=>`• ${b.trim()}`).join('<br>')}</div></div>`
+        :'<span style="color:var(--text2);font-size:11px;">—</span>';
+      return `<tr>
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
       <td style="font-size:12px">${l.company_name}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
-      <td>${l.seniority||'—'}</td>
+      <td>${l.seniority_v2||l.seniority||'—'}</td>
+      <td>${benefitCell}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
       <td>${l.contract_type||'—'}</td>
       <td>${l.location||'—'}</td>
       <td>${l.published_date||'—'}</td>
-    </tr>`).join('')}</tbody></table>
+    </tr>`;}).join('')}</tbody></table>
     </div>`;
 }
 
@@ -8275,8 +8293,10 @@ function renderListingsTable(data){
     <th ${thStyle} onclick="sortListings('published_date')">Data${arrow('published_date')}</th>
     <th></th>
   </tr></thead><tbody>${data.map(l=>{
-    // Benefit tooltip
-    const benefitCell=l.benefits?
+    // Benefit tooltip — "N/A" e' il valore letterale del CSV per "nessun
+    // benefit dichiarato", non un benefit vero: senza questa esclusione la
+    // stellina compariva comunque con "• N/A" nel tooltip.
+    const benefitCell=(l.benefits&&l.benefits!=='N/A')?
       `<div class="benefit-badge">⭐<div class="benefit-tooltip">${l.benefits.split(',').map(b=>`• ${b.trim()}`).join('<br>')}</div></div>`
       :'<span style="color:var(--text2);font-size:11px;">—</span>';
 
