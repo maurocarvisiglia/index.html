@@ -8883,7 +8883,7 @@ async function loadCoreProgress(){
     // inconfrontabili anche se corretti ciascuno per conto suo.
     const [totalCompanies,facts,areas]=await Promise.all([
       api('companies?select=id&website=not.is.null&merged_into=is.null'),
-      api('company_facts?select=company_id'),
+      apiPaginato('company_facts?select=company_id'),
       api('company_therapeutic_areas?select=company_id,fonte&fonte=in.(sito_ufficiale,modello_testo)')
     ]);
     const total=totalCompanies.length;
