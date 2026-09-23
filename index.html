@@ -709,6 +709,13 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">📇 Copertura contatti aziende</div>
+      <div id="contacts-progress-body">
+        <div class="loading">Caricamento...</div>
+      </div>
+    </div>
+
     <div class="table-wrap">
       <div class="table-header">
         <div class="table-title">Aziende nel database</div>
@@ -5024,7 +5031,7 @@ function showView(name,btn){
   if(name==='demand')loadDemandModule();
   if(name==='users')loadUsersView();
   if(name==='listings'){loadListings();refreshPendingBadges();}
-  if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();loadWorkforceProgress();}
+  if(name==='companies'){loadCompanies();loadApolloProgress();loadCoreProgress();loadWorkforceProgress();loadContactsProgress();}
   if(name==='ruolo')analyzeRuolo();
   if(name==='insight')loadInsightCounter();
   if(name==='rumors')loadRumorsView();
@@ -8948,6 +8955,100 @@ async function loadWorkforceProgress(){
       </div>`;
   }catch(e){
     el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento avanzamento: '+e.message+'</div>';
+  }
+}
+
+// Copertura contatti per azienda — tre soglie annidate (nominativo / +mail /
+// +telefono), stesso identico criterio del controllo manuale gia' fatto per
+// Mauro il 22/09/2026: un contatto conta solo se ha un nome VERO, mai il
+// placeholder '(contatto senza nome)' usato per le righe import-only-email.
+// Una sola azienda puo' avere piu' righe contatto: conta se ALMENO UNA riga
+// soddisfa la soglia (una riga con nome+email+telefono tutti insieme, non tre
+// righe sparse che sommate coprono i tre campi separatamente).
+async function loadContactsProgress(){
+  const el=document.getElementById('contacts-progress-body');
+  if(!el)return;
+  try{
+    const [totalCompanies,contatti]=await Promise.all([
+      api('companies?select=id&is_active=eq.true&merged_into=is.null'),
+      apiPaginato('company_contacts?select=company_id,nome,email,telefono')
+    ]);
+    const total=totalCompanies.length;
+    const conNome=new Set(),conEmail=new Set(),conTelefono=new Set();
+    contatti.forEach(c=>{
+      if(!c.nome||c.nome==='(contatto senza nome)')return;
+      conNome.add(c.company_id);
+      if(c.email){
+        conEmail.add(c.company_id);
+        if(c.telefono)conTelefono.add(c.company_id);
+      }
+    });
+    el.innerHTML=`
+      <div class="kpi-mini-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div><div class="kpi-mini-label" style="color:var(--success);">Contatti</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="openContactsList('nome')">${conNome.size}</div><div style="font-size:10px;color:var(--text2);">${total?Math.round(conNome.size/total*100):0}% delle aziende</div></div>
+        <div><div class="kpi-mini-label" style="color:var(--accent2);">Contatti + mail</div><div class="kpi-mini-value" style="color:var(--accent2);cursor:pointer;text-decoration:underline;" onclick="openContactsList('email')">${conEmail.size}</div><div style="font-size:10px;color:var(--text2);">${total?Math.round(conEmail.size/total*100):0}% delle aziende</div></div>
+        <div><div class="kpi-mini-label" style="color:#34d399;">Contatti + mail + telefono</div><div class="kpi-mini-value" style="color:#34d399;cursor:pointer;text-decoration:underline;" onclick="openContactsList('telefono')">${conTelefono.size}</div><div style="font-size:10px;color:var(--text2);">${total?Math.round(conTelefono.size/total*100):0}% delle aziende</div></div>
+      </div>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--text2);font-size:12px;">Errore caricamento copertura contatti: '+e.message+'</div>';
+  }
+}
+
+async function openContactsList(soglia){
+  const titleEl=document.getElementById('apollo-exclusions-title');
+  const bodyEl=document.getElementById('apollo-exclusions-body');
+  const titoli={nome:'Aziende con almeno un contatto nominativo',email:'Aziende con contatto nominativo + email',telefono:'Aziende con contatto nominativo + email + telefono'};
+  titleEl.textContent=titoli[soglia]||'Aziende con contatti';
+  bodyEl.innerHTML='<div class="loading">Caricamento...</div>';
+  openModal('modal-apollo-exclusions');
+  try{
+    const contatti=await apiPaginato('company_contacts?select=company_id,nome,ruolo,email,telefono&order=updated_at.desc');
+    // Per ogni azienda tiene la MIGLIOR riga rispetto alla soglia scelta (non la
+    // prima trovata): se c'e' una riga che soddisfa la soglia, e' quella da
+    // mostrare, anche se un'altra riga piu' recente dell'azienda non la soddisfa.
+    const soddisfa=(c)=>{
+      if(!c.nome||c.nome==='(contatto senza nome)')return false;
+      if(soglia==='nome')return true;
+      if(!c.email)return false;
+      if(soglia==='email')return true;
+      return !!c.telefono;
+    };
+    const byCompany=new Map();
+    contatti.forEach(c=>{
+      if(!soddisfa(c))return;
+      if(!byCompany.has(c.company_id))byCompany.set(c.company_id,c);
+    });
+    const companyIds=[...byCompany.keys()];
+    if(!companyIds.length){bodyEl.innerHTML='<div style="color:var(--text2);font-size:13px;">Nessuna azienda in questa fascia</div>';return;}
+    const companies=await apiPerIdList('companies','*',companyIds);
+    const nameMap=new Map(companies.map(c=>[c.id,c]));
+    const rows=companyIds.map(id=>[id,byCompany.get(id)]).sort((a,b)=>{
+      const na=nameMap.get(a[0])?.name||'',nb=nameMap.get(b[0])?.name||'';
+      return na.localeCompare(nb,'it');
+    });
+
+    bodyEl.innerHTML=`<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Clicca sul nome per aprire la scheda azienda. ${rows.length} aziende.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="border-bottom:1px solid var(--border);">
+        <th style="text-align:left;padding:8px;color:var(--text2);">Azienda</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Contatto</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Ruolo</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Email</th>
+        <th style="text-align:left;padding:8px;color:var(--text2);">Telefono</th>
+      </tr></thead>
+      <tbody>${rows.map(([id,c])=>{
+        const co=nameMap.get(id);
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px;">${companyLinkHtml(co)}</td>
+          <td style="padding:8px;">${c.nome||'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${c.ruolo||'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${c.email||'—'}</td>
+          <td style="padding:8px;color:var(--text2);">${c.telefono||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    bodyEl.innerHTML='<div style="color:var(--danger);font-size:12px;">Errore: '+e.message+'</div>';
   }
 }
 
