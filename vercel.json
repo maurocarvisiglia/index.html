@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/apollo-enrichment",
+      "path": "/api/apollo-unificato",
       "schedule": "0 7 * * *"
     },
     {

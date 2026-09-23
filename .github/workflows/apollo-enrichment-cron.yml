@@ -4,6 +4,15 @@ name: Apollo enrichment daily cron
 # visto smettere di scattare per giorni senza errori visibili. GitHub Actions
 # come programmatore esterno: chiama semplicemente l'endpoint via HTTP, non
 # dipende dall'affidabilità del cron interno di Vercel.
+#
+# 23/09/2026 — ripuntato su api/apollo-unificato.js: prima questo cron e un
+# secondo meccanismo separato (organico-automatico-giornaliero.mjs, mai
+# collegato a un cron proprio) interrogavano Apollo due volte sulle stesse
+# aziende. Richiesto da Mauro ("un'unica chiamata per tutte le informazioni,
+# non più chiamate diverse"): ora una sola visita per azienda fa organico +
+# dati azienda + decision maker+email insieme (vedi scripts/apollo-unificato-
+# giornaliero.mjs). api/apollo-enrichment.js resta nel repo ma non è più
+# richiamato da nessun cron — superseduto, non cancellato.
 
 on:
   schedule:
@@ -14,14 +23,14 @@ jobs:
   trigger-apollo-enrichment:
     runs-on: ubuntu-latest
     steps:
-      - name: Chiama l'endpoint di arricchimento Apollo
+      - name: Chiama l'endpoint Apollo unificato
         run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST https://ls-job-intelligence.vercel.app/api/apollo-enrichment)
+          response=$(curl -s -w "\n%{http_code}" -X POST https://ls-job-intelligence.vercel.app/api/apollo-unificato)
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
           echo "HTTP status: $http_code"
           echo "$body"
           if [ "$http_code" != "200" ]; then
-            echo "::error::Apollo enrichment endpoint returned HTTP $http_code"
+            echo "::error::Apollo unificato endpoint returned HTTP $http_code"
             exit 1
           fi
