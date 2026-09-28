@@ -96,6 +96,23 @@ function dominioDi(email) {
   return m ? m[1].replace(/^www\./, '') : null;
 }
 
+// Numero di telefono/cellulare nella risposta di un cliente (richiesto da
+// Mauro il 28/09/2026) — SOLO se preceduto da un'etichetta esplicita
+// (Tel/Cell/Mobile/Phone), mai un numero "a occhio" preso da qualunque cifra
+// nel testo: una risposta puo' contenere date, P.IVA, numeri di preventivo,
+// tutti falsi positivi se il pattern fosse largo.
+function estraiTelefono(testo) {
+  if (!testo) return null;
+  const re = /\b(?:tel|telefono|cell|cellulare|mobile|phone|mob|ph)\.?\s*:?\.?\s*([+\d][\d\s().\/-]{6,20}\d)/i;
+  const m = re.exec(testo);
+  if (!m) return null;
+  const pulito = m[1].replace(/[^\d+]/g, '');
+  const soloCifre = pulito.replace(/^\+/, '');
+  if (soloCifre.length < 8 || soloCifre.length > 15) return null;
+  if (/^(\d)\1+$/.test(soloCifre)) return null; // tutte cifre uguali: non un numero reale
+  return pulito;
+}
+
 console.log(`\n${B}Posta (${DIREZIONE}) → company_email_log${Z}`);
 console.log(`${D}${APPLY ? 'SCRIVE su Supabase' : 'solo misura, nessuna scrittura'}${Z}\n`);
 
@@ -147,6 +164,7 @@ function trovaAzienda(dominio) {
 }
 
 const righe = [];
+const numeriTrovati = []; // solo direzione='ricevuta': {company_id, email, nome, telefono}
 let ignoratePersonali = 0, nonAbbinate = 0;
 const domainNonAbbinati = new Map();
 
@@ -172,6 +190,12 @@ for (const msg of email) {
       data_invio: msg.dataInvio,
       direzione: DIREZIONE,
     });
+    if (DIREZIONE === 'ricevuta') {
+      const telefono = estraiTelefono(msg.testo);
+      if (telefono) {
+        numeriTrovati.push({ company_id: companyId, email: contatto.toLowerCase(), nome: msg.nomeMittente || null, telefono });
+      }
+    }
   }
 }
 
@@ -182,6 +206,12 @@ console.log(`${D}contatti non abbinati a nessuna azienda: ${nonAbbinate}${Z}`);
 if (nonAbbinate > 0) {
   const top = [...domainNonAbbinati.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
   console.log(`${D}  domini non abbinati più frequenti: ${top.map(([d, n]) => `${d} (${n})`).join(', ')}${Z}`);
+}
+if (DIREZIONE === 'ricevuta') {
+  console.log(`${D}numeri di telefono trovati nelle risposte: ${numeriTrovati.length}${Z}`);
+  // Mostrati sempre, anche in sola misura: un numero sbagliato scritto su un
+  // contatto e' un dato peggiore di nessun dato, va controllato prima di fidarsi.
+  numeriTrovati.forEach((n) => console.log(`${D}  ${n.email} (${n.nome || 'nome sconosciuto'}): ${n.telefono}${Z}`));
 }
 
 // Niente process.exit() qui: su questa versione di Node, uscire subito dopo
@@ -207,4 +237,58 @@ if (!APPLY) {
     }
   }
   console.log(`\n${G}righe inviate a company_email_log: ${scritte}${Z} (duplicati già presenti ignorati automaticamente) · errori lotto: ${errori}\n`);
+
+  if (numeriTrovati.length) {
+    // Un solo numero per (azienda, email): se la stessa persona ha scritto piu'
+    // volte nella finestra scansionata, si tiene l'ultimo trovato — non serve
+    // sovrascrivere piu' volte lo stesso valore.
+    const numeroPerChiave = new Map();
+    for (const n of numeriTrovati) numeroPerChiave.set(`${n.company_id}|${n.email}`, n);
+
+    const companyIds = [...new Set([...numeroPerChiave.values()].map((n) => n.company_id))];
+    const contattiEsistenti = [];
+    for (let i = 0; i < companyIds.length; i += 150) {
+      const lotto = companyIds.slice(i, i + 150);
+      const r = await sb(`company_contacts?select=id,company_id,email,telefono&company_id=in.(${lotto.join(',')})`);
+      contattiEsistenti.push(...r);
+    }
+    const contattoEsistentePerChiave = new Map();
+    for (const c of contattiEsistenti) {
+      if (!c.email) continue;
+      contattoEsistentePerChiave.set(`${c.company_id}|${c.email.toLowerCase()}`, c);
+    }
+
+    let telefoniAggiornati = 0, contattiCreati = 0, giaPresenti = 0, erroriTelefono = 0;
+    for (const [chiave, n] of numeroPerChiave) {
+      const esistente = contattoEsistentePerChiave.get(chiave);
+      try {
+        if (esistente) {
+          if (esistente.telefono) { giaPresenti++; continue; } // mai sovrascrivere un numero gia' presente
+          await sb(`company_contacts?id=eq.${esistente.id}`, {
+            method: 'PATCH',
+            headers: { Prefer: 'return=minimal' },
+            body: JSON.stringify({ telefono: n.telefono }),
+          });
+          telefoniAggiornati++;
+        } else {
+          await sb('company_contacts', {
+            method: 'POST',
+            headers: { Prefer: 'return=minimal' },
+            body: JSON.stringify({
+              company_id: n.company_id,
+              nome: n.nome || '(contatto senza nome)',
+              email: n.email,
+              telefono: n.telefono,
+              fonte_scoperta: 'email_ricevuta',
+            }),
+          });
+          contattiCreati++;
+        }
+      } catch (e) {
+        erroriTelefono++;
+        console.log(`${R}telefono ${chiave}: ${String(e.message).slice(0, 150)}${Z}`);
+      }
+    }
+    console.log(`${G}telefoni aggiornati su contatti esistenti: ${telefoniAggiornati}${Z} · nuovi contatti creati: ${contattiCreati} · gia' avevano un numero (non sovrascritto): ${giaPresenti} · errori: ${erroriTelefono}\n`);
+  }
 }

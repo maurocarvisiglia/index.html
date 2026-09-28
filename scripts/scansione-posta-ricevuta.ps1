@@ -18,6 +18,12 @@
 # autoresponder non e' un cliente che ha risposto, va scartato prima di
 # scrivere il dump.
 #
+# Include anche il testo della risposta (solo la parte nuova, non la
+# cronologia citata sotto) e il nome del mittente: scripts/associa-posta-
+# giornaliera.mjs cerca li' un numero di telefono/cellulare (richiesto da
+# Mauro il 28/09/2026 - "se nelle risposte ci sono i numeri li dobbiamo
+# importare") e lo scrive su company_contacts.telefono.
+#
 # Uso:
 #   powershell -File scripts\scansione-posta-ricevuta.ps1            misura
 #   powershell -File scripts\scansione-posta-ricevuta.ps1 -Apply     scrive davvero
@@ -68,6 +74,31 @@ $prefissiAutoReply = @(
 )
 $ignorateAutoReply = 0
 
+# Righe che segnano l'inizio della cronologia citata: dove tagliare il corpo
+# per tenere solo il testo NUOVO scritto dal mittente (la firma con eventuale
+# telefono sta li', non nella cronologia sotto). Piu' lingue, stesso motivo
+# dei prefissi auto-reply sopra.
+$marcatoriCitazione = @(
+    '^Da:\s', '^From:\s', '^-{3,}\s*Original Message', '^-{3,}\s*Messaggio originale',
+    '^Il .* ha scritto:', '^On .* wrote:', '^Le .* a ecrit', '^El .* escribio'
+)
+
+function TestoNuovo($corpo) {
+    if (-not $corpo) { return '' }
+    $righe = $corpo -split "`r?`n"
+    $limite = [Math]::Min($righe.Count, 40)
+    $fine = $limite
+    for ($i = 0; $i -lt $limite; $i++) {
+        foreach ($marcatore in $marcatoriCitazione) {
+            if ($righe[$i] -match $marcatore) { $fine = $i; break }
+        }
+        if ($fine -ne $limite) { break }
+    }
+    if ($fine -le 0) { return '' }  # 0..-1 in PowerShell non e' un range vuoto: va gestito a parte
+    $testo = $righe[0..($fine - 1)] -join "`n"
+    return $testo.Substring(0, [Math]::Min(2000, $testo.Length))
+}
+
 foreach ($item in $items) {
     if ($item.ReceivedTime -lt $cutoff) { break }  # ordinati decrescente: da qui in poi solo piu' vecchi
     if ($item.Class -ne 43) { continue }  # 43 = olMail, salta appuntamenti/altro finito in Inbox per errore
@@ -97,10 +128,15 @@ foreach ($item in $items) {
     if (-not $mittente) { try { $mittente = $item.SenderEmailAddress } catch {} }
     if (-not $mittente -or $mittente -notlike "*@*") { continue }
 
+    $nomeMittente = $null
+    try { $nomeMittente = $item.SenderName } catch {}
+
     $risultati.Add([PSCustomObject]@{
-        oggetto   = $oggetto
-        dataInvio = $item.ReceivedTime.ToString("o")
-        contatti  = @($mittente.ToLower())
+        oggetto      = $oggetto
+        dataInvio    = $item.ReceivedTime.ToString("o")
+        contatti     = @($mittente.ToLower())
+        nomeMittente = $nomeMittente
+        testo        = TestoNuovo $item.Body
     })
 }
 Scrivi "risposte automatiche (fuori sede/auto-reply) escluse: $ignorateAutoReply"
