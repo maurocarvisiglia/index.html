@@ -5118,33 +5118,46 @@ async function loadPianoContatto(){
       contattiPerAziende(companyIds),
     ]);
     const aziendaMap=new Map(aziende.map(a=>[a.id,a]));
-    // Un solo contatto per azienda: preferisce chi ha l'email, poi il primo
-    // nominativo reale, mai il placeholder "(contatto senza nome)".
-    const contattoMigliore=new Map();
+    // Tutti i contatti nominativi dell'azienda (mai il placeholder "(contatto
+    // senza nome)"), chi ha l'email prima — Mauro vuole vederli tutti, non solo
+    // il "migliore".
+    const contattiPerAzienda=new Map();
     contatti.forEach(c=>{
       if(!c.nome||c.nome==='(contatto senza nome)')return;
-      const attuale=contattoMigliore.get(c.company_id);
-      if(!attuale||(!attuale.email&&c.email))contattoMigliore.set(c.company_id,c);
+      if(!contattiPerAzienda.has(c.company_id))contattiPerAzienda.set(c.company_id,[]);
+      contattiPerAzienda.get(c.company_id).push(c);
     });
+    contattiPerAzienda.forEach(lista=>lista.sort((a,b)=>(b.email?1:0)-(a.email?1:0)));
 
     if(countEl)countEl.textContent=`${righe.length} aziende — ${righe[0]?.tema||''}`;
+    // Una riga per CONTATTO (non per azienda): se un'azienda ha più contatti
+    // nominativi vanno viste tutte, non solo la migliore — azienda/settore/
+    // punteggio restano uniti con rowspan per non ripetere la stessa azienda
+    // come se fossero aziende diverse.
+    const corpoRighe=righe.map(r=>{
+      const az=aziendaMap.get(r.company_id);
+      if(!az)return '';
+      const elenco=contattiPerAzienda.get(r.company_id)||[];
+      const contattiRiga=elenco.length?elenco:[null];
+      return contattiRiga.map((c,i)=>{
+        const primaRiga=i===0?`
+          <td rowspan="${contattiRiga.length}"><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
+          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${az.sector_v2||'—'}</td>`:'';
+        const ultimaRiga=i===0?`<td rowspan="${contattiRiga.length}" style="color:var(--text2);">${r.punteggio ?? '—'}</td>`:'';
+        return `<tr>
+          ${primaRiga}
+          <td>${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
+          <td style="color:var(--text2);">${c?.ruolo||'—'}</td>
+          <td style="color:var(--text2);">${c?.email||'—'}</td>
+          ${ultimaRiga}
+        </tr>`;
+      }).join('');
+    }).join('');
     el.innerHTML=`<table>
       <thead><tr>
         <th>Azienda</th><th>Settore</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
       </tr></thead>
-      <tbody>${righe.map(r=>{
-        const az=aziendaMap.get(r.company_id);
-        const c=contattoMigliore.get(r.company_id);
-        if(!az)return '';
-        return `<tr>
-          <td><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
-          <td style="color:var(--text2);">${az.sector_v2||'—'}</td>
-          <td>${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
-          <td style="color:var(--text2);">${c?.ruolo||'—'}</td>
-          <td style="color:var(--text2);">${c?.email||'—'}</td>
-          <td style="color:var(--text2);">${r.punteggio ?? '—'}</td>
-        </tr>`;
-      }).join('')}</tbody>
+      <tbody>${corpoRighe}</tbody>
     </table>`;
   }catch(e){
     el.innerHTML='<div style="color:var(--danger);padding:16px;">Errore: '+e.message+'</div>';
