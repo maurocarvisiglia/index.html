@@ -759,6 +759,14 @@ a.job-link:hover{text-decoration:underline;}
             <option value="4">Settimana 4 — Presentazione personale</option>
           </select>
         </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Da vedere</label>
+          <select id="piano-stato" onchange="loadPianoContatto()" style="min-width:140px;">
+            <option value="da_fare">Da fare</option>
+            <option value="fatte">Fatte</option>
+            <option value="tutte">Tutte</option>
+          </select>
+        </div>
         <div style="margin-left:auto;font-size:12px;color:var(--text2);" id="piano-count">—</div>
       </div>
     </div>
@@ -5092,15 +5100,16 @@ async function loadPianoContatto(){
   if(!el)return;
   const mese=document.getElementById('piano-mese')?.value||'Ottobre';
   const settimana=document.getElementById('piano-settimana')?.value||'1';
+  const stato=document.getElementById('piano-stato')?.value||'da_fare';
   el.innerHTML='<div class="loading">Caricamento...</div>';
   try{
-    const righe=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
-    if(!righe.length){
+    const righeComplete=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema,creato_il&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
+    if(!righeComplete.length){
       el.innerHTML='<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda in questo periodo</div></div>';
       if(countEl)countEl.textContent='0 aziende';
       return;
     }
-    const companyIds=righe.map(r=>r.company_id);
+    const companyIds=righeComplete.map(r=>r.company_id);
     // apiPerIdList filtra sull'`id` PROPRIO della tabella passata — su
     // company_contacts serve invece filtrare per `company_id` (chiave esterna),
     // quindi qui la paginazione a lotti va rifatta a mano invece di riusarla.
@@ -5139,6 +5148,20 @@ async function loadPianoContatto(){
       if(giorni===1)return 'ieri';
       return `${giorni} giorni fa`;
     }
+    // "Fatta" = le abbiamo scritto DOPO che questa riga di piano e' stata
+    // creata (non basta un contatto storico da prima del piano, altrimenti
+    // vecchie email la farebbero sparire dalla vista "da fare" a torto).
+    function attivitaFatta(r){
+      const uc=ultimoContattoMap.get(r.company_id);
+      return !!(uc?.ultimo_invio_il && uc.ultimo_invio_il>=r.creato_il);
+    }
+    const righe=stato==='tutte'?righeComplete:righeComplete.filter(r=>attivitaFatta(r)===(stato==='fatte'));
+    if(!righe.length){
+      const etichettaStato=stato==='fatte'?'fatte':stato==='tutte'?'':'da fare';
+      el.innerHTML=`<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda ${etichettaStato?('"'+etichettaStato+'"'):''} in questo periodo</div></div>`;
+      if(countEl)countEl.textContent='0 aziende';
+      return;
+    }
     // Tutti i contatti nominativi dell'azienda (mai il placeholder "(contatto
     // senza nome)"), chi ha l'email prima — Mauro vuole vederli tutti, non solo
     // il "migliore".
@@ -5150,7 +5173,8 @@ async function loadPianoContatto(){
     });
     contattiPerAzienda.forEach(lista=>lista.sort((a,b)=>(b.email?1:0)-(a.email?1:0)));
 
-    if(countEl)countEl.textContent=`${righe.length} aziende — ${righe[0]?.tema||''}`;
+    const etichettaFiltro=stato==='fatte'?' (fatte)':stato==='tutte'?' (tutte)':' (da fare)';
+    if(countEl)countEl.textContent=`${righe.length} aziende${etichettaFiltro} — ${righeComplete[0]?.tema||''}`;
     // Una riga per CONTATTO (non per azienda): se un'azienda ha più contatti
     // nominativi vanno viste tutte, non solo la migliore — azienda/settore/
     // punteggio restano uniti con rowspan per non ripetere la stessa azienda
