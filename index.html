@@ -5101,9 +5101,21 @@ async function loadPianoContatto(){
       return;
     }
     const companyIds=righe.map(r=>r.company_id);
+    // apiPerIdList filtra sull'`id` PROPRIO della tabella passata — su
+    // company_contacts serve invece filtrare per `company_id` (chiave esterna),
+    // quindi qui la paginazione a lotti va rifatta a mano invece di riusarla.
+    async function contattiPerAziende(ids){
+      const risultati=[];
+      for(let i=0;i<ids.length;i+=150){
+        const lotto=ids.slice(i,i+150);
+        const r=await api(`company_contacts?select=company_id,nome,ruolo,email&company_id=in.(${lotto.join(',')})`);
+        risultati.push(...r);
+      }
+      return risultati;
+    }
     const [aziende,contatti]=await Promise.all([
       apiPerIdList('companies','id,name,sector_v2',companyIds),
-      apiPerIdList('company_contacts','company_id,nome,ruolo,email',companyIds),
+      contattiPerAziende(companyIds),
     ]);
     const aziendaMap=new Map(aziende.map(a=>[a.id,a]));
     // Un solo contatto per azienda: preferisce chi ha l'email, poi il primo
