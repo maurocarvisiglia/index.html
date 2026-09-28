@@ -247,6 +247,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-report" onclick="showView('report',this)" style="border-color:#b8965a;color:#b8965a;">📄 Report</button>
     <button class="nav-btn" id="nav-insight" onclick="showView('insight',this)" style="border-color:#ec4899;color:#ec4899;">🎙️ Insight Recruiter</button>
     <button class="nav-btn" id="nav-rumors" onclick="showView('rumors',this)" style="border-color:#14b8a6;color:#14b8a6;">🗞️ Rumors & Market Insight</button>
+    <button class="nav-btn" id="nav-apollo" onclick="showView('apollo',this)" style="border-color:#60a5fa;color:#60a5fa;">🗄️ Archivio Apollo</button>
     <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
     <button class="nav-btn" id="nav-piano" onclick="showView('piano',this)" style="border-color:#f59e0b;color:#f59e0b;display:none;">📅 Piano Contatto</button>
   </div>
@@ -775,6 +776,34 @@ a.job-link:hover{text-decoration:underline;}
     </div>
   </div>
 
+  <!-- ARCHIVIO APOLLO (28/09/2026) — tutto cio' che Apollo restituisce, conservato
+       senza perdite (tabelle apollo_*_raw, lette tramite le viste v_fe_apollo_* senza
+       nomi di persone). Qui: copertura, inventario di OGNI campo visto con dove viene
+       estratto, titoli che la tassonomia non riconosce, registro delle chiamate. -->
+  <div class="view" id="view-apollo">
+    <div class="section-header">
+      <div class="section-title">🗄️ Archivio Apollo <span style="font-size:13px;color:var(--text2);font-weight:400;">Ogni campo restituito da Apollo, cosa ne estraiamo e cosa resta da classificare</span></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:16px;"><div id="apollo-riepilogo"><div class="loading">Caricamento...</div></div></div>
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">Inventario dei campi <span style="font-size:12px;color:var(--text2);font-weight:400;">ogni percorso visto nelle risposte Apollo — "solo archiviato" = conservato ma non ancora portato in una colonna</span></div>
+      <div style="margin:10px 0;"><select id="apollo-campi-filtro" onchange="renderApolloCampi()"><option value="tutti">Tutti i campi</option><option value="non_estratti">Solo archiviati, non estratti</option><option value="estratti">Solo estratti</option></select></div>
+      <div id="apollo-campi" style="overflow-x:auto;"></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div class="chart-card-title">Titoli non mappati <span style="font-size:12px;color:var(--text2);font-weight:400;">persone archiviate a cui la tassonomia non assegna una funzione</span></div>
+      <div style="margin:10px 0;display:flex;gap:10px;flex-wrap:wrap;">
+        <input type="text" id="apollo-titoli-cerca" placeholder="Cerca un titolo..." onkeydown="if(event.key==='Enter')loadApolloTitoli()" style="min-width:240px;">
+        <button class="btn" onclick="loadApolloTitoli()">Cerca</button>
+      </div>
+      <div id="apollo-titoli" style="overflow-x:auto;"></div>
+    </div>
+    <div class="chart-grid" style="margin-bottom:24px;">
+      <div class="chart-card"><div class="chart-card-title">Chiamate Apollo (30 giorni)</div><div id="apollo-chiamate" style="overflow-x:auto;"></div></div>
+      <div class="chart-card"><div class="chart-card-title">Scarichi da riprendere o in errore</div><div id="apollo-scarichi-aperti" style="overflow-x:auto;"></div></div>
+    </div>
+  </div>
+
   <!-- COMPANY DETAIL -->
   <div class="view" id="view-company-detail">
     <div class="section-header">
@@ -987,6 +1016,15 @@ a.job-link:hover{text-decoration:underline;}
     <div class="chart-card" id="cd-workforce-card" style="margin-bottom:24px; border: 2px solid #34d399; display:none;">
       <div class="chart-card-title">👥 Composizione organizzativa (Apollo)</div>
       <div id="cd-workforce-body" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- Archivio Apollo dell'azienda (28/09/2026): stato dello scarico, TUTTE le persone
+         restituite (titolo + funzione, anche le non mappate), organizzazioni Apollo trovate
+         sul dominio (piu' di una = dominio condiviso) e l'organizzazione arricchita con
+         ogni suo campo. Nessun nome di persona: la vista v_fe_apollo_persone non li espone. -->
+    <div class="chart-card" id="cd-apollo-card" style="margin-bottom:24px; border: 2px solid #60a5fa; display:none;">
+      <div class="chart-card-title">🗄️ Archivio Apollo <span id="cd-apollo-sub" style="font-size:12px;color:var(--text2);font-weight:400;"></span></div>
+      <div id="cd-apollo-body" style="margin-top:12px;"></div>
     </div>
 
     <div class="chart-grid" style="margin-bottom:24px;">
@@ -5088,6 +5126,7 @@ function showView(name,btn){
   if(name==='insight')loadInsightCounter();
   if(name==='rumors')loadRumorsView();
   if(name==='piano')loadPianoContatto();
+  if(name==='apollo')loadApolloArchivioView();
 }
 
 // Piano di contatto trimestrale (28/09/2026) — per ogni azienda del mese/
@@ -9892,6 +9931,7 @@ async function loadCompanyDetail(company){
     loadRumorsCard(company.id);
     loadProductsCard(company.id);
     loadWorkforceCard(company.id);
+    loadApolloArchivioCard(company.id);
     loadGruppoCard(company);
   }
 }
@@ -12223,6 +12263,166 @@ async function loadWorkforceCard(companyId){
   }catch(e){
     card.style.display='';
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento organico: ${e.message}</div>`;
+  }
+}
+
+// ═══ ARCHIVIO APOLLO (28/09/2026) ═══
+// Tutto cio' che Apollo restituisce e' conservato (tabelle apollo_*_raw) e qui
+// reso visibile tramite le viste v_fe_apollo_*, che non espongono i nomi delle
+// persone. company_workforce resta la sintesi per funzione (card sopra); questa
+// card mostra il dato intero da cui la sintesi e' ricavata, comprese le persone
+// che la tassonomia non riconosce ancora.
+function apolloAppiattisci(valore,percorso='',out=[]){
+  if(Array.isArray(valore)){
+    if(!valore.length)out.push([percorso,'[]']);
+    else if(valore.every(v=>v===null||typeof v!=='object'))out.push([percorso,valore.join(', ')]);
+    else valore.forEach((v,i)=>apolloAppiattisci(v,`${percorso}[${i}]`,out));
+  }else if(valore&&typeof valore==='object'){
+    const voci=Object.entries(valore);
+    if(!voci.length)out.push([percorso,'{}']);
+    voci.forEach(([k,v])=>apolloAppiattisci(v,percorso?`${percorso}.${k}`:k,out));
+  }else out.push([percorso,valore===null?'—':String(valore)]);
+  return out;
+}
+const APOLLO_ESITO_LABEL={completo:'✅ Completo',in_corso:'⏳ Da riprendere',zero_risultati:'∅ Nessuna persona su Apollo',errore:'⚠️ Errore'};
+const APOLLO_TELEFONO_LABEL={si:'sì',forse:'forse'};
+const fmtDataApollo=d=>d?new Date(d).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
+let _apolloPersone=[];
+
+async function loadApolloArchivioCard(companyId){
+  const card=document.getElementById('cd-apollo-card');
+  const body=document.getElementById('cd-apollo-body');
+  const sub=document.getElementById('cd-apollo-sub');
+  if(!card||!body)return;
+  card.style.display='';
+  body.innerHTML='<div class="loading">Caricamento...</div>';
+  try{
+    const [scarico,varianti,organizzazione,persone]=await Promise.all([
+      api(`v_fe_apollo_scarico?select=dominio,total_entries,scaricate,pagine,completo,esito,errore,risposta_extra,aggiornato_il&company_id=eq.${companyId}`),
+      api(`v_fe_apollo_org_varianti?select=org_nome,persone,payload&company_id=eq.${companyId}&order=persone.desc`),
+      api(`v_fe_apollo_organizzazione?select=dominio,apollo_org_id,nome_apollo,abbinamento_ok,payload,ricevuto_il&company_id=eq.${companyId}`),
+      apiPaginato(`v_fe_apollo_persone?select=title,funzione,livello,ambito,sede,has_email,has_direct_phone,org_nome,last_refreshed_at,extra&company_id=eq.${companyId}&order=title.asc`,1000)
+    ]);
+    const s=scarico[0];
+    if(!s){
+      sub.textContent='';
+      body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora scaricata da Apollo. La raccolta giornaliera la prenderà in coda (servono un sito web e un dominio valido).</div>';
+      return;
+    }
+    _apolloPersone=persone;
+    const classificate=persone.filter(p=>p.funzione).length;
+    sub.textContent=`· ${s.dominio}`;
+
+    const stato=`<div class="kpi-mini-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;">
+      <div><div class="kpi-mini-label">Stato scarico</div><div class="kpi-mini-value" style="font-size:13px;">${APOLLO_ESITO_LABEL[s.esito]||escHtml(s.esito)}</div></div>
+      <div><div class="kpi-mini-label">Dichiarate da Apollo</div><div class="kpi-mini-value">${s.total_entries??'—'}</div></div>
+      <div><div class="kpi-mini-label">Archiviate</div><div class="kpi-mini-value">${persone.length}</div></div>
+      <div><div class="kpi-mini-label">Con funzione</div><div class="kpi-mini-value" style="color:var(--success);">${classificate}${persone.length?` <span style="font-size:11px;color:var(--text2);">(${Math.round(classificate/persone.length*100)}%)</span>`:''}</div></div>
+      <div><div class="kpi-mini-label">Aggiornato</div><div class="kpi-mini-value" style="font-size:13px;">${fmtDataApollo(s.aggiornato_il)}</div></div>
+    </div>${s.errore?`<div style="color:var(--danger);font-size:12px;margin-bottom:12px;">Ultimo errore: ${escHtml(s.errore)}</div>`:''}
+    ${s.risposta_extra?`<div style="font-size:11px;color:var(--text2);margin-bottom:12px;">Campi extra nella risposta: <code>${escHtml(JSON.stringify(s.risposta_extra))}</code></div>`:''}`;
+
+    const avvisoCondiviso=varianti.length>1
+      ?`<div style="color:var(--warning);font-size:12px;margin:6px 0;">⚠️ Sul dominio ${escHtml(s.dominio)} Apollo trova ${varianti.length} organizzazioni diverse: probabile dominio condiviso con altre aziende. Le persone qui sotto vanno lette insieme alla colonna "Organizzazione Apollo".</div>`:'';
+    const tabVarianti=varianti.length?`<div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;margin:4px 0 6px;">Organizzazioni Apollo sul dominio</div>${avvisoCondiviso}
+      <table><thead><tr><th>Organizzazione Apollo</th><th style="width:90px;">Persone</th><th>Dati disponibili su Apollo</th></tr></thead><tbody>
+      ${varianti.map(v=>`<tr><td>${escHtml(v.org_nome||'—')}</td><td>${v.persone}</td><td style="font-size:11px;color:var(--text2);">${Object.entries(v.payload||{}).filter(([k])=>k!=='name').map(([k,val])=>`${escHtml(k.replace(/^has_/,''))}: ${val===true?'sì':val===false?'no':escHtml(String(val))}`).join(' · ')}</td></tr>`).join('')}
+      </tbody></table>`:'';
+
+    const o=organizzazione[0];
+    const campiOrg=o?apolloAppiattisci(o.payload):[];
+    const tabOrg=o
+      ?`<details style="margin:12px 0;"><summary style="cursor:pointer;font-size:12px;font-weight:600;">Organizzazione arricchita (organizations/enrich) — ${campiOrg.length} campi · "${escHtml(o.nome_apollo||'')}" ${o.abbinamento_ok?'':'<span style="color:var(--danger);">· nome non plausibile, non estratto</span>'} · ${fmtDataApollo(o.ricevuto_il)}</summary>
+        <table style="margin-top:8px;"><thead><tr><th style="width:40%;">Campo</th><th>Valore</th></tr></thead><tbody>
+        ${campiOrg.map(([k,v])=>`<tr><td style="font-family:monospace;font-size:11px;">${escHtml(k)}</td><td style="font-size:12px;overflow-wrap:anywhere;">${escHtml(v.length>400?v.slice(0,400)+'…':v)}</td></tr>`).join('')}
+        </tbody></table></details>`
+      :'<div style="font-size:12px;color:var(--text2);margin:12px 0;">Organizzazione non ancora arricchita con organizations/enrich (endpoint a crediti): verrà archiviata per intero alla prima chiamata.</div>';
+
+    const filtri=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 8px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;">Persone archiviate</div>
+      <select id="cd-apollo-filtro" onchange="renderApolloPersone()"><option value="tutte">Tutte (${persone.length})</option><option value="mappate">Con funzione (${classificate})</option><option value="non_mappate">Senza funzione (${persone.length-classificate})</option></select>
+      <input type="text" id="cd-apollo-cerca" placeholder="Filtra per titolo..." oninput="renderApolloPersone()" style="min-width:200px;">
+    </div><div id="cd-apollo-persone" style="max-height:520px;overflow:auto;"></div>`;
+
+    body.innerHTML=stato+tabVarianti+tabOrg+filtri;
+    renderApolloPersone();
+  }catch(e){
+    body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento archivio Apollo: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderApolloPersone(){
+  const el=document.getElementById('cd-apollo-persone');
+  if(!el)return;
+  const filtro=document.getElementById('cd-apollo-filtro')?.value||'tutte';
+  const cerca=(document.getElementById('cd-apollo-cerca')?.value||'').trim().toLowerCase();
+  const righe=_apolloPersone.filter(p=>(filtro==='tutte'||(filtro==='mappate'?!!p.funzione:!p.funzione))&&(!cerca||(p.title||'').toLowerCase().includes(cerca)));
+  const mostra=righe.slice(0,500);
+  const variOrg=new Set(_apolloPersone.map(p=>p.org_nome)).size>1;
+  el.innerHTML=righe.length?`<table><thead><tr><th>Titolo</th><th>Funzione</th><th style="width:70px;">Ambito</th><th style="width:60px;">Email</th><th style="width:70px;">Telefono</th>${variOrg?'<th>Organizzazione Apollo</th>':''}<th style="width:90px;">Aggiornato</th></tr></thead><tbody>
+    ${mostra.map(p=>`<tr><td style="font-size:12px;">${escHtml(p.title||'(senza titolo)')}${p.extra?` <span title="${escHtml(JSON.stringify(p.extra))}" style="color:var(--warning);cursor:help;">✚</span>`:''}</td>
+      <td style="font-size:12px;">${p.funzione?escHtml(WORKFORCE_FUNZIONE_LABEL[p.funzione]||p.funzione)+(p.livello==='specifico'?' <span style="font-size:9px;color:var(--text2);">specifica</span>':''):'<span style="color:var(--text2);">— non mappata</span>'}</td>
+      <td style="font-size:11px;">${escHtml(WORKFORCE_AMBITO_LABEL[p.ambito]||'')}${p.sede?` ${escHtml(p.sede)}`:''}</td>
+      <td style="font-size:11px;">${p.has_email?'sì':'no'}</td>
+      <td style="font-size:11px;">${escHtml(APOLLO_TELEFONO_LABEL[p.has_direct_phone]||p.has_direct_phone||'—')}</td>
+      ${variOrg?`<td style="font-size:11px;">${escHtml(p.org_nome||'—')}</td>`:''}
+      <td style="font-size:11px;">${fmtDataApollo(p.last_refreshed_at)}</td></tr>`).join('')}
+    </tbody></table>${righe.length>mostra.length?`<div style="font-size:11px;color:var(--text2);padding:8px;">Mostrate le prime ${mostra.length} di ${righe.length}: usa il filtro per titolo per restringere.</div>`:''}`
+    :'<div style="font-size:12px;color:var(--text2);padding:8px;">Nessuna persona con questi filtri.</div>';
+}
+
+let _apolloCampi=[];
+async function loadApolloArchivioView(){
+  const rie=document.getElementById('apollo-riepilogo');
+  try{
+    const [riepilogo,campi,chiamate,aperti]=await Promise.all([
+      api('mv_apollo_riepilogo?select=*'),
+      apiPaginato('v_fe_apollo_campi?select=*&order=endpoint.asc,percorso.asc',1000),
+      api('v_fe_apollo_chiamate?select=*&order=endpoint.asc,chiamate.desc'),
+      api('v_fe_apollo_scarico?select=company_id,azienda,dominio,esito,scaricate,total_entries,pagine,errore,aggiornato_il&esito=in.(in_corso,errore)&order=aggiornato_il.desc&limit=200')
+    ]);
+    const r=riepilogo[0]||{};
+    const pct=r.persone_archiviate?Math.round(r.persone_classificate/r.persone_archiviate*100):0;
+    rie.innerHTML=`<div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);gap:14px;">
+      <div><div class="kpi-mini-label">Aziende scaricate</div><div class="kpi-mini-value">${r.aziende_scaricate??0}</div><div style="font-size:11px;color:var(--text2);">${r.scarichi_completi??0} complete · ${r.scarichi_in_corso??0} da riprendere · ${r.scarichi_zero??0} vuote · ${r.scarichi_errore??0} errori</div></div>
+      <div><div class="kpi-mini-label">Persone archiviate</div><div class="kpi-mini-value">${(r.persone_archiviate??0).toLocaleString('it-IT')}</div><div style="font-size:11px;color:var(--text2);">${(r.persone_in_piu_aziende??0).toLocaleString('it-IT')} presenti in più aziende (domini condivisi)</div></div>
+      <div><div class="kpi-mini-label">Con funzione</div><div class="kpi-mini-value" style="color:${pct>=60?'var(--success)':'var(--warning)'};">${pct}%</div><div style="font-size:11px;color:var(--text2);">${(r.persone_classificate??0).toLocaleString('it-IT')} classificate</div></div>
+      <div><div class="kpi-mini-label">Risposte a crediti archiviate</div><div class="kpi-mini-value">${r.organizzazioni_archiviate??0}</div><div style="font-size:11px;color:var(--text2);">organizzazioni · ${r.match_archiviati??0} contatti rivelati</div></div>
+    </div><div style="font-size:10px;color:var(--text2);margin-top:10px;">Riepilogo calcolato il ${r.calcolato_il?new Date(r.calcolato_il).toLocaleString('it-IT'):'—'} (si aggiorna a ogni classificazione o scarico completato)</div>`;
+    _apolloCampi=campi;
+    renderApolloCampi();
+    document.getElementById('apollo-chiamate').innerHTML=chiamate.length?`<table><thead><tr><th>Endpoint</th><th>Esito</th><th>HTTP</th><th>Chiamate</th><th>Ultima</th></tr></thead><tbody>${chiamate.map(c=>`<tr><td style="font-size:12px;">${escHtml(c.endpoint)}</td><td style="font-size:12px;color:${c.esito==='ok'?'var(--success)':'var(--danger)'};">${escHtml(c.esito)}</td><td>${c.http_status??'—'}</td><td>${c.chiamate}</td><td style="font-size:11px;">${c.ultima?new Date(c.ultima).toLocaleString('it-IT'):'—'}</td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--text2);">Nessuna chiamata registrata negli ultimi 30 giorni.</div>';
+    document.getElementById('apollo-scarichi-aperti').innerHTML=aperti.length?`<table><thead><tr><th>Azienda</th><th>Stato</th><th>Persone</th><th>Dettaglio</th></tr></thead><tbody>${aperti.map(a=>`<tr><td style="font-size:12px;">${escHtml(a.azienda)}</td><td style="font-size:12px;">${APOLLO_ESITO_LABEL[a.esito]||escHtml(a.esito)}</td><td style="font-size:12px;">${a.scaricate}/${a.total_entries??'?'}</td><td style="font-size:11px;color:var(--text2);">${a.errore?escHtml(a.errore):`pagina ${a.pagine}, riprende al prossimo giro`}</td></tr>`).join('')}</tbody></table>`:'<div style="font-size:12px;color:var(--success);">Nessuno scarico aperto.</div>';
+    loadApolloTitoli();
+  }catch(e){
+    rie.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento archivio Apollo: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderApolloCampi(){
+  const el=document.getElementById('apollo-campi');
+  if(!el)return;
+  const filtro=document.getElementById('apollo-campi-filtro')?.value||'tutti';
+  const righe=_apolloCampi.filter(c=>filtro==='tutti'||(filtro==='estratti'?!!c.estratto_in:!c.estratto_in));
+  el.innerHTML=righe.length?`<table><thead><tr><th>Endpoint</th><th>Campo</th><th style="width:70px;">Tipo</th><th style="width:90px;">Visto</th><th>Esempio</th><th>Dove finisce</th></tr></thead><tbody>
+    ${righe.map(c=>`<tr><td style="font-size:11px;">${escHtml(c.endpoint)}</td><td style="font-family:monospace;font-size:11px;">${escHtml(c.percorso)}</td><td style="font-size:11px;">${escHtml(c.tipo)}</td><td style="font-size:11px;">${Number(c.volte).toLocaleString('it-IT')}</td><td style="font-size:11px;color:var(--text2);overflow-wrap:anywhere;">${escHtml((c.esempio||'').slice(0,80))}</td><td style="font-size:11px;">${c.estratto_in?`<span style="color:var(--success);">${escHtml(c.estratto_in)}</span>`:'<span style="color:var(--text2);">solo archiviato</span>'}</td></tr>`).join('')}
+    </tbody></table>`:'<div style="font-size:12px;color:var(--text2);">Nessun campo con questo filtro.</div>';
+}
+
+async function loadApolloTitoli(){
+  const el=document.getElementById('apollo-titoli');
+  if(!el)return;
+  const cerca=(document.getElementById('apollo-titoli-cerca')?.value||'').trim();
+  el.innerHTML='<div class="loading">Caricamento...</div>';
+  try{
+    const filtro=cerca?`&titolo=ilike.*${encodeURIComponent(cerca.replace(/[*,()]/g,' '))}*`:'';
+    const righe=await api(`mv_organico_titoli_non_mappati?select=titolo,persone,aziende,settori&order=persone.desc${filtro}&limit=300`);
+    el.innerHTML=righe.length?`<table><thead><tr><th>Titolo</th><th style="width:90px;">Persone</th><th style="width:80px;">Aziende</th><th>Settori</th></tr></thead><tbody>
+      ${righe.map(t=>`<tr><td style="font-size:12px;">${escHtml(t.titolo)}</td><td>${t.persone}</td><td>${t.aziende}</td><td style="font-size:11px;color:var(--text2);">${(t.settori||[]).map(escHtml).join(', ')}</td></tr>`).join('')}
+      </tbody></table><div style="font-size:11px;color:var(--text2);padding:8px;">Primi 300 per numero di persone${cerca?` che contengono "${escHtml(cerca)}"`:''}.</div>`
+      :'<div style="font-size:12px;color:var(--text2);">Nessun titolo non mappato trovato.</div>';
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore: ${escHtml(e.message)}</div>`;
   }
 }
 

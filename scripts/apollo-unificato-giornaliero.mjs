@@ -31,8 +31,11 @@
  * 1.500 persone per azienda) prosegue comunque — non si perde mai il lavoro
  * gratuito per un errore sul lavoro a pagamento.
  *
- * REGISTRO — company_workforce e' il gate per "azienda gia' visitata" (come
- * prima): un'azienda con righe li' non viene ripescata. L'arricchimento dati
+ * REGISTRO — dal 28/09/2026 il gate e' apollo_people_scarico (stato dello
+ * scarico persone per azienda, ripristinabile), non piu' company_workforce:
+ * un'azienda con zero titoli riconosciuti non ha righe in company_workforce e
+ * veniva ritentata o, peggio, data per fatta. Vedi il blocco ARCHIVIO sotto.
+ * L'arricchimento dati
  * azienda si ritenta naturalmente finche' i suoi campi restano NULL (stesso
  * principio gia' in uso in apollo-enrichment-agent.js). Il decision maker usa
  * il registro company_facts_lookup_log(tipo='decision_maker_apollo') — stesso
@@ -41,6 +44,8 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { creaArchivio } from './lib/apollo-archivio.mjs';
+import { rigaWorkforce } from './lib/organico-tassonomia.mjs';
 dotenv.config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -104,107 +109,35 @@ async function translateDescriptionToItalian(text) {
   } catch { return text; }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Apollo — tre soli endpoint, ciascuno chiamato al massimo una volta per azienda
-// (il people search pagina, ma e' logicamente UNA ricerca, non ricerche multiple).
-// ─────────────────────────────────────────────────────────────────────────────
-async function enrichOrganization(domain) {
-  const r = await fetch(`https://api.apollo.io/api/v1/organizations/enrich?domain=${encodeURIComponent(domain)}`, { headers: { 'x-api-key': APOLLO_KEY } });
-  if (r.status === 402 || r.status === 422) throw new Error('CREDITI_ESAURITI');
-  if (!r.ok) throw new Error(`org enrich HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
-  const d = await r.json();
-  return d.organization || null;
-}
-async function paginaPersone(domain, pagina, tentativo = 1) {
-  const r = await fetch('https://api.apollo.io/api/v1/mixed_people/api_search', {
-    method: 'POST', headers: { 'x-api-key': APOLLO_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q_organization_domains_list: [domain], person_locations: ['Italy'], page: pagina, per_page: 100 }),
-  });
-  if (r.status === 429 && tentativo <= 3) {
-    await new Promise((ok) => setTimeout(ok, 65000));
-    return paginaPersone(domain, pagina, tentativo + 1);
-  }
-  if (!r.ok) throw new Error(`people search HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
-  return r.json();
-}
-async function rivelaPersona(id) {
-  const r = await fetch('https://api.apollo.io/api/v1/people/match', {
-    method: 'POST', headers: { 'x-api-key': APOLLO_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  if (r.status === 402 || r.status === 422) throw new Error('CREDITI_ESAURITI');
-  if (!r.ok) throw new Error(`people match HTTP ${r.status}: ${(await r.text()).slice(0, 160)}`);
-  const d = await r.json();
-  return d.person || null;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Classificazione organico — identica a organico-automatico-giornaliero.mjs
+// ARCHIVIO (28/09/2026) — ogni chiamata Apollo passa da scripts/lib/apollo-
+// archivio.mjs, che conserva la risposta intera e aggiorna l'inventario dei
+// campi. La classificazione viene da scripts/lib/organico-tassonomia.mjs
+// (prima era copiata qui e in organico-automatico-giornaliero.mjs).
+//
+// Cosa cambia rispetto al 23/09, dalla diagnosi del 28/09:
+//   - nessun tetto a 15 pagine: lo scarico persone riprende dalla pagina
+//     successiva al giro dopo (apollo_people_scarico), fino al totale dichiarato
+//   - companies.dipendenti (solo se vuoto) = total_entries dichiarato da
+//     Apollo, non le persone scaricate (che col tetto si fermavano a 1.500)
+//   - letture a pagine: una select senza range viene troncata dal max-rows di
+//     PostgREST (company_workforce restituiva ~300 aziende su ~1.850)
+//   - pool: tutte le aziende attive con sito, non solo quelle con archetipo;
+//     senza archetipo si classifica il solo livello universale
+//   - company_workforce si ricostruisce dall'archivio a scarico completo
 // ─────────────────────────────────────────────────────────────────────────────
-const SETTORE_ARCHETIPO = {
-  Pharma: 'farma_commerciale', 'Mid Pharma': 'farma_commerciale', 'Big Pharma': 'farma_commerciale',
-  'Specialty Pharma': 'farma_commerciale', Biotech: 'farma_commerciale',
-  CDMO: 'produzione_cdmo_chimico', Chimico: 'produzione_cdmo_chimico', Agrochimica: 'produzione_cdmo_chimico',
-  'Medical Devices': 'medical_device_diagnostics', Diagnostics: 'medical_device_diagnostics',
-  CRO: 'cro',
-  Nutraceutical: 'consumer_nutraceutical_cosmetics', Cosmetics: 'consumer_nutraceutical_cosmetics', 'Consumer Health': 'consumer_nutraceutical_cosmetics',
-  'Digital Health': 'digital_health',
-  'Healthcare Services': 'servizi_sanitari_farmacia', 'Farmacia/Retail': 'servizi_sanitari_farmacia',
-  Consulenza: 'consulenza', 'EHS/HSE Consulting': 'consulenza',
-};
-const UNIVERSALE = [
-  ['general_management', /\bceo\b|\bcoo\b|\bcfo\b|country manager|managing director|general manager|business unit director|\bhead of\b.*\bbu\b|^director$|regional director|business area manager|member of the management board/i],
-  ['hr', /\bhr\b|human resources|talent acquisition|chief happiness|employee.{0,3}(&|and).{0,3}labor|labour relations|recruiting/i],
-  ['finance_admin', /financial planning|\bfinance\b|controller|accounting|administrative associate|executive assistant|accountant|payroll|treasury|\bcredit\b|\btax\b|financial controller/i],
-  ['legal_compliance', /\blegal\b|patent attorney|patent counsel|compliance(?!.*quality)(?!.*regulatory)/i],
-  ['it_digital', /\bit\b|\bitc\b|information technology|systems administrator|\bsap\b|help ?desk|service.?desk|networking|infrastrutture informatiche/i],
-  ['procurement', /procurement|sourcing|\bbuyer\b|purchasing/i],
-  ['logistics_supply_chain', /logistics?|order to cash|\btender\b|supply chain|planning.*logistic|warehouse|distribution|contract analyst|\bexport\b/i],
-  ['marketing_communications', /marketing|digital.*innovation|omnichannel|customer (and|excellence|facing|engagement)|corporate affairs|public policy|congress|product manager/i],
-  ['sales_commercial', /area business manager|\babm\b|district sales manager|\bkam\b|key account|sales (manager|representative|supervisor|specialist|agent|rep\b|operation)|responsabile nazionale vendite|\bsales\b|account manager|territory (sales )?manager|country sales manager|district manager|inside sales|customer (care|service|success)|\bagent\b|business manager|commerciale/i],
-  ['business_development', /business development(?!.*conto terzi)(?!.*cdmo)|market development|therapy development/i],
-  ['facilities_maintenance', /\bmaintenance\b|manutenzione|facilit(y|ies)|\behs\b|prevenzione (e )?protezione|energy manager|\butilities\b/i],
-];
-const FARMA_COMMERCIALE = [
-  ['medical_affairs_msl', /medical science liaison|\bmsl\b|medical (manager|director|advisor|affairs|liaison)/i],
-  ['market_access', /market access|value & access|health economics|pricing|regional affairs? manager/i],
-  ['regulatory_affairs_prodotto', /regulatory affairs/i],
-  ['pharmacovigilance', /pharmacovigilance|drug safety|country safety lead/i],
-  ['clinical_operations_locali', /clinical (country|site lead|trial)/i],
-  ['patient_support', /care manager/i],
-  ['quality_assurance', /\bquality\b/i],
-];
-const MEDICAL_DEVICE_DIAGNOSTICS = [
-  ['training_clinico', /\btraining\b|education specialist/i],
-  ['clinical_affairs_device', /clinical (research|application|specialist|safety|project|business intelligence|evaluation|study|operations)|medical (science|affairs|writer|customer care)|biostatistic|patient service/i],
-  ['regulatory_mdr_ivdr', /regulatory affairs|\bprrc\b/i],
-  ['field_service', /field service|service (&|and) repair|technical (consultant|service|svc|support)|repair engineer|field (engineer|technical)|start-up specialist|product support/i],
-  ['product_management_device', /product (manager|specialist|marketing|owner)/i],
-];
-const PRODUZIONE_CDMO_CHIMICO = [
-  ['business_development_conto_terzi', /\bcdmo\b|\bgkam\b|screening and quoting|lead generation/i],
-  ['rd_formulazione', /\br(&|and)d\b|research and development|\bricercatore\b|\bresearch|analytical (r&d|development|scientist)|formulat|innovation (manager|technician|technologist)|technical (manager|director|office)|\bphd\b/i],
-  ['registrazione_conformita', /regulatory affairs|\breach\b|product regulations|registration manager|stewardship|regulatory technical support/i],
-  ['quality_assurance', /\bqa\b|quality assurance|qualified person|\bqp\b|gmp compliance|validation (specialist|analyst|analist)|vp.*quality|global quality|computer system validation/i],
-  ['quality_control', /\bqc\b|\bcq\b|quality control|controllo qualit|analista (del )?controllo|laboratory (technician|assistant)|\blab\b.*(technician|manager|supervisor)|lab analyst|chemical analyst|analista (di )?laboratorio|analytical chemist|microbiology/i],
-  ['ehs_sustainability', /\bhse\b|\behs\b|sustainab|health (and|&) safety|environmental|waste manager|\brspp\b|\baspp\b/i],
-  ['process_engineering', /process (engineer|chemistry|improvement|technologist|development|safety)|automation (engineer|specialist)|tecnologo di processo|\b(d|u)sp\b|piping.*engineering|corporate (engineering|electrical|field|project) (manager|engineer)|\bproject engineer\b|industrializ|technology transfer/i],
-  ['produzione_site_operations', /production (manager|operator|planner|assistant|supervisor|coordinator|specialist|engineer|engineering)|plant (manager|director|supervisor)|shift (manager|supervisor|leader)|operatore (chimico|di|impiant[oi]|farmaceutico|polivalente|api)|operaio (chimico|di|tecnico|finissaggio)|conduttore (impianto|generatore)|reattorist|capo\s?turno|fermentation (production|operator|coordinator|process)|manufacturing (manager|assembler|engineer)|unit production|caporeparto|responsabile (produzione|turni di produzione|unit[aà] produttiva)|chemical (operator|process operator)|\b(general |skilled )?worker\b|\boperator\b|technical employee|perito chimico|\budp\b|head of production|\bsite\b.*(production|services|manager|planner|head)|operations director|head of.*(operations|production)/i],
-];
-const FUNZIONI_PER_ARCHETIPO = { farma_commerciale: FARMA_COMMERCIALE, medical_device_diagnostics: MEDICAL_DEVICE_DIAGNOSTICS, produzione_cdmo_chimico: PRODUZIONE_CDMO_CHIMICO };
-const PAROLE_SOVRANAZIONALI = /\bemea\b|\bglobal\b|western europe|southwest europe|southern europe|\beurasia\b|\biberia\b|\bnordics?\b|\bdach\b|\bbenelux\b|\bcee\b|\beurope\b(?!an)|international/i;
-const PAESI = /\b(italy|italia|greece|israel|spain|portugal|france|switzerland|austria|germany|uk|turkey|poland|balkans|latam|india|anz|japan)\b/gi;
-function classificaAmbito(titolo) {
-  const paesi = new Set((titolo.match(PAESI) || []).map((p) => p.toLowerCase()));
-  if (PAROLE_SOVRANAZIONALI.test(titolo)) return /\bglobal\b/i.test(titolo) ? 'globale' : 'emea';
-  if (paesi.size >= 2) return 'emea';
-  return 'locale';
-}
-function estraeSede(titolo) { const m = titolo.match(/([A-Z][a-zà-ù]+)\s+Site\b/); return m ? m[1] : null; }
-function classificaFunzione(titolo, listaSpecifica, archetipo) {
-  for (const [funzione, re] of listaSpecifica) if (re.test(titolo)) return { livello: 'specifico', funzione, archetipo };
-  for (const [funzione, re] of UNIVERSALE) if (re.test(titolo)) return { livello: 'universale', funzione, archetipo: null };
-  return null;
+const RISCARICA_DOPO_GIORNI = 90;
+const ORG_ARCHIVIA_TUTTE = process.env.APOLLO_ORG_ARCHIVIA_TUTTE === '1';
+
+async function leggiTutte(nome, query, pagina = 1000) {
+  const righe = [];
+  for (let da = 0; ; da += pagina) {
+    const { data, error } = await query().range(da, da + pagina - 1);
+    if (error) throw new Error(`lettura ${nome} fallita: ${error.message}`);
+    righe.push(...(data || []));
+    if (!data || data.length < pagina) return righe;
+  }
 }
 
 // Decision maker — stessi titoli di apollo-decision-makers.mjs
@@ -219,21 +152,19 @@ function trovaDecisionMaker(persone) {
   return null;
 }
 
-function unici(righe) {
-  const visti = new Set();
-  return righe.filter((r) => { const k = `${r.company_id}|${r.apollo_person_id}`; if (visti.has(k)) return false; visti.add(k); return true; });
-}
-async function scriviWorkforce(righe) {
-  const puliti = unici(righe);
-  let scritte = 0;
-  for (let i = 0; i < puliti.length; i += 100) {
-    const lotto = puliti.slice(i, i + 100);
-    const { error } = await supabase.from('company_workforce').upsert(lotto, { onConflict: 'company_id,apollo_person_id' });
-    if (!error) { scritte += lotto.length; continue; }
-    for (const r of lotto) { const { error: e2 } = await supabase.from('company_workforce').upsert([r], { onConflict: 'company_id,apollo_person_id' }); if (!e2) scritte++; }
+// Ricostruisce l'organico di UN'azienda dall'archivio: stesso principio di
+// scripts/organico-classifica.mjs, qui limitato all'azienda appena scaricata.
+async function ricostruisciWorkforce(companyId, persone, sectorV2) {
+  const righe = persone.map((p) => rigaWorkforce(companyId, p, sectorV2)).filter(Boolean);
+  const { error: eDel } = await supabase.from('company_workforce').delete().eq('company_id', companyId);
+  if (eDel) throw new Error('company_workforce delete: ' + eDel.message);
+  for (let i = 0; i < righe.length; i += 500) {
+    const { error } = await supabase.from('company_workforce').insert(righe.slice(i, i + 500));
+    if (error) throw new Error('company_workforce insert: ' + error.message);
   }
-  return scritte;
+  return righe.length;
 }
+
 async function registraDecisionMaker(companyId, esito, note) {
   try {
     await supabase.from('company_facts_lookup_log').upsert(
@@ -252,47 +183,50 @@ async function runUnificatoDailyBatch(apply = true) {
   const log = [];
   const push = (msg) => { console.log(msg); log.push(msg); };
   push(`\nApollo unificato · fino a ${N_OGGI} aziende  ${apply ? 'SCRIVE' : 'solo misura'}\n`);
+  const arc = creaArchivio(supabase, APOLLO_KEY, { scrivi: apply });
 
-  const { data: catalogateRows, error: catErr } = await supabase.from('company_workforce').select('company_id');
-  if (catErr) throw new Error('lettura company_workforce fallita: ' + catErr.message);
-  const giaCatalogate = new Set((catalogateRows || []).map((r) => r.company_id));
-
-  const { data: dmTentateRows, error: dmErr } = await supabase.from('company_facts_lookup_log').select('company_id').eq('tipo', DM_REGISTRO_TIPO);
-  if (dmErr) throw new Error('lettura registro decision maker fallita: ' + dmErr.message);
-  const dmTentate = new Set((dmTentateRows || []).map((r) => r.company_id));
-
-  const { data: pool, error: poolErr } = await supabase.from('companies')
+  const scarichi = new Map((await leggiTutte('apollo_people_scarico', () =>
+    supabase.from('apollo_people_scarico').select('company_id,dominio,total_entries,scaricate,pagine,completo,esito,aggiornato_il,risposta_extra').order('company_id'))).map((r) => [r.company_id, r]));
+  const dmTentate = new Set((await leggiTutte('registro decision maker', () =>
+    supabase.from('company_facts_lookup_log').select('company_id').eq('tipo', DM_REGISTRO_TIPO).order('company_id'))).map((r) => r.company_id));
+  const orgArchiviate = new Set((await leggiTutte('apollo_organizations_raw', () =>
+    supabase.from('apollo_organizations_raw').select('company_id').order('company_id'))).map((r) => r.company_id));
+  const pool = await leggiTutte('companies', () => supabase.from('companies')
     .select('id,name,website,sector_v2,dipendenti,fatturato_range,descrizione_aziendale,linkedin_url,crescita_dipendenti_12m,apollo_keywords,apollo_industry')
     .eq('is_active', true).is('merged_into', null).not('website', 'is', null)
-    .order('dipendenti', { ascending: false, nullsFirst: false }).limit(6000);
-  if (poolErr) throw new Error('lettura companies fallita: ' + poolErr.message);
+    .order('dipendenti', { ascending: false, nullsFirst: false }).order('id'));
 
-  const candidati = [];
-  for (const c of pool || []) {
-    if (candidati.length >= N_OGGI) break;
-    if (giaCatalogate.has(c.id)) continue; // il gate primario resta l'organico, come prima
-    const archetipo = SETTORE_ARCHETIPO[c.sector_v2];
-    if (!archetipo) continue;
+  // Priorita': 1) scarichi interrotti da riprendere, 2) mai scaricate,
+  // 3) complete ma piu' vecchie di RISCARICA_DOPO_GIORNI (persone che cambiano).
+  const soglia = Date.now() - RISCARICA_DOPO_GIORNI * 86400000;
+  const code = [[], [], []];
+  for (const c of pool) {
     const dominio = extractDomain(c.website);
     if (!dominio) continue;
-    candidati.push({ ...c, archetipo, dominio });
+    const s = scarichi.get(c.id);
+    const voce = { ...c, dominio, stato: s || null };
+    if (!s) code[1].push(voce);
+    else if (!s.completo) code[0].push(voce);
+    else if (new Date(s.aggiornato_il).getTime() < soglia) code[2].push(voce);
   }
-  push(`candidati scelti: ${candidati.length} (pool: ${(pool || []).length}, gia' catalogate: ${giaCatalogate.size})\n`);
+  const candidati = [...code[0], ...code[1], ...code[2]].slice(0, N_OGGI);
+  push(`candidati scelti: ${candidati.length} (da riprendere ${code[0].length}, mai scaricate ${code[1].length}, da aggiornare ${code[2].length}; pool ${pool.length})\n`);
 
   const startTime = Date.now();
-  let orgArricchite = 0, orgCreditiEsauriti = 0, workforceScritte = 0, personeTotali = 0;
+  const scadenza = startTime + TIME_BUDGET_MS;
+  let orgArricchite = 0, orgCreditiEsauriti = 0, workforceScritte = 0, personeTotali = 0, scarichiCompleti = 0;
   let dmScritti = 0, dmCreditiEsauriti = 0, errori = 0, timeBudgetExceeded = false;
 
   for (const c of candidati) {
-    if (Date.now() - startTime > TIME_BUDGET_MS) { timeBudgetExceeded = true; push(`⏱️  Budget di tempo esaurito — mi fermo qui, riprende al prossimo run.`); break; }
-    push(`${'='.repeat(70)}\n${c.name} (${c.sector_v2} -> ${c.archetipo}) · ${c.dominio}\n${'='.repeat(70)}`);
+    if (Date.now() > scadenza) { timeBudgetExceeded = true; push(`⏱️  Budget di tempo esaurito — mi fermo qui, riprende al prossimo run.`); break; }
+    push(`${'='.repeat(70)}\n${c.name} (${c.sector_v2 || 'senza settore'}) · ${c.dominio}${c.stato && !c.stato.completo ? ` · riprendo da pagina ${c.stato.pagine + 1}` : ''}\n${'='.repeat(70)}`);
 
-    // ── 1. organizations/enrich — solo se manca ancora qualcosa da riempire ──
-    const orgIncompleta = !c.dipendenti || !c.fatturato_range || !c.descrizione_aziendale || !c.linkedin_url;
-    if (orgIncompleta && apply) {
+    // ── 1. organizations/enrich (a crediti) — risposta sempre archiviata intera ──
+    const orgIncompleta = !c.fatturato_range || !c.descrizione_aziendale || !c.linkedin_url;
+    if (apply && (orgIncompleta || (ORG_ARCHIVIA_TUTTE && !orgArchiviate.has(c.id)))) {
       try {
-        const org = await enrichOrganization(c.dominio);
-        if (org && isPlausibleMatch(c.name, org.name)) {
+        const { org, abbinamento } = await arc.arricchisciOrganizzazione(c.id, c.dominio, (nome) => isPlausibleMatch(c.name, nome));
+        if (org && abbinamento) {
           const patch = {};
           if (!c.fatturato_range) { const rr = revenueToRange(org.annual_revenue); if (rr) patch.fatturato_range = rr; }
           if (!c.descrizione_aziendale && org.short_description) patch.descrizione_aziendale = await translateDescriptionToItalian(org.short_description);
@@ -311,7 +245,7 @@ async function runUnificatoDailyBatch(apply = true) {
             if (rows.length) await supabase.from('company_department_headcount').upsert(rows, { onConflict: 'company_id,department' });
           }
         } else if (org) {
-          push(`  organizations/enrich: mismatch con "${org.name}", scartato`);
+          push(`  organizations/enrich: mismatch con "${org.name}" — archiviato, non estratto`);
         }
       } catch (e) {
         if (e.message === 'CREDITI_ESAURITI') { orgCreditiEsauriti++; push(`  organizations/enrich: crediti esauriti, salto (si ritenta da solo quando tornano)`); }
@@ -319,50 +253,44 @@ async function runUnificatoDailyBatch(apply = true) {
       }
     }
 
-    // ── 2. people search paginata — UNA sola ricerca, due usi ──
-    let persone = [];
+    // ── 2. ricerca persone (gratuita) — ripresa a pagine, archiviata per intero ──
+    let stato;
     try {
-      let pag = 1;
-      while (true) {
-        const d = await paginaPersone(c.dominio, pag);
-        persone.push(...(d.people || []));
-        if (pag === 1) push(`  Apollo dichiara ${d.total_entries} persone in Italia`);
-        if (!d.people || d.people.length < 100 || persone.length >= d.total_entries || pag >= 15) break;
-        pag++;
-        if (Date.now() - startTime > TIME_BUDGET_MS) break;
-        await new Promise((ok) => setTimeout(ok, 400));
-      }
+      ({ stato } = await arc.scaricaPersone(c.id, c.dominio, { statoPrecedente: c.stato, scadenza }));
     } catch (e) {
       errori++; push(`  people search ERRORE: ${e.message}`);
-      continue; // senza la lista persone non si puo' fare ne' organico ne' decision maker
+      continue;
     }
-    personeTotali += persone.length;
+    push(`  persone: ${stato.scaricate}/${stato.total_entries ?? '?'} dichiarate, pagine ${stato.pagine}${stato.completo ? ' · completo' : ' · da riprendere'}`);
+    if (!apply) continue;
+    // Solo se vuoto, come prima: dipendenti arriva anche da altre fonti (es.
+    // Luxottica 9.091 contro 3.219 persone viste da Apollo) e sui domini
+    // condivisi total_entries e' quello dell'intero dominio (le 4 societa' GSK
+    // avrebbero tutte 2.814). Il totale Apollo resta in apollo_people_scarico.
+    if (!c.dipendenti && stato.total_entries) {
+      await supabase.from('companies').update({ dipendenti: stato.total_entries }).eq('id', c.id);
+    }
+    if (!stato.completo) continue; // organico e decision maker solo a lista intera
+    scarichiCompleti++;
 
-    // 2a. organico per funzione
-    if (persone.length) {
-      const listaSpecifica = FUNZIONI_PER_ARCHETIPO[c.archetipo] || [];
-      const righe = [];
-      for (const p of persone) {
-        const titolo = p.title || '(senza titolo)';
-        const cls = classificaFunzione(titolo, listaSpecifica, c.archetipo);
-        if (!cls) continue;
-        righe.push({ company_id: c.id, apollo_person_id: p.id, titolo_originale: titolo.slice(0, 300), livello: cls.livello, funzione: cls.funzione, archetipo: cls.archetipo, ambito: classificaAmbito(titolo), sede: estraeSede(titolo) });
-      }
-      push(`  organico: ${persone.length} persone, ${righe.length} classificate`);
-      if (apply && righe.length) workforceScritte += await scriviWorkforce(righe);
-      // Conteggio Italia riusato dalla stessa ricerca, non una chiamata a parte.
-      if (apply && !c.dipendenti) await supabase.from('companies').update({ dipendenti: persone.length }).eq('id', c.id);
-    }
+    const persone = await leggiTutte('apollo_people_raw', () => supabase.from('apollo_people_raw')
+      .select('apollo_person_id,title').eq('company_id', c.id).order('apollo_person_id'));
+    personeTotali += persone.length;
+    try {
+      const n = await ricostruisciWorkforce(c.id, persone, c.sector_v2);
+      workforceScritte += n;
+      push(`  organico: ${persone.length} persone, ${n} classificate`);
+    } catch (e) { errori++; push(`  organico ERRORE: ${e.message}`); }
 
     // 2b. decision maker — dentro la STESSA lista, mai una ricerca a parte
     if (!dmTentate.has(c.id)) {
       const trovato = trovaDecisionMaker(persone);
       if (!trovato) {
         push(`  decision maker: nessuno trovato in questa lista`);
-        if (apply) await registraDecisionMaker(c.id, 'nessun_dato', 'nessun HR/TA ne\' C-level nella lista persone gia\' scaricata');
-      } else if (apply) {
+        await registraDecisionMaker(c.id, 'nessun_dato', 'nessun HR/TA ne\' C-level nella lista persone gia\' scaricata');
+      } else {
         try {
-          const rivelato = await rivelaPersona(trovato.persona.id);
+          const rivelato = await arc.rivelaPersona(c.id, trovato.persona.apollo_person_id);
           if (rivelato?.email) {
             const esistenti = await supabase.from('company_contacts').select('id,email').eq('company_id', c.id);
             const giaPresente = (esistenti.data || []).some((x) => x.email && x.email.toLowerCase() === rivelato.email.toLowerCase());
@@ -381,11 +309,14 @@ async function runUnificatoDailyBatch(apply = true) {
         }
       }
     }
-
-    if (apply) await new Promise((ok) => setTimeout(ok, 400));
   }
 
-  const summary = { candidati: candidati.length, org_arricchite: orgArricchite, org_crediti_esauriti: orgCreditiEsauriti, workforce_scritte: workforceScritte, persone_totali: personeTotali, decision_maker_scritti: dmScritti, dm_crediti_esauriti: dmCreditiEsauriti, errori, timeBudgetExceeded };
+  const inventario = await arc.chiudi();
+  if (apply && scarichiCompleti) {
+    const { error } = await supabase.rpc('apollo_rinfresca_riepiloghi');
+    if (error) push(`  riepiloghi front-end NON rinfrescati: ${error.message}`);
+  }
+  const summary = { candidati: candidati.length, scarichi_completi: scarichiCompleti, org_arricchite: orgArricchite, org_crediti_esauriti: orgCreditiEsauriti, workforce_scritte: workforceScritte, persone_totali: personeTotali, decision_maker_scritti: dmScritti, dm_crediti_esauriti: dmCreditiEsauriti, chiamate_apollo: inventario.chiamate, errori, timeBudgetExceeded };
   push(`📊 RISULTATO: ${JSON.stringify(summary)}`);
   return { summary, log };
 }
