@@ -248,6 +248,7 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-insight" onclick="showView('insight',this)" style="border-color:#ec4899;color:#ec4899;">🎙️ Insight Recruiter</button>
     <button class="nav-btn" id="nav-rumors" onclick="showView('rumors',this)" style="border-color:#14b8a6;color:#14b8a6;">🗞️ Rumors & Market Insight</button>
     <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
+    <button class="nav-btn" id="nav-piano" onclick="showView('piano',this)" style="border-color:#f59e0b;color:#f59e0b;display:none;">📅 Piano Contatto</button>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
     <div id="current-user-label" style="font-size:12px;color:var(--text2);"></div>
@@ -728,11 +729,49 @@ a.job-link:hover{text-decoration:underline;}
     </div>
   </div>
 
+  <!-- PIANO DI CONTATTO TRIMESTRALE — solo Mauro (28/09/2026). Aziende del suo
+       account, divise per mese (blocco di priorita': punteggio da annunci
+       attivi, fascia dipendenti 100-300, completezza arricchimento, contatti
+       gia' noti) e per settimana (tema dell'attivita' commerciale). I link
+       azienda passano da openCompanyDetail(company,'piano','Piano Contatto')
+       cosi' il bottone "torna indietro" nella scheda azienda riporta qui,
+       invece che all'elenco generico Aziende. -->
+  <div class="view" id="view-piano">
+    <div class="section-header">
+      <div class="section-title">📅 Piano di contatto trimestrale <span style="font-size:13px;color:var(--text2);font-weight:400;">Le tue aziende, organizzate per mese e settimana di attività commerciale</span></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:16px;">
+      <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Mese</label>
+          <select id="piano-mese" onchange="loadPianoContatto()" style="min-width:160px;">
+            <option value="Ottobre">Ottobre</option>
+            <option value="Novembre">Novembre</option>
+            <option value="Dicembre">Dicembre</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Settimana</label>
+          <select id="piano-settimana" onchange="loadPianoContatto()" style="min-width:220px;">
+            <option value="1">Settimana 1 — Assessment & Coaching</option>
+            <option value="2">Settimana 2 — Marketing CV</option>
+            <option value="3">Settimana 3 — Servizio Advisory</option>
+            <option value="4">Settimana 4 — Presentazione personale</option>
+          </select>
+        </div>
+        <div style="margin-left:auto;font-size:12px;color:var(--text2);" id="piano-count">—</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div id="piano-body"><div class="loading">Caricamento...</div></div>
+    </div>
+  </div>
+
   <!-- COMPANY DETAIL -->
   <div class="view" id="view-company-detail">
     <div class="section-header">
       <div>
-        <button class="btn btn-secondary" onclick="backToCompanies()" style="font-size:12px;margin-bottom:12px;">← Torna alle aziende</button>
+        <button class="btn btn-secondary" id="btn-back-to-companies" onclick="backToCompanies()" style="font-size:12px;margin-bottom:12px;">← Torna alle aziende</button>
         <div class="company-hero">
           <div class="company-hero-info">
             <div class="company-hero-name" id="cd-name">—</div>
@@ -1616,6 +1655,11 @@ function applyRolePermissions(){
   document.querySelectorAll('.admin-only-el').forEach(el=>{el.style.display=isAdmin?'':'none';});
   const navUsers=document.getElementById('nav-users');
   if(navUsers)navUsers.style.display=isAdmin?'':'none';
+  // Piano di contatto trimestrale (28/09/2026): visibile solo a Mauro, non agli
+  // altri collaboratori anche se admin — e' il suo piano commerciale personale,
+  // non uno strumento condiviso del team.
+  const navPiano=document.getElementById('nav-piano');
+  if(navPiano)navPiano.style.display=(_currentUser?.email==='mauro.carvisiglia@mcpharmaconsulting.it')?'':'none';
 }
 
 function hideLoginScreen(){
@@ -5035,6 +5079,64 @@ function showView(name,btn){
   if(name==='ruolo')analyzeRuolo();
   if(name==='insight')loadInsightCounter();
   if(name==='rumors')loadRumorsView();
+  if(name==='piano')loadPianoContatto();
+}
+
+// Piano di contatto trimestrale (28/09/2026) — per ogni azienda del mese/
+// settimana selezionati, mostra il MIGLIOR contatto noto (con email se c'e',
+// altrimenti il primo nominativo reale) cosi' Mauro vede subito a chi scrivere
+// senza dover aprire ogni scheda azienda una per una.
+async function loadPianoContatto(){
+  const el=document.getElementById('piano-body');
+  const countEl=document.getElementById('piano-count');
+  if(!el)return;
+  const mese=document.getElementById('piano-mese')?.value||'Ottobre';
+  const settimana=document.getElementById('piano-settimana')?.value||'1';
+  el.innerHTML='<div class="loading">Caricamento...</div>';
+  try{
+    const righe=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
+    if(!righe.length){
+      el.innerHTML='<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda in questo periodo</div></div>';
+      if(countEl)countEl.textContent='0 aziende';
+      return;
+    }
+    const companyIds=righe.map(r=>r.company_id);
+    const [aziende,contatti]=await Promise.all([
+      apiPerIdList('companies','id,name,sector_v2',companyIds),
+      apiPerIdList('company_contacts','company_id,nome,ruolo,email',companyIds),
+    ]);
+    const aziendaMap=new Map(aziende.map(a=>[a.id,a]));
+    // Un solo contatto per azienda: preferisce chi ha l'email, poi il primo
+    // nominativo reale, mai il placeholder "(contatto senza nome)".
+    const contattoMigliore=new Map();
+    contatti.forEach(c=>{
+      if(!c.nome||c.nome==='(contatto senza nome)')return;
+      const attuale=contattoMigliore.get(c.company_id);
+      if(!attuale||(!attuale.email&&c.email))contattoMigliore.set(c.company_id,c);
+    });
+
+    if(countEl)countEl.textContent=`${righe.length} aziende — ${righe[0]?.tema||''}`;
+    el.innerHTML=`<table>
+      <thead><tr>
+        <th>Azienda</th><th>Settore</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
+      </tr></thead>
+      <tbody>${righe.map(r=>{
+        const az=aziendaMap.get(r.company_id);
+        const c=contattoMigliore.get(r.company_id);
+        if(!az)return '';
+        return `<tr>
+          <td><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
+          <td style="color:var(--text2);">${az.sector_v2||'—'}</td>
+          <td>${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
+          <td style="color:var(--text2);">${c?.ruolo||'—'}</td>
+          <td style="color:var(--text2);">${c?.email||'—'}</td>
+          <td style="color:var(--text2);">${r.punteggio ?? '—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    el.innerHTML='<div style="color:var(--danger);padding:16px;">Errore: '+e.message+'</div>';
+  }
 }
 
 async function analyzeRuolo(){
@@ -5287,7 +5389,8 @@ function renderDonutChart(id, data){
 }
 
 function backToCompanies(){
-  showView('companies', document.getElementById('nav-companies'));
+  const view=_companyDetailReturnView||'companies';
+  showView(view, document.getElementById('nav-'+view));
 }
 
 /* ── TOAST ── */
@@ -9470,8 +9573,18 @@ async function loadCompanies(offset=0){
 }
 
 /* ── COMPANY DETAIL ── */
-function openCompanyDetail(company){
+// returnView/returnLabel (28/09/2026): di default "torna indietro" riporta
+// all'elenco Aziende, com'era sempre stato. Le viste che aprono una scheda da
+// un contesto diverso (es. il Piano di contatto) passano il proprio nome cosi'
+// il bottone riporta li' invece che all'elenco generico — senza toccare la
+// cronologia del browser, che questa app non ha mai usato da nessuna parte.
+let _companyDetailReturnView='companies', _companyDetailReturnLabel='Torna alle aziende';
+function openCompanyDetail(company,returnView,returnLabel){
   currentCompany=company;
+  _companyDetailReturnView=returnView||'companies';
+  _companyDetailReturnLabel=returnLabel||'Torna alle aziende';
+  const backBtn=document.getElementById('btn-back-to-companies');
+  if(backBtn)backBtn.textContent='← '+_companyDetailReturnLabel;
   // Hide nav active state — no nav tab corresponds to detail
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-company-detail').classList.add('active');
