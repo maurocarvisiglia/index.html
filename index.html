@@ -12,8 +12,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:100;}
 .logo{font-family:'DM Serif Display',serif;font-size:20px;color:var(--accent);}
 .logo span{color:var(--text2);font-size:13px;font-family:'Inter',sans-serif;font-weight:400;margin-left:12px;}
-.nav{display:flex;gap:4px;}
-.nav-btn{padding:8px 16px;border-radius:8px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;}
+.nav{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+.nav-btn{padding:8px 16px;border-radius:8px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;flex-shrink:0;}
 .nav-btn:hover{background:var(--surface2);color:var(--text);}
 .nav-btn.active{background:var(--surface2);color:var(--accent);}
 .main{padding:32px;max-width:1400px;margin:0 auto;}
@@ -771,7 +771,7 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
     <div class="table-wrap">
-      <div id="piano-body"><div class="loading">Caricamento...</div></div>
+      <div id="piano-body" style="overflow-x:auto;"><div class="loading">Caricamento...</div></div>
     </div>
   </div>
 
@@ -5195,24 +5195,30 @@ async function loadPianoContatto(){
       const ultimoInvioTesto=giorniFa(uc?.ultimo_invio_il)||'—';
       const rispostaTesto=uc?.ultima_risposta_il?`<span style="color:var(--accent2);">↩ ${giorniFa(uc.ultima_risposta_il)}</span>`:'—';
       const comunicazioniMese=uc?.comunicazioni_mese_corrente??0;
+      // Bordo piu' marcato sull'ULTIMA riga del blocco: senza, con rowspan di
+      // altezze diverse i confini tra un'azienda e la successiva si perdono
+      // e la tabella sembra un unico blocco indistinto. Va sul singolo <td>,
+      // non su <tr>: con border-collapse un bordo sulla riga non e' affidabile
+      // tra browser diversi.
       return contattiRiga.map((c,i)=>{
+        const bordo=i===contattiRiga.length-1?'border-bottom:2px solid var(--border);':'';
         const primaRiga=i===0?`
-          <td rowspan="${contattiRiga.length}"><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
-          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${az.sector_v2||'—'}</td>
-          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${ultimoInvioTesto}</td>
-          <td rowspan="${contattiRiga.length}">${rispostaTesto}</td>
-          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${comunicazioniMese}</td>`:'';
-        const ultimaRiga=i===0?`<td rowspan="${contattiRiga.length}" style="color:var(--text2);">${r.punteggio ?? '—'}</td>`:'';
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;${bordo}"><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);${bordo}">${az.sector_v2||'—'}</td>
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);white-space:nowrap;${bordo}">${ultimoInvioTesto}</td>
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;white-space:nowrap;${bordo}">${rispostaTesto}</td>
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);${bordo}">${comunicazioniMese}</td>`:'';
+        const ultimaColonna=i===0?`<td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);${bordo}">${r.punteggio ?? '—'}</td>`:'';
         return `<tr>
           ${primaRiga}
-          <td>${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
-          <td style="color:var(--text2);">${c?.ruolo||'—'}</td>
-          <td style="color:var(--text2);">${c?.email||'—'}</td>
-          ${ultimaRiga}
+          <td style="${bordo}">${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
+          <td style="color:var(--text2);${bordo}">${c?.ruolo||'—'}</td>
+          <td style="color:var(--text2);${bordo}">${c?.email||'—'}</td>
+          ${ultimaColonna}
         </tr>`;
       }).join('');
     }).join('');
-    el.innerHTML=`<table>
+    el.innerHTML=`<table style="min-width:1100px;">
       <thead><tr>
         <th>Azienda</th><th>Settore</th><th>Ultimo contatto</th><th>Risposta cliente</th><th>Comunicazioni mese</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
       </tr></thead>
