@@ -11,6 +11,13 @@
 # script Node scripts/associa-posta-giornaliera.mjs usato per la Posta
 # Inviata (--direzione=ricevuta).
 #
+# ESCLUSE le risposte automatiche (fuori sede/auto-reply): trovato un caso
+# reale il 28/09/2026 - un "Automatic reply" di Ecolab e una "Risposta
+# automatica" di Flamma erano stati contati come vere risposte del cliente,
+# rimettendo per errore due aziende gia' seguite tra le "da fare". Un
+# autoresponder non e' un cliente che ha risposto, va scartato prima di
+# scrivere il dump.
+#
 # Uso:
 #   powershell -File scripts\scansione-posta-ricevuta.ps1            misura
 #   powershell -File scripts\scansione-posta-ricevuta.ps1 -Apply     scrive davvero
@@ -49,9 +56,37 @@ try {
 $cutoff = (Get-Date).AddDays(-$Giorni)
 $risultati = New-Object System.Collections.Generic.List[object]
 
+# Prefissi oggetto noti degli autoresponder (fuori sede/risposta automatica),
+# piu' lingue perche' i contatti sono aziende internazionali. Confronto
+# case-insensitive, solo sull'inizio dell'oggetto.
+$prefissiAutoReply = @(
+    "automatic reply:", "auto reply:", "auto-reply:", "out of office",
+    "risposta automatica:", "fuori sede",
+    "abwesenheitsnotiz", "automatische antwort",
+    "reponse automatique", "absence du bureau",
+    "respuesta automatica", "fuera de la oficina"
+)
+$ignorateAutoReply = 0
+
 foreach ($item in $items) {
     if ($item.ReceivedTime -lt $cutoff) { break }  # ordinati decrescente: da qui in poi solo piu' vecchi
     if ($item.Class -ne 43) { continue }  # 43 = olMail, salta appuntamenti/altro finito in Inbox per errore
+
+    $oggetto = [string]$item.Subject
+    $eAutoReply = $false
+    foreach ($prefisso in $prefissiAutoReply) {
+        if ($oggetto.ToLower().StartsWith($prefisso)) { $eAutoReply = $true; break }
+    }
+    if (-not $eAutoReply -and $item.MessageClass -like "*OofTemplate*") { $eAutoReply = $true }
+    if (-not $eAutoReply) {
+        # Segnale standard RFC 3834, indipendente dalla lingua dell'oggetto:
+        # gli autoresponder Exchange/Outlook impostano questa intestazione.
+        try {
+            $headers = $item.PropertyAccessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x007D001F")
+            if ($headers -match "(?im)^Auto-Submitted:\s*auto-(replied|generated)") { $eAutoReply = $true }
+        } catch {}
+    }
+    if ($eAutoReply) { $ignorateAutoReply++; continue }
 
     $mittente = $null
     try {
@@ -63,11 +98,12 @@ foreach ($item in $items) {
     if (-not $mittente -or $mittente -notlike "*@*") { continue }
 
     $risultati.Add([PSCustomObject]@{
-        oggetto   = $item.Subject
+        oggetto   = $oggetto
         dataInvio = $item.ReceivedTime.ToString("o")
         contatti  = @($mittente.ToLower())
     })
 }
+Scrivi "risposte automatiche (fuori sede/auto-reply) escluse: $ignorateAutoReply"
 
 Scrivi "email trovate negli ultimi $Giorni giorni: $($risultati.Count)"
 
