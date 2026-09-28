@@ -5103,7 +5103,7 @@ async function loadPianoContatto(){
   const stato=document.getElementById('piano-stato')?.value||'da_fare';
   el.innerHTML='<div class="loading">Caricamento...</div>';
   try{
-    const righeComplete=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema,creato_il&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
+    const righeComplete=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
     if(!righeComplete.length){
       el.innerHTML='<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda in questo periodo</div></div>';
       if(countEl)countEl.textContent='0 aziende';
@@ -5148,12 +5148,15 @@ async function loadPianoContatto(){
       if(giorni===1)return 'ieri';
       return `${giorni} giorni fa`;
     }
-    // "Fatta" = le abbiamo scritto DOPO che questa riga di piano e' stata
-    // creata (non basta un contatto storico da prima del piano, altrimenti
-    // vecchie email la farebbero sparire dalla vista "da fare" a torto).
+    // "Fatta" = le abbiamo scritto negli ultimi 30 giorni — un contatto
+    // recente e' "fatto" a prescindere da quando e' stata creata la riga di
+    // piano (corretto da Mauro: un'email di 5 giorni fa e' gia' fatta, non
+    // conta se il piano esisteva gia' o no in quel momento).
     function attivitaFatta(r){
       const uc=ultimoContattoMap.get(r.company_id);
-      return !!(uc?.ultimo_invio_il && uc.ultimo_invio_il>=r.creato_il);
+      if(!uc?.ultimo_invio_il)return false;
+      const giorni=(Date.now()-new Date(uc.ultimo_invio_il).getTime())/86400000;
+      return giorni<=30;
     }
     const righe=stato==='tutte'?righeComplete:righeComplete.filter(r=>attivitaFatta(r)===(stato==='fatte'));
     if(!righe.length){
