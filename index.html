@@ -10,9 +10,9 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
 .header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:100;}
-.logo{font-family:'DM Serif Display',serif;font-size:20px;color:var(--accent);}
-.logo span{color:var(--text2);font-size:13px;font-family:'Inter',sans-serif;font-weight:400;margin-left:12px;}
-.nav{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;}
+.logo{font-family:'DM Serif Display',serif;font-size:20px;color:var(--accent);white-space:nowrap;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;max-width:min(320px,40vw);}
+.logo span{color:var(--text2);font-size:13px;font-family:'Inter',sans-serif;font-weight:400;margin-left:12px;white-space:nowrap;}
+.nav{display:flex;gap:4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;min-width:0;}
 .nav-btn{padding:8px 16px;border-radius:8px;border:none;background:transparent;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;flex-shrink:0;}
 .nav-btn:hover{background:var(--surface2);color:var(--text);}
 .nav-btn.active{background:var(--surface2);color:var(--accent);}
