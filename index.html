@@ -5113,11 +5113,32 @@ async function loadPianoContatto(){
       }
       return risultati;
     }
-    const [aziende,contatti]=await Promise.all([
+    // v_company_ultimo_contatto aggrega company_email_log (alimentata ogni
+    // giorno da scripts/scansione-posta-inviata.ps1 e scansione-posta-ricevuta.ps1):
+    // ultimo invio, ultima risposta del cliente, comunicazioni inviate nel mese.
+    async function ultimoContattoPerAziende(ids){
+      const risultati=[];
+      for(let i=0;i<ids.length;i+=150){
+        const lotto=ids.slice(i,i+150);
+        const r=await api(`v_company_ultimo_contatto?select=company_id,ultimo_invio_il,ultima_risposta_il,comunicazioni_mese_corrente&company_id=in.(${lotto.join(',')})`);
+        risultati.push(...r);
+      }
+      return risultati;
+    }
+    const [aziende,contatti,ultimiContatti]=await Promise.all([
       apiPerIdList('companies','id,name,sector_v2',companyIds),
       contattiPerAziende(companyIds),
+      ultimoContattoPerAziende(companyIds),
     ]);
     const aziendaMap=new Map(aziende.map(a=>[a.id,a]));
+    const ultimoContattoMap=new Map(ultimiContatti.map(u=>[u.company_id,u]));
+    function giorniFa(dataIso){
+      if(!dataIso)return null;
+      const giorni=Math.floor((Date.now()-new Date(dataIso).getTime())/86400000);
+      if(giorni<=0)return 'oggi';
+      if(giorni===1)return 'ieri';
+      return `${giorni} giorni fa`;
+    }
     // Tutti i contatti nominativi dell'azienda (mai il placeholder "(contatto
     // senza nome)"), chi ha l'email prima — Mauro vuole vederli tutti, non solo
     // il "migliore".
@@ -5139,10 +5160,17 @@ async function loadPianoContatto(){
       if(!az)return '';
       const elenco=contattiPerAzienda.get(r.company_id)||[];
       const contattiRiga=elenco.length?elenco:[null];
+      const uc=ultimoContattoMap.get(r.company_id);
+      const ultimoInvioTesto=giorniFa(uc?.ultimo_invio_il)||'—';
+      const rispostaTesto=uc?.ultima_risposta_il?`<span style="color:var(--accent2);">↩ ${giorniFa(uc.ultima_risposta_il)}</span>`:'—';
+      const comunicazioniMese=uc?.comunicazioni_mese_corrente??0;
       return contattiRiga.map((c,i)=>{
         const primaRiga=i===0?`
           <td rowspan="${contattiRiga.length}"><span style="cursor:pointer;color:var(--accent2);text-decoration:underline;" onclick='openCompanyDetail(${JSON.stringify(az).replace(/'/g,'&#39;')},"piano","Piano Contatto")'>${az.name}</span></td>
-          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${az.sector_v2||'—'}</td>`:'';
+          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${az.sector_v2||'—'}</td>
+          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${ultimoInvioTesto}</td>
+          <td rowspan="${contattiRiga.length}">${rispostaTesto}</td>
+          <td rowspan="${contattiRiga.length}" style="color:var(--text2);">${comunicazioniMese}</td>`:'';
         const ultimaRiga=i===0?`<td rowspan="${contattiRiga.length}" style="color:var(--text2);">${r.punteggio ?? '—'}</td>`:'';
         return `<tr>
           ${primaRiga}
@@ -5155,7 +5183,7 @@ async function loadPianoContatto(){
     }).join('');
     el.innerHTML=`<table>
       <thead><tr>
-        <th>Azienda</th><th>Settore</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
+        <th>Azienda</th><th>Settore</th><th>Ultimo contatto</th><th>Risposta cliente</th><th>Comunicazioni mese</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
       </tr></thead>
       <tbody>${corpoRighe}</tbody>
     </table>`;
