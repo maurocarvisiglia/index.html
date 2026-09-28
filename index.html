@@ -5151,12 +5151,16 @@ async function loadPianoContatto(){
     // "Fatta" = le abbiamo scritto negli ultimi 30 giorni — un contatto
     // recente e' "fatto" a prescindere da quando e' stata creata la riga di
     // piano (corretto da Mauro: un'email di 5 giorni fa e' gia' fatta, non
-    // conta se il piano esisteva gia' o no in quel momento).
+    // conta se il piano esisteva gia' o no in quel momento). MA se il cliente
+    // ha risposto DOPO quella nostra ultima email, la palla torna a noi: va
+    // di nuovo in "da fare", non resta "fatta" solo perche' gli avevamo scritto.
     function attivitaFatta(r){
       const uc=ultimoContattoMap.get(r.company_id);
       if(!uc?.ultimo_invio_il)return false;
       const giorni=(Date.now()-new Date(uc.ultimo_invio_il).getTime())/86400000;
-      return giorni<=30;
+      if(giorni>30)return false;
+      const risposeDopo=uc.ultima_risposta_il&&uc.ultima_risposta_il>uc.ultimo_invio_il;
+      return !risposeDopo;
     }
     const righe=stato==='tutte'?righeComplete:righeComplete.filter(r=>attivitaFatta(r)===(stato==='fatte'));
     if(!righe.length){
