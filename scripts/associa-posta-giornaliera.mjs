@@ -129,15 +129,30 @@ unlinkSync(DUMP_PATH);
 console.log(`${D}email lette dal dump: ${email.length}${Z} (dump temporaneo gia' cancellato)`);
 
 const companies = await apiPaginato('companies?select=id,name,website&is_active=eq.true&merged_into=is.null');
+// Serve per disambiguare i domini condivisi da piu' aziende (sotto): un'email
+// GIA' conosciuta per una di quelle aziende specifiche vale piu' del dominio.
+const contattiEsistenti = await apiPaginato('company_contacts?select=company_id,email');
+const companyIdPerEmailNota = new Map();
+for (const c of contattiEsistenti) {
+  if (!c.email) continue;
+  const e = c.email.toLowerCase();
+  // Se la stessa email compare su piu' aziende diverse non e' un segnale
+  // affidabile per disambiguare: si toglie invece di rischiare di sceglierne una a caso.
+  if (companyIdPerEmailNota.has(e) && companyIdPerEmailNota.get(e) !== c.company_id) companyIdPerEmailNota.set(e, null);
+  else companyIdPerEmailNota.set(e, c.company_id);
+}
 
-const perDominioSito = new Map();
+const perDominioSito = new Map(); // dominio -> Set(company_id): un dominio puo' appartenere a piu' aziende reali dello stesso gruppo
 const perNomeCompleto = new Map();
 const perToken = new Map(); // token -> Set(company_id) per rilevare ambiguità
 
 for (const c of companies) {
   if (c.website) {
     const d = dominioDi('x@' + c.website.replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
-    if (d && !perDominioSito.has(d)) perDominioSito.set(d, c.id);
+    if (d) {
+      if (!perDominioSito.has(d)) perDominioSito.set(d, new Set());
+      perDominioSito.get(d).add(c.id);
+    }
   }
   const norm = normalizeCompanyName(c.name);
   if (!norm) continue;
@@ -150,8 +165,21 @@ for (const c of companies) {
   }
 }
 
-function trovaAzienda(dominio) {
-  if (perDominioSito.has(dominio)) return perDominioSito.get(dominio);
+// emailCompleta serve SOLO per disambiguare un dominio condiviso da piu' aziende
+// (trovato un caso reale il 28/09/2026: "lundbeck.com" e' il sito sia di "Lundbeck
+// Italia S.p.A." sia di "Lundbeck Padova" — mver@lundbeck.com finiva ora sull'una
+// ora sull'altra, a seconda dell'ordine casuale con cui l'API restituiva le due
+// righe. Se un contatto con quella email esiste GIA' su una delle aziende
+// candidate, si usa quella; altrimenti e' ambiguo e si salta, mai una scelta
+// arbitraria.
+function trovaAzienda(dominio, emailCompleta) {
+  if (perDominioSito.has(dominio)) {
+    const candidati = perDominioSito.get(dominio);
+    if (candidati.size === 1) return [...candidati][0];
+    const notoDaContatto = companyIdPerEmailNota.get(emailCompleta.toLowerCase());
+    if (notoDaContatto && candidati.has(notoDaContatto)) return notoDaContatto;
+    return null; // dominio ambiguo tra piu' aziende, nessun contatto noto a disambiguare
+  }
   const brand = dominio.replace(/\.[a-z.]+$/, '');
   // Anche senza trattini: un dominio come "farmila-thea.it" va confrontato con
   // "Farmila-Thea" normalizzato a "farmilathea" (normalizeCompanyName toglie i
@@ -177,7 +205,7 @@ for (const msg of email) {
     const dominio = dominioDi(contatto);
     if (!dominio) continue;
     if (DOMINI_PERSONALI.has(dominio)) { ignoratePersonali++; continue; }
-    const companyId = trovaAzienda(dominio);
+    const companyId = trovaAzienda(dominio, contatto);
     if (!companyId) {
       nonAbbinate++;
       domainNonAbbinati.set(dominio, (domainNonAbbinati.get(dominio) || 0) + 1);
