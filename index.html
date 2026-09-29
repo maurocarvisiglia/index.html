@@ -9072,30 +9072,54 @@ async function loadApolloProgress(){
   const el=document.getElementById('apollo-progress-body');
   if(!el)return;
   try{
-    const [companies,logs]=await Promise.all([
+    // Dal 28/09/2026 due fonti: enrichment_log (storico del vecchio agente, dati
+    // azienda) e l'archivio Apollo (apollo_people_scarico per la ricerca persone,
+    // apollo_organizations_raw per i dati azienda a crediti). Il job nuovo non
+    // scrive piu' enrichment_log: senza l'archivio questo contatore resterebbe
+    // fermo per sempre.
+    const [companies,logs,scarichi,orgArchivio]=await Promise.all([
       api('companies?select=id&website=not.is.null&merged_into=is.null'),
-      api('enrichment_log?select=company_id,parsing_riuscito,campi_estratti&api_usata=eq.apollo')
+      apiPaginato('enrichment_log?select=company_id,parsing_riuscito,campi_estratti&api_usata=eq.apollo',1000),
+      apiPaginato('v_fe_apollo_scarico?select=company_id,esito',1000),
+      apiPaginato('v_fe_apollo_organizzazione?select=company_id,abbinamento_ok',1000)
     ]);
     const eligible=companies.length;
-    const attemptedIds=new Set(logs.map(l=>l.company_id));
-    const attempted=attemptedIds.size;
-    const enriched=logs.filter(l=>l.parsing_riuscito).length;
-    const mismatched=logs.filter(l=>l.campi_estratti?.esito==='mismatch').length;
+    const idsEleggibili=new Set(companies.map(c=>c.id));
+    const arricchiteIds=new Set([...logs.filter(l=>l.parsing_riuscito).map(l=>l.company_id),...orgArchivio.filter(o=>o.abbinamento_ok).map(o=>o.company_id)]);
+    const mismatchIds=new Set([...logs.filter(l=>l.campi_estratti?.esito==='mismatch').map(l=>l.company_id),...orgArchivio.filter(o=>!o.abbinamento_ok).map(o=>o.company_id)]);
+    arricchiteIds.forEach(id=>mismatchIds.delete(id));
     const notFound=logs.filter(l=>l.campi_estratti?.esito==='not_found').length;
-    const remaining=eligible-attempted;
-    const pct=eligible?Math.round(attempted/eligible*100):0;
+    const enriched=[...arricchiteIds].filter(id=>idsEleggibili.has(id)).length;
+    const mismatched=[...mismatchIds].filter(id=>idsEleggibili.has(id)).length;
+    const orgDaFare=Math.max(0,eligible-enriched-mismatched-notFound);
+    const pctOrg=eligible?Math.round(enriched/eligible*100):0;
+
+    const sc=scarichi.filter(s=>idsEleggibili.has(s.company_id));
+    const conta=e=>sc.filter(s=>s.esito===e).length;
+    const personeDaFare=Math.max(0,eligible-sc.length);
+    const pctPers=eligible?Math.round(sc.length/eligible*100):0;
+    const barra=(pct,col)=>`<div style="background:var(--surface2);height:8px;border-radius:4px;overflow:hidden;margin-bottom:10px;"><div style="height:100%;background:${col};width:${pct}%;transition:width 0.3s;"></div></div>`;
 
     el.innerHTML=`
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px;">
-        <span>${attempted} / ${eligible} aziende processate</span>
-        <span style="font-weight:700;color:var(--accent2);">${pct}%</span>
+        <span>Ricerca persone (gratuita) · ${sc.length} / ${eligible} aziende scaricate</span>
+        <span style="font-weight:700;color:#60a5fa;">${pctPers}%</span>
       </div>
-      <div style="background:var(--surface2);height:8px;border-radius:4px;overflow:hidden;margin-bottom:14px;">
-        <div style="height:100%;background:var(--accent2);width:${pct}%;transition:width 0.3s;"></div>
+      ${barra(pctPers,'#60a5fa')}
+      <div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
+        <div><div class="kpi-mini-label" style="color:var(--success);">Complete</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="showView('apollo',document.getElementById('nav-apollo'))">${conta('completo')}</div></div>
+        <div><div class="kpi-mini-label">Nessuna persona su Apollo</div><div class="kpi-mini-value">${conta('zero_risultati')}</div></div>
+        <div><div class="kpi-mini-label">Da riprendere / errori</div><div class="kpi-mini-value">${conta('in_corso')+conta('errore')}</div></div>
+        <div><div class="kpi-mini-label">Da scaricare</div><div class="kpi-mini-value">${personeDaFare}</div></div>
       </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px;">
+        <span>Dati azienda (a crediti) · ${enriched} / ${eligible} aziende arricchite</span>
+        <span style="font-weight:700;color:var(--accent2);">${pctOrg}%</span>
+      </div>
+      ${barra(pctOrg,'var(--accent2)')}
       <div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);">
         <div><div class="kpi-mini-label" style="color:var(--success);">Arricchite</div><div class="kpi-mini-value" style="color:var(--success);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('enriched')">${enriched}</div></div>
-        <div><div class="kpi-mini-label">Da processare</div><div class="kpi-mini-value">${remaining}</div></div>
+        <div><div class="kpi-mini-label">Da arricchire</div><div class="kpi-mini-value">${orgDaFare}</div></div>
         <div><div class="kpi-mini-label" style="color:var(--accent);">Scartate (mismatch)</div><div class="kpi-mini-value" style="color:var(--accent);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('mismatch')">${mismatched}</div></div>
         <div><div class="kpi-mini-label" style="color:var(--danger);">Non trovate</div><div class="kpi-mini-value" style="color:var(--danger);cursor:pointer;text-decoration:underline;" onclick="openApolloExclusions('not_found')">${notFound}</div></div>
       </div>`;
@@ -12211,6 +12235,9 @@ const WORKFORCE_FUNZIONE_LABEL={
   logistics_supply_chain:'Logistics / Supply Chain', marketing_communications:'Marketing / Comunicazione',
   sales_commercial:'Sales / Commerciale', business_development:'Business Development',
   facilities_maintenance:'Facilities / Manutenzione',
+  personale_medico:'Personale medico', infermieri_oss:'Infermieri / OSS', professioni_sanitarie:'Professioni sanitarie',
+  engineering_tecnico:'Tecnici / Ingegneria', project_management:'Project Management', stage_formazione:'Stage / Formazione',
+  generico_non_classificabile:'Ruolo generico (non classificabile)',
   medical_affairs_msl:'Medical Affairs / MSL', market_access:'Market Access',
   regulatory_affairs_prodotto:'Regulatory Affairs', pharmacovigilance:'Pharmacovigilance',
   clinical_operations_locali:'Clinical Operations', patient_support:'Patient Support',
@@ -12235,13 +12262,37 @@ async function loadWorkforceCard(companyId){
   const body=document.getElementById('cd-workforce-body');
   if(!card||!body)return;
   try{
-    const righe=await api(`v_company_workforce_funzioni?select=funzione,ambito,conteggio,sedi&company_id=eq.${companyId}&order=conteggio.desc`);
-    if(!righe.length){card.style.display='none';return;}
+    // Gruppi con capogruppo (28/09/2026, deciso da Mauro): la capogruppo mostra
+    // l'intero numero del gruppo; le societa' legate il proprio (se Apollo ha
+    // persone col loro nome) e il rimando al gruppo.
+    const [righe,gruppoRighe]=await Promise.all([
+      api(`v_company_workforce_funzioni?select=funzione,ambito,conteggio,sedi&company_id=eq.${companyId}&order=conteggio.desc`),
+      api(`v_fe_capogruppo?select=gruppo_id,gruppo,capogruppo_id,capogruppo&company_id=eq.${companyId}`)
+    ]);
+    const gruppo=gruppoRighe[0]||null;
+    let gruppoFunzioni=[],gruppoSocieta=[];
+    if(gruppo){
+      [gruppoFunzioni,gruppoSocieta]=await Promise.all([
+        api(`v_fe_gruppo_organico?select=funzione,ambito,conteggio&gruppo_id=eq.${gruppo.gruppo_id}`),
+        api(`v_fe_gruppo_societa?select=company_id,name,capogruppo,persone&gruppo_id=eq.${gruppo.gruppo_id}&order=persone.desc`)
+      ]);
+    }
+    if(!righe.length&&!gruppoFunzioni.length){card.style.display='none';return;}
     card.style.display='';
+    const eCapogruppo=gruppo&&gruppo.capogruppo_id===companyId;
+    const totaleGruppo=gruppoFunzioni.reduce((s,r)=>s+r.conteggio,0);
+    const intestazioneGruppo=!gruppo?'':eCapogruppo
+      ?`<div style="font-size:12px;color:var(--text2);border-left:3px solid #34d399;padding:6px 10px;margin-bottom:12px;"><b>Capogruppo del gruppo ${escHtml(gruppo.gruppo)}</b>: qui c'è l'intero organico del gruppo, ${totaleGruppo} persone classificate. Per società: ${gruppoSocieta.filter(s=>s.persone>0).map(s=>`${s.company_id===companyId?'<b>':`<span style="cursor:pointer;text-decoration:underline;" onclick="apriSchedaAzienda('${s.company_id}')">`}${escHtml(s.name)}${s.company_id===companyId?'</b>':'</span>'} ${s.persone}`).join(' · ')}${gruppoSocieta.some(s=>!s.persone)?` · legate senza dipendenti propri: ${gruppoSocieta.filter(s=>!s.persone).map(s=>escHtml(s.name)).join(', ')}`:''}.</div>`
+      :`<div style="font-size:12px;color:var(--text2);border-left:3px solid #34d399;padding:6px 10px;margin-bottom:12px;">Fa parte del gruppo <b>${escHtml(gruppo.gruppo)}</b>: l'organico del gruppo (${totaleGruppo} persone) è sulla capogruppo <b style="cursor:pointer;text-decoration:underline;" onclick="apriSchedaAzienda('${gruppo.capogruppo_id}')">${escHtml(gruppo.capogruppo)}</b>.${righe.length?' Qui sotto le persone che Apollo associa a questa società.':' Apollo non associa persone a questa società col suo nome: sotto i numeri del gruppo.'}</div>`;
+    // Capogruppo: si mostra il gruppo intero. Legata senza persone proprie: il gruppo, dichiarato come tale.
+    const mostraGruppo=gruppo&&(eCapogruppo||!righe.length);
+    const daMostrare=mostraGruppo
+      ?Object.values(gruppoFunzioni.reduce((acc,r)=>{const k=r.funzione+'|'+r.ambito;acc[k]=acc[k]||{funzione:r.funzione,ambito:r.ambito,conteggio:0,sedi:null};acc[k].conteggio+=r.conteggio;return acc;},{})).sort((a,b)=>b.conteggio-a.conteggio)
+      :righe;
 
-    const totale=righe.reduce((s,r)=>s+r.conteggio,0);
-    const max=Math.max(...righe.map(r=>r.conteggio));
-    const righeHtml=righe.map(r=>{
+    const totale=daMostrare.reduce((s,r)=>s+r.conteggio,0);
+    const max=Math.max(...daMostrare.map(r=>r.conteggio));
+    const righeHtml=daMostrare.map(r=>{
       const label=WORKFORCE_FUNZIONE_LABEL[r.funzione]||r.funzione;
       const ambitoTag=WORKFORCE_AMBITO_LABEL[r.ambito]
         ?`<span style="font-size:9px;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 4px;margin-left:6px;">${escHtml(WORKFORCE_AMBITO_LABEL[r.ambito])}</span>`
@@ -12255,9 +12306,9 @@ async function loadWorkforceCard(companyId){
       </div>`;
     }).join('');
 
-    body.innerHTML=`
+    body.innerHTML=`${intestazioneGruppo}
       <div style="font-size:10px;color:var(--text2);text-transform:uppercase;margin-bottom:10px;">
-        ${totale} persone catalogate · fonte Apollo people search, nessun nome salvato
+        ${totale} persone catalogate${mostraGruppo?` nell'intero gruppo ${escHtml(gruppo.gruppo)}`:''} · fonte Apollo people search, nessun nome salvato
       </div>
       ${righeHtml}`;
   }catch(e){
@@ -12288,6 +12339,10 @@ const APOLLO_ESITO_LABEL={completo:'✅ Completo',in_corso:'⏳ Da riprendere',z
 const APOLLO_TELEFONO_LABEL={si:'sì',forse:'forse'};
 const fmtDataApollo=d=>d?new Date(d).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}):'—';
 let _apolloPersone=[];
+async function apriSchedaAzienda(id){
+  const righe=await api(`companies?select=*&id=eq.${id}`);
+  if(righe[0])openCompanyDetail(righe[0],_companyDetailReturnView,_companyDetailReturnLabel);
+}
 
 async function loadApolloArchivioCard(companyId){
   const card=document.getElementById('cd-apollo-card');
@@ -12306,12 +12361,22 @@ async function loadApolloArchivioCard(companyId){
     const s=scarico[0];
     if(!s){
       sub.textContent='';
-      body.innerHTML='<div style="font-size:12px;color:var(--text2);">Non ancora scaricata da Apollo. La raccolta giornaliera la prenderà in coda (servono un sito web e un dominio valido).</div>';
+      const rimossi=await api(`companies_siti_rimossi?select=website_precedente,motivo,rimosso_il&company_id=eq.${companyId}&order=rimosso_il.desc`);
+      body.innerHTML=(rimossi.length?`<div style="font-size:12px;color:var(--warning);border-left:3px solid var(--warning);padding:6px 10px;margin-bottom:10px;">Sito rimosso il ${fmtDataApollo(rimossi[0].rimosso_il)}: <code>${escHtml(rimossi[0].website_precedente)}</code> — ${escHtml(rimossi[0].motivo)}. Le persone scaricate da quel sito sono state tolte; va cercato il sito corretto.</div>`:'')
+        +'<div style="font-size:12px;color:var(--text2);">Non ancora scaricata da Apollo. La raccolta giornaliera la prenderà in coda (servono un sito web e un dominio valido).</div>';
       return;
     }
     _apolloPersone=persone;
     const classificate=persone.filter(p=>p.funzione).length;
     sub.textContent=`· ${s.dominio}`;
+    // Dominio condiviso (28/09/2026): un solo titolare per dominio, scelto
+    // dall'ultimo scarico (scripts/lib/apollo-domini.mjs). Le altre schede
+    // tengono le persone in archivio ma non l'organico, che sarebbe una copia.
+    const dominio=(await api(`v_fe_apollo_domini?select=titolare_id,titolare,org_nome,motivo,candidati,deciso_il&dominio=eq.${encodeURIComponent(s.dominio)}`))[0];
+    const altreSchede=dominio?(dominio.candidati||[]).filter(c=>c.company_id!==companyId):[];
+    const avvisoDominio=!dominio?'':dominio.titolare_id===companyId
+      ?`<div style="font-size:12px;color:var(--text2);border-left:3px solid #60a5fa;padding:6px 10px;margin-bottom:12px;">Dominio condiviso con ${altreSchede.length} ${altreSchede.length===1?'altra scheda':'altre schede'} (${altreSchede.slice(0,4).map(c=>escHtml(c.name)).join(', ')}${altreSchede.length>4?'…':''}): <b>questa è la scheda titolare</b>, l'organico è attribuito qui. ${escHtml(dominio.motivo)}.</div>`
+      :`<div style="font-size:12px;color:var(--warning);border-left:3px solid var(--warning);padding:6px 10px;margin-bottom:12px;">Dominio condiviso: ${dominio.titolare_id?`le persone sono attribuite a <b style="cursor:pointer;text-decoration:underline;" onclick="apriSchedaAzienda('${dominio.titolare_id}')">${escHtml(dominio.titolare)}</b>`:'<b>nessuna scheda è titolare</b>'}, quindi qui non c'è organico. ${escHtml(dominio.motivo)}. Le persone restano visibili qui sotto, com'erano nell'ultimo scarico (${fmtDataApollo(dominio.deciso_il)}).</div>`;
 
     const stato=`<div class="kpi-mini-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px;">
       <div><div class="kpi-mini-label">Stato scarico</div><div class="kpi-mini-value" style="font-size:13px;">${APOLLO_ESITO_LABEL[s.esito]||escHtml(s.esito)}</div></div>
@@ -12344,7 +12409,7 @@ async function loadApolloArchivioCard(companyId){
       <input type="text" id="cd-apollo-cerca" placeholder="Filtra per titolo..." oninput="renderApolloPersone()" style="min-width:200px;">
     </div><div id="cd-apollo-persone" style="max-height:520px;overflow:auto;"></div>`;
 
-    body.innerHTML=stato+tabVarianti+tabOrg+filtri;
+    body.innerHTML=avvisoDominio+stato+tabVarianti+tabOrg+filtri;
     renderApolloPersone();
   }catch(e){
     body.innerHTML=`<div style="color:var(--danger);font-size:12px;">Errore caricamento archivio Apollo: ${escHtml(e.message)}</div>`;
@@ -12382,11 +12447,14 @@ async function loadApolloArchivioView(){
       api('v_fe_apollo_scarico?select=company_id,azienda,dominio,esito,scaricate,total_entries,pagine,errore,aggiornato_il&esito=in.(in_corso,errore)&order=aggiornato_il.desc&limit=200')
     ]);
     const r=riepilogo[0]||{};
-    const pct=r.persone_archiviate?Math.round(r.persone_classificate/r.persone_archiviate*100):0;
+    // Percentuale sulle persone ATTRIBUITE (domini condivisi risolti): una persona
+    // di gsk.com conta una volta, non una per ognuna delle 5 schede GSK.
+    const baseAttribuite=r.persone_attribuite??r.persone_archiviate;
+    const pct=baseAttribuite?Math.round(r.persone_classificate/baseAttribuite*100):0;
     rie.innerHTML=`<div class="kpi-mini-grid" style="grid-template-columns:repeat(4,1fr);gap:14px;">
       <div><div class="kpi-mini-label">Aziende scaricate</div><div class="kpi-mini-value">${r.aziende_scaricate??0}</div><div style="font-size:11px;color:var(--text2);">${r.scarichi_completi??0} complete · ${r.scarichi_in_corso??0} da riprendere · ${r.scarichi_zero??0} vuote · ${r.scarichi_errore??0} errori</div></div>
-      <div><div class="kpi-mini-label">Persone archiviate</div><div class="kpi-mini-value">${(r.persone_archiviate??0).toLocaleString('it-IT')}</div><div style="font-size:11px;color:var(--text2);">${(r.persone_in_piu_aziende??0).toLocaleString('it-IT')} presenti in più aziende (domini condivisi)</div></div>
-      <div><div class="kpi-mini-label">Con funzione</div><div class="kpi-mini-value" style="color:${pct>=60?'var(--success)':'var(--warning)'};">${pct}%</div><div style="font-size:11px;color:var(--text2);">${(r.persone_classificate??0).toLocaleString('it-IT')} classificate</div></div>
+      <div><div class="kpi-mini-label">Persone archiviate</div><div class="kpi-mini-value">${(r.persone_archiviate??0).toLocaleString('it-IT')}</div><div style="font-size:11px;color:var(--text2);">${(baseAttribuite??0).toLocaleString('it-IT')} attribuite · ${r.domini_condivisi??0} domini condivisi (${r.domini_senza_titolare??0} senza titolare) · ${(r.persone_doppie_in_organico??0).toLocaleString('it-IT')} persone doppie in organico</div></div>
+      <div><div class="kpi-mini-label">Con funzione</div><div class="kpi-mini-value" style="color:${pct>=60?'var(--success)':'var(--warning)'};">${pct}%</div><div style="font-size:11px;color:var(--text2);">${(r.persone_classificate??0).toLocaleString('it-IT')} classificate su ${(baseAttribuite??0).toLocaleString('it-IT')} attribuite${r.persone_generiche!=null?` · di cui ${r.persone_generiche.toLocaleString('it-IT')} con ruolo generico`:''}</div></div>
       <div><div class="kpi-mini-label">Risposte a crediti archiviate</div><div class="kpi-mini-value">${r.organizzazioni_archiviate??0}</div><div style="font-size:11px;color:var(--text2);">organizzazioni · ${r.match_archiviati??0} contatti rivelati</div></div>
     </div><div style="font-size:10px;color:var(--text2);margin-top:10px;">Riepilogo calcolato il ${r.calcolato_il?new Date(r.calcolato_il).toLocaleString('it-IT'):'—'} (si aggiorna a ogni classificazione o scarico completato)</div>`;
     _apolloCampi=campi;

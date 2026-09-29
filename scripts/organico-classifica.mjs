@@ -16,6 +16,8 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { rigaWorkforce } from './lib/organico-tassonomia.mjs';
+import { risolviDominiCondivisi, togliOrganicoNonTitolari } from './lib/apollo-domini.mjs';
+import { membriDiGruppo, ricostruisciGruppi } from './lib/apollo-gruppi.mjs';
 dotenv.config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -38,8 +40,17 @@ async function main() {
   const settori = new Map((await leggiTutte('companies', () => supabase.from('companies').select('id,sector_v2').order('id'))).map((c) => [c.id, c.sector_v2]));
   let qScarico = () => supabase.from('apollo_people_scarico').select('company_id').eq('completo', true).order('company_id');
   if (SOLO) qScarico = () => supabase.from('apollo_people_scarico').select('company_id').eq('completo', true).eq('company_id', SOLO).order('company_id');
-  const complete = (await leggiTutte('apollo_people_scarico', qScarico)).map((r) => r.company_id);
-  console.log(`aziende con scarico completo: ${complete.length}`);
+  const tutteComplete = (await leggiTutte('apollo_people_scarico', qScarico)).map((r) => r.company_id);
+
+  // Domini condivisi: un solo titolare per dominio, ricalcolato dall'ultimo
+  // scarico (vedi scripts/lib/apollo-domini.mjs). Le schede non titolari non
+  // ricevono l'organico: sarebbe la copia di quello del titolare.
+  // Gruppi con capogruppo (scripts/lib/apollo-gruppi.mjs): i loro membri escono
+  // da questa regola, le persone le distribuisce il gruppo alla fine.
+  const { membri } = await membriDiGruppo(supabase);
+  const { righe: domini, nonTitolari } = await risolviDominiCondivisi(supabase, { scrivi: APPLY, membri });
+  const complete = tutteComplete.filter((id) => !nonTitolari.has(id) && !membri.has(id));
+  console.log(`aziende con scarico completo: ${tutteComplete.length} · domini condivisi ${domini.length} (${domini.filter((d) => !d.company_id).length} senza titolare) · schede escluse ${tutteComplete.length - complete.length} (non titolari o membri di ${new Set([...membri.values()].map((m) => m.gruppoId)).size} gruppi con capogruppo)`);
 
   let persone = 0, classificate = 0, scritte = 0, errori = 0;
   const nonMappati = new Map();
@@ -71,6 +82,13 @@ async function main() {
   const pct = persone ? (100 * classificate / persone).toFixed(1) : '0';
   console.log(`\npersone ${persone} · classificate ${classificate} (${pct}%) · non mappate ${persone - classificate} · titoli distinti non mappati ${nonMappati.size}`);
   if (APPLY) {
+    const daTogliere = [...nonTitolari].filter((id) => !membri.has(id));
+    if (!SOLO) console.log(`organico tolto a ${await togliOrganicoNonTitolari(supabase, daTogliere)} schede non titolari`);
+    else if (daTogliere.includes(SOLO)) await togliOrganicoNonTitolari(supabase, [SOLO]);
+    if (!SOLO) {
+      const gr = await ricostruisciGruppi(supabase, { scrivi: true });
+      console.log(`gruppi con capogruppo: ${gr.gruppi} · persone attribuite ${gr.righe}`);
+    }
     console.log(`righe scritte in company_workforce: ${scritte} · errori: ${errori}`);
     const { error } = await supabase.rpc('apollo_rinfresca_riepiloghi');
     console.log(error ? `riepiloghi front-end NON rinfrescati: ${error.message}` : 'riepiloghi front-end rinfrescati');

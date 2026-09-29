@@ -46,6 +46,8 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { creaArchivio } from './lib/apollo-archivio.mjs';
 import { rigaWorkforce } from './lib/organico-tassonomia.mjs';
+import { risolviDominiCondivisi, togliOrganicoNonTitolari } from './lib/apollo-domini.mjs';
+import { membriDiGruppo, ricostruisciGruppi } from './lib/apollo-gruppi.mjs';
 dotenv.config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -189,6 +191,15 @@ async function runUnificatoDailyBatch(apply = true) {
     supabase.from('apollo_people_scarico').select('company_id,dominio,total_entries,scaricate,pagine,completo,esito,aggiornato_il,risposta_extra').order('company_id'))).map((r) => [r.company_id, r]));
   const dmTentate = new Set((await leggiTutte('registro decision maker', () =>
     supabase.from('company_facts_lookup_log').select('company_id').eq('tipo', DM_REGISTRO_TIPO).order('company_id'))).map((r) => r.company_id));
+  // Domini condivisi (vedi scripts/lib/apollo-domini.mjs): le schede non
+  // titolari non ricevono organico ne' decision maker — sarebbero la copia del
+  // titolare, e il decision maker costerebbe un credito per la stessa persona.
+  // Gruppi con capogruppo (scripts/lib/apollo-gruppi.mjs): l'organico dei
+  // membri lo ricostruisce il gruppo a fine giro; il decision maker si cerca
+  // solo sulla capogruppo (stesse persone, un credito solo).
+  const { membri } = await membriDiGruppo(supabase);
+  const gruppiToccati = new Set();
+  const { nonTitolari } = await risolviDominiCondivisi(supabase, { scrivi: false, membri });
   const orgArchiviate = new Set((await leggiTutte('apollo_organizations_raw', () =>
     supabase.from('apollo_organizations_raw').select('company_id').order('company_id'))).map((r) => r.company_id));
   const pool = await leggiTutte('companies', () => supabase.from('companies')
@@ -272,15 +283,22 @@ async function runUnificatoDailyBatch(apply = true) {
     }
     if (!stato.completo) continue; // organico e decision maker solo a lista intera
     scarichiCompleti++;
+    const membro = membri.get(c.id);
+    if (membro) {
+      gruppiToccati.add(membro.gruppoId);
+      if (membro.capogruppoId !== c.id) { push(`  societa' di un gruppo: organico ricostruito dal gruppo, decision maker sulla capogruppo`); continue; }
+    } else if (nonTitolari.has(c.id)) { push(`  dominio condiviso: le persone sono del titolare del dominio, niente organico ne' decision maker qui`); continue; }
 
     const persone = await leggiTutte('apollo_people_raw', () => supabase.from('apollo_people_raw')
       .select('apollo_person_id,title').eq('company_id', c.id).order('apollo_person_id'));
     personeTotali += persone.length;
-    try {
-      const n = await ricostruisciWorkforce(c.id, persone, c.sector_v2);
-      workforceScritte += n;
-      push(`  organico: ${persone.length} persone, ${n} classificate`);
-    } catch (e) { errori++; push(`  organico ERRORE: ${e.message}`); }
+    if (!membro) {
+      try {
+        const n = await ricostruisciWorkforce(c.id, persone, c.sector_v2);
+        workforceScritte += n;
+        push(`  organico: ${persone.length} persone, ${n} classificate`);
+      } catch (e) { errori++; push(`  organico ERRORE: ${e.message}`); }
+    }
 
     // 2b. decision maker — dentro la STESSA lista, mai una ricerca a parte
     if (!dmTentate.has(c.id)) {
@@ -312,6 +330,14 @@ async function runUnificatoDailyBatch(apply = true) {
   }
 
   const inventario = await arc.chiudi();
+  // Ricalcolo sui dati appena scaricati: decide sempre lo scarico piu' recente.
+  if (apply && scarichiCompleti) {
+    try {
+      const { nonTitolari: aggiornati } = await risolviDominiCondivisi(supabase, { scrivi: true, membri });
+      await togliOrganicoNonTitolari(supabase, [...aggiornati].filter((id) => !membri.has(id)));
+      if (gruppiToccati.size) await ricostruisciGruppi(supabase, { scrivi: true, soloGruppi: gruppiToccati });
+    } catch (e) { errori++; push(`  domini condivisi ERRORE: ${e.message}`); }
+  }
   if (apply && scarichiCompleti) {
     const { error } = await supabase.rpc('apollo_rinfresca_riepiloghi');
     if (error) push(`  riepiloghi front-end NON rinfrescati: ${error.message}`);
