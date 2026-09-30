@@ -173,11 +173,18 @@ for (const c of companies) {
 // candidate, si usa quella; altrimenti e' ambiguo e si salta, mai una scelta
 // arbitraria.
 function trovaAzienda(dominio, emailCompleta) {
+  // Un contatto GIA' noto per questa email esatta batte qualunque euristica sul
+  // dominio: e' un fatto verificato, non una deduzione. Serve anche quando il
+  // dominio delle email del personale e' del tutto diverso dal sito registrato
+  // (caso reale 29/09/2026: IWT ha sito "iwtpharma.com" ma il personale scrive
+  // da "iwtsrl.it" — un dominio mai visto da nessuna euristica sotto, ma gia'
+  // presente come contatto conosciuto).
+  const notoDaContattoDiretto = companyIdPerEmailNota.get(emailCompleta.toLowerCase());
+  if (notoDaContattoDiretto) return notoDaContattoDiretto;
+
   if (perDominioSito.has(dominio)) {
     const candidati = perDominioSito.get(dominio);
     if (candidati.size === 1) return [...candidati][0];
-    const notoDaContatto = companyIdPerEmailNota.get(emailCompleta.toLowerCase());
-    if (notoDaContatto && candidati.has(notoDaContatto)) return notoDaContatto;
     return null; // dominio ambiguo tra piu' aziende, nessun contatto noto a disambiguare
   }
   const brand = dominio.replace(/\.[a-z.]+$/, '');
