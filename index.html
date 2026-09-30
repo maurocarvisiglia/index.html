@@ -1692,6 +1692,17 @@ async function loadCurrentUserRole(userId,email){
   applyRolePermissions();
 }
 
+// Piano di contatto trimestrale (28/09/2026, esteso a Sofia/Caterina il
+// 30/09/2026): non c'e' una colonna "account" su app_users, quindi l'unico modo
+// di sapere di chi e' il piano di chi entra e' questa mappa email->account
+// (le stesse aziende sono gia' partizionate in companies.account). Ogni utente
+// vede SOLO le aziende del proprio account: i tre piani non si mescolano mai.
+const PIANO_CONTATTO_ACCOUNT_PER_EMAIL={
+  'mauro.carvisiglia@mcpharmaconsulting.it':'Mauro',
+  'sofia.romano@mcpharmaconsulting.it':'Sofia',
+  'caterina.stefano@mcpharmaconsulting.it':'Caterina',
+};
+
 function applyRolePermissions(){
   const isAdmin=_currentRole==='admin';
   const label=document.getElementById('current-user-label');
@@ -1701,11 +1712,11 @@ function applyRolePermissions(){
   document.querySelectorAll('.admin-only-el').forEach(el=>{el.style.display=isAdmin?'':'none';});
   const navUsers=document.getElementById('nav-users');
   if(navUsers)navUsers.style.display=isAdmin?'':'none';
-  // Piano di contatto trimestrale (28/09/2026): visibile solo a Mauro, non agli
-  // altri collaboratori anche se admin — e' il suo piano commerciale personale,
-  // non uno strumento condiviso del team.
+  // Visibile solo a chi ha un piano di contatto proprio (Mauro/Sofia/Caterina),
+  // non a tutti i collaboratori anche se admin — e' il piano commerciale
+  // personale di ciascuno, non uno strumento condiviso del team.
   const navPiano=document.getElementById('nav-piano');
-  if(navPiano)navPiano.style.display=(_currentUser?.email==='mauro.carvisiglia@mcpharmaconsulting.it')?'':'none';
+  if(navPiano)navPiano.style.display=PIANO_CONTATTO_ACCOUNT_PER_EMAIL[_currentUser?.email]?'':'none';
 }
 
 function hideLoginScreen(){
@@ -5161,12 +5172,27 @@ async function loadPianoContatto(){
   const stato=document.getElementById('piano-stato')?.value||'da_fare';
   el.innerHTML='<div class="loading">Caricamento...</div>';
   try{
-    const righeComplete=await api(`piano_contatto_trimestrale?select=company_id,punteggio,tema&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
+    const righeCompleteTutti=await api(`piano_contatto_trimestrale?select=id,company_id,punteggio,tema,fatto_manualmente&mese=eq.${encodeURIComponent(mese)}&settimana=eq.${settimana}&order=punteggio.desc`);
+    if(!righeCompleteTutti.length){
+      el.innerHTML='<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda in questo periodo</div></div>';
+      if(countEl)countEl.textContent='0 aziende';
+      return;
+    }
+    // Il piano di Mauro/Sofia/Caterina vive nella STESSA tabella (distinti solo
+    // dall'azienda a cui appartiene ogni riga): senza questo filtro ognuno
+    // vedrebbe anche le aziende degli altri due. Si scaricano le aziende di
+    // TUTTI e si tiene solo chi appartiene all'account di chi e' loggato.
+    const companyIdsTutti=righeCompleteTutti.map(r=>r.company_id);
+    const aziendeTutte=await apiPerIdList('companies','id,name,sector_v2,account',companyIdsTutti);
+    const accountCorrente=PIANO_CONTATTO_ACCOUNT_PER_EMAIL[_currentUser?.email];
+    const idAccountValidi=new Set(aziendeTutte.filter(a=>a.account===accountCorrente).map(a=>a.id));
+    const righeComplete=righeCompleteTutti.filter(r=>idAccountValidi.has(r.company_id));
     if(!righeComplete.length){
       el.innerHTML='<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Nessuna azienda in questo periodo</div></div>';
       if(countEl)countEl.textContent='0 aziende';
       return;
     }
+    const aziendaMap=new Map(aziendeTutte.filter(a=>idAccountValidi.has(a.id)).map(a=>[a.id,a]));
     const companyIds=righeComplete.map(r=>r.company_id);
     // apiPerIdList filtra sull'`id` PROPRIO della tabella passata — su
     // company_contacts serve invece filtrare per `company_id` (chiave esterna),
@@ -5192,12 +5218,10 @@ async function loadPianoContatto(){
       }
       return risultati;
     }
-    const [aziende,contatti,ultimiContatti]=await Promise.all([
-      apiPerIdList('companies','id,name,sector_v2',companyIds),
+    const [contatti,ultimiContatti]=await Promise.all([
       contattiPerAziende(companyIds),
       ultimoContattoPerAziende(companyIds),
     ]);
-    const aziendaMap=new Map(aziende.map(a=>[a.id,a]));
     const ultimoContattoMap=new Map(ultimiContatti.map(u=>[u.company_id,u]));
     function giorniFa(dataIso){
       if(!dataIso)return null;
@@ -5212,7 +5236,11 @@ async function loadPianoContatto(){
     // conta se il piano esisteva gia' o no in quel momento). MA se il cliente
     // ha risposto DOPO quella nostra ultima email, la palla torna a noi: va
     // di nuovo in "da fare", non resta "fatta" solo perche' gli avevamo scritto.
+    // Sofia e Caterina non hanno la sincronizzazione email (solo Mauro, via
+    // Outlook sul suo PC): per loro "fatta" puo' venire SOLO dal flag manuale,
+    // mai da un segnale email che per loro non esistera' mai.
     function attivitaFatta(r){
+      if(r.fatto_manualmente)return true;
       const uc=ultimoContattoMap.get(r.company_id);
       if(!uc?.ultimo_invio_il)return false;
       const giorni=(Date.now()-new Date(uc.ultimo_invio_il).getTime())/86400000;
@@ -5267,23 +5295,41 @@ async function loadPianoContatto(){
           <td rowspan="${contattiRiga.length}" style="vertical-align:top;white-space:nowrap;${bordo}">${rispostaTesto}</td>
           <td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);${bordo}">${comunicazioniMese}</td>`:'';
         const ultimaColonna=i===0?`<td rowspan="${contattiRiga.length}" style="vertical-align:top;color:var(--text2);${bordo}">${r.punteggio ?? '—'}</td>`:'';
+        // Tasto manuale "fatto": indispensabile per Sofia/Caterina (nessuna
+        // sincronizzazione email per loro), utile anche a Mauro come override.
+        const colonnaFatto=i===0?`
+          <td rowspan="${contattiRiga.length}" style="vertical-align:top;${bordo}">
+            <button onclick='segnaPianoFatto("${r.id}",${r.fatto_manualmente?'false':'true'})' style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:${r.fatto_manualmente?'var(--accent2)':'transparent'};color:${r.fatto_manualmente?'#fff':'var(--text2)'};">
+              ${r.fatto_manualmente?'✓ Fatta':'Segna fatta'}
+            </button>
+          </td>`:'';
         return `<tr>
           ${primaRiga}
           <td style="${bordo}">${c?.nome||'<span style="color:var(--text2);">— nessun contatto —</span>'}</td>
           <td style="color:var(--text2);${bordo}">${c?.ruolo||'—'}</td>
           <td style="color:var(--text2);${bordo}">${c?.email||'—'}</td>
           ${ultimaColonna}
+          ${colonnaFatto}
         </tr>`;
       }).join('');
     }).join('');
-    el.innerHTML=`<table style="min-width:1100px;">
+    el.innerHTML=`<table style="min-width:1200px;">
       <thead><tr>
-        <th>Azienda</th><th>Settore</th><th>Ultimo contatto</th><th>Risposta cliente</th><th>Comunicazioni mese</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th>
+        <th>Azienda</th><th>Settore</th><th>Ultimo contatto</th><th>Risposta cliente</th><th>Comunicazioni mese</th><th>Contatto</th><th>Ruolo</th><th>Email</th><th>Punteggio</th><th>Fatto</th>
       </tr></thead>
       <tbody>${corpoRighe}</tbody>
     </table>`;
   }catch(e){
     el.innerHTML='<div style="color:var(--danger);padding:16px;">Errore: '+e.message+'</div>';
+  }
+}
+
+async function segnaPianoFatto(rigaId,nuovoValore){
+  try{
+    await api(`piano_contatto_trimestrale?id=eq.${rigaId}`,'PATCH',{fatto_manualmente:nuovoValore,fatto_il:nuovoValore?new Date().toISOString():null});
+    loadPianoContatto();
+  }catch(e){
+    toast('Errore nel salvare: '+e.message,'error');
   }
 }
 
