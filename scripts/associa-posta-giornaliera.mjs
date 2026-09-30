@@ -146,14 +146,25 @@ const perDominioSito = new Map(); // dominio -> Set(company_id): un dominio puo'
 const perNomeCompleto = new Map();
 const perToken = new Map(); // token -> Set(company_id) per rilevare ambiguità
 
+function aggiungiDominio(d, companyId) {
+  if (!d) return;
+  if (!perDominioSito.has(d)) perDominioSito.set(d, new Set());
+  perDominioSito.get(d).add(companyId);
+}
+
+// Il dominio del SITO non e' sempre quello usato davvero dalla posta del
+// personale (casi reali 29/09/2026: IWT ha sito iwtpharma.com ma scrive da
+// iwtsrl.it; Boston Scientific idem con bsci.com) — richiesto da Mauro:
+// l'indice va costruito anche dalle email dei contatti GIA' in archivio, non
+// solo dal sito. E' un dato piu' affidabile: e' l'indirizzo vero, non quello
+// che l'azienda mostra sul sito.
+for (const c of contattiEsistenti) {
+  if (!c.email) continue;
+  aggiungiDominio(dominioDi(c.email), c.company_id);
+}
+
 for (const c of companies) {
-  if (c.website) {
-    const d = dominioDi('x@' + c.website.replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
-    if (d) {
-      if (!perDominioSito.has(d)) perDominioSito.set(d, new Set());
-      perDominioSito.get(d).add(c.id);
-    }
-  }
+  aggiungiDominio(dominioDi('x@' + (c.website || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '')), c.id);
   const norm = normalizeCompanyName(c.name);
   if (!norm) continue;
   const concatenato = norm.replace(/\s+/g, '');
