@@ -3316,7 +3316,7 @@ const REPORT_SECTIONS_ENUM=['seniority_mix','therapeutic_area_mix','geo_mix','co
 // direttamente, senza bisogno di tradurre nulla).
 const FUNCTIONAL_AREA_TO_FUNZIONE={
   medical_affairs:['medical_affairs_msl'],
-  commercial:['sales_commercial'],
+  commercial:['sales_commercial','key_account_manager','area_manager','sales_leadership','export_manager'],
   // Non include isf_informatore_scientifico: da quando la tassonomia li
   // distingue (01/10/2026), un ISF non e' piu' genericamente "commerciale" ai
   // fini del benchmark — vedi CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE sotto, che
@@ -3349,6 +3349,9 @@ const FUNCTIONAL_AREA_TO_FUNZIONE={
 // organico si arricchisce di altri codici dedicati (01/10/2026).
 const CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE=[
   [/informatore scientifico/i, ['isf_informatore_scientifico']],
+  [/key account manager|national account manager|strategic account manager/i, ['key_account_manager']],
+  [/^area manager|regional manager|field sales manager/i, ['area_manager']],
+  [/^sales director$/i, ['sales_leadership']],
 ];
 function funzioniPerRicercaAnnunci(functional_area,canonical_role){
   if(canonical_role){
@@ -12611,7 +12614,10 @@ const WORKFORCE_FUNZIONE_LABEL={
   general_management:'General Management', hr:'HR', finance_admin:'Finance / Admin',
   legal_compliance:'Legal / Compliance', it_digital:'IT / Digital', procurement:'Procurement',
   logistics_supply_chain:'Logistics / Supply Chain', marketing_communications:'Marketing / Comunicazione',
-  sales_commercial:'Sales / Commerciale', isf_informatore_scientifico:'Informatore Scientifico (ISF)', business_development:'Business Development',
+  sales_commercial:'Sales / Commerciale', isf_informatore_scientifico:'Informatore Scientifico (ISF)',
+  key_account_manager:'Key Account Manager', area_manager:'Area / Territory Manager',
+  sales_leadership:'Sales / Commercial Director', export_manager:'Export Manager',
+  business_development:'Business Development',
   facilities_maintenance:'Facilities / Manutenzione',
   personale_medico:'Personale medico', infermieri_oss:'Infermieri / OSS', professioni_sanitarie:'Professioni sanitarie',
   engineering_tecnico:'Tecnici / Ingegneria', project_management:'Project Management', stage_formazione:'Stage / Formazione',
