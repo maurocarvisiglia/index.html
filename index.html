@@ -3305,6 +3305,37 @@ async function fetchListingsForReportFilters(filters){
 
 const REPORT_SECTIONS_ENUM=['seniority_mix','therapeutic_area_mix','geo_mix','contract_type_mix'];
 
+// Mappatura funzione annunci (job_listings.functional_area_v2, 19 codici) ->
+// funzione organico (company_workforce.funzione, ~53 codici, tassonomia
+// diversa e piu' granulare) — SOLO 5 codici coincidono per nome (hr,
+// market_access, business_development, customer_service,
+// general_management), tutti gli altri richiedono questa mappatura
+// esplicita, mai un confronto diretto sul nome del codice. Usata solo lato
+// Report Builder (sezione "mercato attuale"): costante di sola lettura, non
+// condivisa con Report Aziende (che legge company_workforce.funzione
+// direttamente, senza bisogno di tradurre nulla).
+const FUNCTIONAL_AREA_TO_FUNZIONE={
+  medical_affairs:['medical_affairs_msl'],
+  commercial:['sales_commercial'],
+  marketing:['marketing_communications','trade_marketing_retail','ecommerce'],
+  market_access:['market_access'],
+  regulatory_affairs:['regulatory_affairs_prodotto','regulatory_mdr_ivdr','regulatory_samd','registrazione_conformita'],
+  quality:['quality_control','quality_assurance'],
+  clinical_operations:['clinical_operations_locali','clinical_operations_cro','training_clinico','data_management_biostat','project_management_clinico'],
+  drug_safety:['pharmacovigilance'],
+  rd:['rd_formulazione','rd_formulazione_consumer'],
+  manufacturing:['produzione_site_operations','process_engineering'],
+  supply_chain:['logistics_supply_chain','procurement'],
+  finance:['finance_admin'],
+  hr:['hr'],
+  it:['it_digital','software_engineering','data_science_ai','ux_ui','product_management_software'],
+  business_development:['business_development','business_development_conto_terzi','business_development_proposal'],
+  general_management:['general_management'],
+  healthcare_services:['personale_medico','infermieri_oss','professioni_sanitarie','farmacista','patient_support'],
+  legal:['legal_compliance'],
+  customer_service:['customer_service','customer_success'],
+};
+
 // Espressioni che indicano un riferimento temporale nella richiesta dell'utente.
 // Usata come guardia: se non ne compare nessuna, i filtri data proposti dall'IA
 // vengono scartati (vedi planReportFromPrompt). Include mesi, anni, e le forme
@@ -3770,7 +3801,13 @@ async function executeReportPlan(plan){
     const ral_by_seniority_diversified = benchmark.concentration_flag
       ? computeRalBySeniority(listings.filter(l=>(l.ragione_sociale||l.company_name||'N/D')!==benchmark.concentration_flag.company)).stats
       : null;
-    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_excluded_low,ral_by_seniority_excluded_high,ral_by_seniority_excluded_by_level,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,ral_by_company_excluded_low,ral_by_company_excluded_high,pricing_decisions,benefits_mix});
+    // "Mercato attuale": quanta offerta (organico gia' impiegato) esiste per
+    // questa funzione/zona, di fianco alla domanda (annunci) che il report
+    // gia' mostra — sempre calcolata quando applicabile, come benefits_mix,
+    // mai opt-in (richiesto da Mauro 01/10/2026).
+    const canonicalRoleSingolo=Array.isArray(entity.filters?.canonical_role)?entity.filters.canonical_role[0]:entity.filters?.canonical_role;
+    const workforce_context = await computeWorkforceContextSection(entity.filters?.functional_area,entity.filters?.region,canonicalRoleSingolo);
+    results.push({label:entity.label,filters:entity.filters,n_listings:listings.length,truncatedAt,excludedForeign,benchmark,sections,sector_distribution,ral_by_seniority,ral_by_seniority_excluded,ral_by_seniority_excluded_low,ral_by_seniority_excluded_high,ral_by_seniority_excluded_by_level,ral_by_seniority_diversified,ral_histogram,ral_segments,ral_by_company,ral_by_company_excluded,ral_by_company_excluded_low,ral_by_company_excluded_high,pricing_decisions,benefits_mix,workforce_context});
   }
 
   // Aggiungi gap analysis se comparison mode
@@ -4134,6 +4171,10 @@ function renderReportHTML(plan,entityResults,narration){
       <div class="section-title" style="margin-top:24px;">Pacchetto economico <span style="color:#aaa;font-weight:400;text-transform:none;letter-spacing:0;">(dichiarato su ${e.benefits_mix.coverage_pct}% degli annunci)</span></div>
       <div class="chart-box">${barRows(e.benefits_mix,GOLD)}</div>
       ${narration.benefits_note?`<div class="summary-box">${narration.benefits_note}</div>`:''}`:''}
+      ${e.workforce_context?`
+      <div class="section-title" style="margin-top:24px;">Mercato attuale — ${e.workforce_context.funzioneLabel}</div>
+      <div class="summary-box">${e.workforce_context.totale_persone?`<strong>${e.workforce_context.totale_persone}</strong> persone già impiegate in questa funzione ${e.workforce_context.nationwide?'in Italia':`in ${e.workforce_context.region}`} (${e.workforce_context.aziende_coperte} aziend${e.workforce_context.aziende_coperte===1?'a':'e'} con dato noto)`:`Nessun dato di organico noto per questa funzione${e.workforce_context.nationwide?'':` in ${e.workforce_context.region}`}`}. <span style="color:#aaa;">Dato da archivio organico (Apollo), copertura parziale.</span></div>
+      ${e.workforce_context.totale_persone?`<div class="chart-box">${barRows(e.workforce_context,GOLD)}</div>`:''}`:''}
     `;
   }else{
     const cols='repeat('+n+',1fr)';
@@ -4184,6 +4225,13 @@ function renderReportHTML(plan,entityResults,narration){
       <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} <span style="color:#aaa;font-weight:400;">(dichiarato su ${e.benefits_mix?e.benefits_mix.coverage_pct:0}% degli annunci)</span></div>${barRows(e.benefits_mix,GOLD)}</div>`).join('')}</div>
       ${narration.benefits_note?`<div class="summary-box">${narration.benefits_note}</div>`:''}`:'';
 
+    // "Mercato attuale" — organico gia' impiegato per funzione/zona, di
+    // fianco alla domanda (annunci) gia' mostrata — stesso schema a griglia
+    // di benefitsGrid, una cella "Dato non disponibile" per le entita' senza
+    // una funzione precisa nei filtri.
+    const workforceGrid=entityResults.some(e=>e.workforce_context)?`<div class="section-title" style="margin-top:24px;">Mercato attuale</div>
+      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} ${e.workforce_context?`<span style="color:#aaa;font-weight:400;">(${e.workforce_context.funzioneLabel}${e.workforce_context.nationwide?' · Italia':` · ${e.workforce_context.region}`})</span>`:''}</div>${e.workforce_context&&e.workforce_context.totale_persone?barRows(e.workforce_context,GOLD):'<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>'}</div>`).join('')}</div>`:'';
+
     // Key findings deterministici (NUOVO)
     const keyFindings=`<div class="section-title" style="margin-top:24px;">Key Findings</div>
       <div style="display:grid;grid-template-columns:${cols};gap:16px;">
@@ -4210,6 +4258,7 @@ function renderReportHTML(plan,entityResults,narration){
       ${scarcityGrid}
       ${sectionBlocks}
       ${benefitsGrid}
+      ${workforceGrid}
     `;
   }
 
@@ -7814,6 +7863,64 @@ function computeBenefitsSection(listings){
   };
 }
 
+// Sezione "mercato attuale": di fianco al dato sulla DOMANDA (annunci aperti)
+// che il report gia' mostra, quanta OFFERTA esiste gia' sul mercato per la
+// stessa funzione/zona — da company_workforce via la mappatura
+// FUNCTIONAL_AREA_TO_FUNZIONE. Sempre calcolata (come benefits_mix), mai
+// opt-in: niente REPORT_SECTIONS_ENUM qui. Ritorna null se il report non e'
+// filtrato su una funzione precisa — un numero senza una funzione specifica
+// non vorrebbe dire nulla, quindi il cancello e' esplicito, non un fallback
+// silenzioso su un valore vuoto.
+async function computeWorkforceContextSection(functional_area,region,canonical_role){
+  // Il piano spesso valorizza canonical_role (es. "Informatore Scientifico
+  // del Farmaco") invece di functional_area quando il ruolo e' preciso,
+  // lasciando functional_area null anche se l'area e' nota — senza questo
+  // fallback la sezione sparirebbe proprio per le richieste piu' specifiche
+  // (scalabile a ogni ruolo della tassonomia, non solo a quelli dove l'AI
+  // sceglie di valorizzare functional_area esplicitamente).
+  if(!functional_area&&canonical_role){
+    await loadTaxonomy();
+    const voce=(_taxonomyCache||[]).find(t=>t.canonical_role===canonical_role);
+    if(voce)functional_area=voce.functional_area;
+  }
+  const funzioni=FUNCTIONAL_AREA_TO_FUNZIONE[functional_area];
+  if(!functional_area||!funzioni||!funzioni.length)return null;
+
+  // Il termine "region" qui accetta sia una regione vera (es. "Lombardia")
+  // sia una provincia, sigla o nome esteso (es. "Bergamo"/"BG") — stessa
+  // precisione del benchmark organico di Report Aziende, mai limitata al solo
+  // livello regionale quando l'utente chiede una provincia specifica.
+  let aziende=await apiPaginato('companies?select=id,name,region,province&is_active=eq.true&merged_into=is.null',1000);
+  if(region)aziende=aziende.filter(a=>aziendaCorrispondeLocalita(a,region));
+  if(!aziende.length)return {type:'workforce_context',functional_area,funzioneLabel:funzioni.map(f=>WORKFORCE_FUNZIONE_LABEL[f]||f).join(' / '),region:region||null,nationwide:!region,totale_persone:0,aziende_coperte:0,breakdown:[]};
+
+  const aziendaById=new Map(aziende.map(a=>[a.id,a]));
+  const ids=aziende.map(a=>a.id);
+  const perAzienda=new Map();
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const righe=await api(`v_company_workforce_funzioni?select=company_id,conteggio&funzione=in.(${funzioni.join(',')})&company_id=in.(${lotto.join(',')})`);
+    righe.forEach(r=>{ perAzienda.set(r.company_id,(perAzienda.get(r.company_id)||0)+r.conteggio); }); // somma su tutti gli ambito, mai un doppio conteggio
+  }
+
+  const totale_persone=[...perAzienda.values()].reduce((s,v)=>s+v,0);
+  const breakdown=[...perAzienda.entries()]
+    .map(([id,count])=>({key:aziendaById.get(id)?.name||id,count,pct:totale_persone?Math.round(count/totale_persone*100):0}))
+    .sort((a,b)=>b.count-a.count)
+    .slice(0,5);
+
+  return{
+    type:'workforce_context',
+    functional_area,
+    funzioneLabel:funzioni.map(f=>WORKFORCE_FUNZIONE_LABEL[f]||f).join(' / '),
+    region:region||null,
+    nationwide:!region,
+    totale_persone,
+    aziende_coperte:perAzienda.size,
+    breakdown,
+  };
+}
+
 function computeMixSection(listings,field,label,excludeValue){
   const counts={};
   let uncovered=0;
@@ -10415,16 +10522,19 @@ FILTRI DISPONIBILI (tutti opzionali, null se non specificati dalla richiesta):
 - core_fact_tipo: uno tra questi (usa la chiave a sinistra dell'uguale, mai l'etichetta): ${tipiCore} — solo se la richiesta chiede esplicitamente una di queste caratteristiche, altrimenti null
 - prodotto_categoria: "principio_attivo" se la richiesta chiede aziende che PRODUCONO una materia prima/principio attivo, "commercializzato" se chiede aziende che vendono farmaci/dispositivi finiti, altrimenti null
 - includi_benchmark_ral_ruolo: SOLO per modalita' "concorrenti" — uno di questi ruoli esatti: ${ruoliValidi.join(', ')} — se la richiesta chiede esplicitamente di aggiungere/includere un benchmark RAL, retributivo o di pacchetto per una figura specifica (es. "concorrenti di Orion, con il benchmark RAL per Medical Science Liaison"). Il ruolo deve essere nominato esplicitamente e in modo riconoscibile; se la richiesta parla solo di concorrenti senza nominare una figura professionale, lascia null — non e' un campo di default.
+- funzione_target: SOLO per modalita' "benchmark_organico" — una di queste funzioni esatte: ${Object.keys(WORKFORCE_FUNZIONE_LABEL).join(', ')} — la funzione aziendale di cui la richiesta vuole sapere chi ha piu' persone (es. "HR Director" o "risorse umane" → hr; "commerciali"/"venditori" → sales_commercial). Scegli la chiave piu' vicina al significato della richiesta, mai una approssimazione a caso.
+- localita_target: SOLO per modalita' "benchmark_organico" — la localita' geografica cosi' come la scrive l'utente, in testo libero: puo' essere una regione (es. "Lombardia") O una provincia/citta' (es. "Bergamo", "provincia di Bergamo", "BG") — riportala esattamente come scritta, non va validata contro un elenco fisso (a differenza di filters.region, che resta riservato alle altre modalita'). Null se la richiesta non specifica nessuna zona.
 
-MODALITA' — scegli UNA tra queste tre, guardando cosa chiede davvero la richiesta:
+MODALITA' — scegli UNA tra queste quattro, guardando cosa chiede davvero la richiesta:
 - "confronto": la richiesta chiede esplicitamente di CONFRONTARE, mettere a confronto, vedere le DIFFERENZE tra DUE O PIU' aziende NOMINATE per nome (es. "confronta Steris e Stryker", "differenze tra Bayer e Menarini"). Riporta in aziende_da_confrontare i nomi ESATTAMENTE come scritti dall'utente (non correggerli, non completarli, non inventare la ragione sociale — verranno cercati nel database separatamente). azienda_target resta null.
 - "concorrenti": la richiesta chiede i CONCORRENTI/COMPETITOR di UNA SOLA azienda NOMINATA (es. "concorrenti di Orion Pharma", "chi compete con Bracco", "trovami i primi 3 concorrenti di Steris in Italia") — anche se nomina un paese/regione genericamente (es. "in Italia": il database e' gia' solo Italia, ignora questa parte). Riporta in azienda_target il nome ESATTAMENTE come scritto (verra' cercato nel database separatamente). Se la richiesta specifica un numero massimo di risultati ("primi 3", "top 5"), riportalo in limite_risultati (numero intero), altrimenti null. aziende_da_confrontare resta vuoto.
-- "lista": ogni altra richiesta — ricerca per criteri generali (settore, regione, gruppo, ecc.), anche su piu' aziende ma NON per trovare concorrenti di una nominata ne' per confrontarne di nominate esplicitamente.
+- "benchmark_organico": la richiesta chiede CHI HA PIU' persone/organico in una funzione aziendale specifica, non concorrenti di un'azienda nominata ne' un confronto (es. "aziende con piu' HR Director", "chi ha piu' Sales in Veneto", "chi ha piu' Informatori Scientifici del Farmaco in provincia di Bergamo"). Riporta la funzione in funzione_target e l'eventuale zona in localita_target (filters.sector_v2 resta comunque disponibile per un filtro di settore aggiuntivo, filters.region NON va usato qui).
+- "lista": ogni altra richiesta — ricerca per criteri generali (settore, regione, gruppo, ecc.), anche su piu' aziende ma NON per trovare concorrenti di una nominata, confrontarne di nominate esplicitamente, o classificarle per organico di una funzione.
 
 Attenzione a non confondere "concorrenti" con "lista": una richiesta che nomina un'azienda specifica e chiede chi le fa concorrenza e' SEMPRE modalita="concorrenti", mai un filtro di settore (il nome dell'azienda spesso contiene parole che assomigliano a un settore, es. "Orion Pharma" contiene "Pharma", ma non significa impostare sector_v2="Pharma" — significa cercare i concorrenti di quella azienda specifica).
 
 Rispondi SOLO con questo JSON, nessun altro testo:
-{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"azienda_target":null,"limite_risultati":null,"includi_benchmark_ral_ruolo":null,"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
+{"title":"<titolo breve descrittivo>","modalita":"lista","aziende_da_confrontare":[],"azienda_target":null,"limite_risultati":null,"includi_benchmark_ral_ruolo":null,"funzione_target":null,"localita_target":null,"filters":{"sector_v2":null,"region":null,"therapeutic_area":null,"hiring_attivo":null,"gruppo":null,"core_fact_tipo":null,"prodotto_categoria":null}}`;
 
   const raw=await callAIPowerful(planPrompt,400);
   const clean=raw.replace(/```json|```/g,'').trim();
@@ -10442,7 +10552,7 @@ Rispondi SOLO con questo JSON, nessun altro testo:
   if(f.hiring_attivo!==true&&f.hiring_attivo!==false)f.hiring_attivo=null;
   plan._dropped_filters=dropped;
 
-  plan.modalita=['confronto','concorrenti'].includes(plan.modalita)?plan.modalita:'lista';
+  plan.modalita=['confronto','concorrenti','benchmark_organico'].includes(plan.modalita)?plan.modalita:'lista';
   plan.aziende_da_confrontare=Array.isArray(plan.aziende_da_confrontare)?plan.aziende_da_confrontare.filter(n=>typeof n==='string'&&n.trim()).slice(0,6):[];
   if(plan.modalita==='confronto'&&plan.aziende_da_confrontare.length<2){
     plan.modalita='lista'; // un confronto con meno di 2 nomi non e' un confronto
@@ -10459,6 +10569,19 @@ Rispondi SOLO con questo JSON, nessun altro testo:
     if(plan.includi_benchmark_ral_ruolo)dropped.push(`benchmark RAL per ruolo "${plan.includi_benchmark_ral_ruolo}" non riconosciuto o non applicabile a questa modalita'`);
     plan.includi_benchmark_ral_ruolo=null;
   }
+  // funzione_target: mai una funzione inventata passata alla query — se non e'
+  // una chiave reale di WORKFORCE_FUNZIONE_LABEL si scarta e si ricade su "lista".
+  if(typeof plan.funzione_target!=='string'||!Object.keys(WORKFORCE_FUNZIONE_LABEL).includes(plan.funzione_target)){
+    if(plan.funzione_target)dropped.push(`funzione "${plan.funzione_target}" non riconosciuta`);
+    plan.funzione_target=null;
+  }
+  if(plan.modalita==='benchmark_organico'&&!plan.funzione_target){
+    plan.modalita='lista'; // "benchmark_organico" senza una funzione valida non e' eseguibile
+  }
+  // localita_target: testo libero (regione O provincia/sigla), non validato
+  // contro un elenco fisso come filters.region — il confronto vero e proprio
+  // (nome esteso <-> sigla) avviene dopo, in recuperaBenchmarkOrganico.
+  plan.localita_target=plan.modalita==='benchmark_organico'&&typeof plan.localita_target==='string'&&plan.localita_target.trim()?plan.localita_target.trim():null;
   return plan;
 }
 
@@ -10641,6 +10764,14 @@ async function generaReportUnico(){
       // piu' voci, seppellendo di nuovo i concorrenti farmaceutici veri.
       const limita=(l)=>plan.limite_risultati?l.slice(0,plan.limite_risultati):l;
       html=renderCompetitorReportHTML(risolta.azienda,limita(concorrentiFarmaci),limita(concorrentiDispositivi),partnership,limita(concorrentiClasseTerapeutica),segnaliTarget,sintesiPipelineTarget,coperturaOrganico,partnershipRilevate,dispositiviMarginaliPerTarget,sintesiEsecutiva,benchmarkRal,noteRicerca);
+    }else if(plan.modalita==='benchmark_organico'){
+      const risultato=await recuperaBenchmarkOrganico(plan.funzione_target,plan.filters?.sector_v2,plan.localita_target);
+      if(!risultato.rows.length){
+        erroriEl.innerHTML='<div style="font-size:12px;color:var(--text2);padding:4px 0;">Nessuna azienda con organico noto per questa funzione (con questi eventuali filtri settore/regione).</div>';
+        if(win&&!win.closed)win.close();
+        return;
+      }
+      html=renderBenchmarkOrganicoReportHTML(plan,risultato);
     }else{
       const aziende=await executeCompanySearchPlan(plan);
       if(!aziende.length){
@@ -10941,6 +11072,46 @@ async function recuperaOrganicoPerAziende(ids){
     });
   }
   return perAzienda;
+}
+
+// Modalita' "benchmark_organico": a differenza di recuperaOrganicoPerAziende
+// (che somma TUTTO l'organico noto, qualunque funzione), qui si interroga
+// v_company_workforce_funzioni filtrata su UNA funzione precisa — la domanda
+// e' "chi ha piu' persone in questa funzione specifica", non un totale
+// generico. Si somma sempre su tutti gli ambito (locale/emea/globale) per
+// non contare due volte la stessa funzione nella stessa azienda.
+async function recuperaBenchmarkOrganico(funzione,sector_v2,localita){
+  // localita (es. "Bergamo") passa per aziendaCorrispondeLocalita, non per un
+  // filtro server-side su region=eq. — regione O provincia, sigla O nome
+  // esteso, stessa precisione della sezione "mercato attuale" del Report
+  // Builder, mai limitata al solo livello regionale.
+  const qsCompanies=['select=id,name,sector_v2,region,province,company_group_id','is_active=eq.true','merged_into=is.null'];
+  if(sector_v2)qsCompanies.push(`sector_v2=eq.${encodeURIComponent(sector_v2)}`);
+  let aziende=await apiPaginato(`companies?${qsCompanies.join('&')}`, 1000);
+  if(localita)aziende=aziende.filter(a=>aziendaCorrispondeLocalita(a,localita));
+  if(!aziende.length)return {funzione, rows:[]};
+
+  const ids=aziende.map(a=>a.id);
+  const perAzienda=new Map();
+  for(let i=0;i<ids.length;i+=150){
+    const lotto=ids.slice(i,i+150);
+    const righe=await api(`v_company_workforce_funzioni?select=company_id,conteggio,sedi,ultimo_aggiornamento&funzione=eq.${encodeURIComponent(funzione)}&company_id=in.(${lotto.join(',')})`);
+    righe.forEach(r=>{
+      const prec=perAzienda.get(r.company_id)||{conteggio:0,sedi:new Set(),ultimo_aggiornamento:null};
+      prec.conteggio+=r.conteggio;
+      (r.sedi||[]).forEach(s=>prec.sedi.add(s));
+      if(!prec.ultimo_aggiornamento||(r.ultimo_aggiornamento&&r.ultimo_aggiornamento>prec.ultimo_aggiornamento))prec.ultimo_aggiornamento=r.ultimo_aggiornamento;
+      perAzienda.set(r.company_id,prec);
+    });
+  }
+
+  const aziendaById=new Map(aziende.map(a=>[a.id,a]));
+  const rows=[...perAzienda.entries()]
+    .map(([company_id,v])=>({...aziendaById.get(company_id), conteggio:v.conteggio, sedi:[...v.sedi], ultimo_aggiornamento:v.ultimo_aggiornamento}))
+    .filter(r=>r.id)
+    .sort((a,b)=>b.conteggio-a.conteggio)
+    .slice(0,100);
+  return {funzione, rows};
 }
 
 // Formattatore di un fatto CORE (valore + link fonte + citazione in
@@ -12132,6 +12303,68 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
   </div>
   <div class="summary-box"><strong>${aziende.length}</strong> aziend${aziende.length===1?'a trovata':'e trovate'} — criteri: ${criteriTesto}${(plan._dropped_filters||[]).length?`<br><span style="color:#a15c00;">⚠️ filtri ignorati: ${plan._dropped_filters.join('; ')}</span>`:''}</div>
   <table><thead><tr><th>Azienda</th><th>Settore</th><th>Regione</th><th>Assunzioni</th><th>Gruppo</th><th>Recruiting</th><th>Pipeline</th></tr></thead><tbody>${righe}</tbody></table>
+  <div class="footer">
+    Report generato da LS Job Intelligence in base ai criteri di ricerca applicati.<br>
+    © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
+    <span style="color:${GOLD};">LS Job Intelligence</span>
+  </div>
+</div>
+</body></html>`;
+}
+
+// Modalita' "benchmark_organico": classifica delle aziende per numero di
+// persone in UNA funzione specifica (es. "chi ha piu' HR Director") — stessa
+// struttura CSS/header/footer di renderCompanyListReportHTML, tabella
+// diversa (organico della funzione al centro, non un elenco generico).
+function renderBenchmarkOrganicoReportHTML(plan,{funzione,rows}){
+  const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
+  const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
+  const f=plan.filters||{};
+  const funzioneLabel=WORKFORCE_FUNZIONE_LABEL[funzione]||funzione;
+  const criteriTesto=[
+    f.sector_v2&&`settore ${f.sector_v2}`,
+    plan.localita_target&&`zona ${plan.localita_target}`,
+  ].filter(Boolean).join(' · ')||'nessun filtro aggiuntivo';
+
+  const righe=rows.map((a,i)=>`<tr>
+    <td style="color:#888;">${i+1}</td>
+    <td>${a.name}</td>
+    <td style="color:#888;">${a.sector_v2||''}</td>
+    <td style="color:#888;">${a.region||''}${a.province?` (${a.province})`:''}</td>
+    <td style="font-weight:700;color:${GOLD};">${a.conteggio}</td>
+    <td style="color:#888;font-size:11px;">${(a.sedi||[]).slice(0,3).join(', ')}</td>
+    <td style="color:#888;font-size:11px;">${a.ultimo_aggiornamento?new Date(a.ultimo_aggiornamento).toLocaleDateString('it-IT'):''}</td>
+  </tr>`).join('');
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>${plan.title||`Benchmark organico — ${funzioneLabel}`}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;background:#fff;color:${DARK};}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{margin:15mm 18mm;size:A4;}}
+.summary-box,table,.header{break-inside:avoid;page-break-inside:avoid;}
+tr{break-inside:avoid;page-break-inside:avoid;}
+.section-title{break-after:avoid;page-break-after:avoid;}
+.page{max-width:900px;margin:0 auto;padding:40px 48px;}
+.header{display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;border-bottom:2px solid ${GOLD};margin-bottom:36px;}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:${GOLD};margin:28px 0 14px;}
+.summary-box{background:${CREAM};border-left:4px solid ${GOLD};padding:14px 18px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:#333;margin-bottom:20px;}
+table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:8px 0 20px;}
+th{text-align:left;padding:8px 10px;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888;border-bottom:2px solid ${BORDER};overflow-wrap:break-word;}
+td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align:top;overflow-wrap:break-word;word-break:break-word;}
+.footer{margin-top:40px;padding-top:16px;border-top:1px solid ${BORDER};text-align:center;font-size:10px;color:#aaa;line-height:1.8;}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <img src="${LOGO}" style="height:56px;" alt="MC Pharma Consulting"/>
+    <div style="text-align:right;">
+      <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Benchmark Organico</div>
+      <div style="font-size:16px;font-weight:700;color:${DARK};">${plan.title||`Chi ha più ${funzioneLabel}`}</div>
+      <div style="font-size:11px;color:#888;">${date}</div>
+    </div>
+  </div>
+  <div class="summary-box"><strong>${rows.length}</strong> aziend${rows.length===1?'a con':'e con'} organico noto in <strong>${funzioneLabel}</strong> — ${criteriTesto}${(plan._dropped_filters||[]).length?`<br><span style="color:#a15c00;">⚠️ filtri ignorati: ${plan._dropped_filters.join('; ')}</span>`:''}<br><span style="color:#888;font-size:11px;">Dato da Apollo (archivio organico), copertura parziale — aziende senza alcun dato organico noto non compaiono in questo elenco.</span></div>
+  <table><thead><tr><th style="width:30px;">#</th><th>Azienda</th><th>Settore</th><th>Regione</th><th>${funzioneLabel}</th><th>Sedi</th><th>Aggiornato</th></tr></thead><tbody>${righe}</tbody></table>
   <div class="footer">
     Report generato da LS Job Intelligence in base ai criteri di ricerca applicati.<br>
     © ${new Date().getFullYear()} MC Pharma Consulting S.r.l. · Via Bagutta 13, Milano · P.IVA 14672870962<br>
@@ -13481,6 +13714,66 @@ function getRegionFromProvince(province){
   return null;
 }
 
+// Tabella ufficiale sigla->nome provincia (107 province italiane, dato
+// geografico standard, mai soggetto a verifica aziendale) — serve a
+// confrontare in modo affidabile "Bergamo" con "BG": companies.province
+// contiene un mix incoerente di sigle e nomi estesi a seconda della fonte di
+// import, mai un solo formato. getRegionFromProvince (sopra) risolve solo
+// fino al livello REGIONE, perdendo la provincia specifica — qui serve
+// l'equivalenza provincia-per-provincia, non regione-per-regione.
+const PROVINCIA_SIGLA_NOME={
+  AG:'Agrigento',AL:'Alessandria',AN:'Ancona',AO:'Aosta',AP:'Ascoli Piceno',AQ:"L'Aquila",
+  AR:'Arezzo',AT:'Asti',AV:'Avellino',BA:'Bari',BG:'Bergamo',BI:'Biella',BL:'Belluno',
+  BN:'Benevento',BO:'Bologna',BR:'Brindisi',BS:'Brescia',BT:'Barletta-Andria-Trani',
+  BZ:'Bolzano',CA:'Cagliari',CB:'Campobasso',CE:'Caserta',CH:'Chieti',CL:'Caltanissetta',
+  CN:'Cuneo',CO:'Como',CR:'Cremona',CS:'Cosenza',CT:'Catania',CZ:'Catanzaro',EN:'Enna',
+  FC:'Forlì-Cesena',FE:'Ferrara',FG:'Foggia',FI:'Firenze',FM:'Fermo',FR:'Frosinone',
+  GE:'Genova',GO:'Gorizia',GR:'Grosseto',IM:'Imperia',IS:'Isernia',KR:'Crotone',LC:'Lecco',
+  LE:'Lecce',LI:'Livorno',LO:'Lodi',LT:'Latina',LU:'Lucca',MB:'Monza e della Brianza',
+  MC:'Macerata',ME:'Messina',MI:'Milano',MN:'Mantova',MO:'Modena',MS:'Massa-Carrara',
+  MT:'Matera',NA:'Napoli',NO:'Novara',NU:'Nuoro',OR:'Oristano',PA:'Palermo',PC:'Piacenza',
+  PD:'Padova',PE:'Pescara',PG:'Perugia',PI:'Pisa',PN:'Pordenone',PO:'Prato',PR:'Parma',
+  PT:'Pistoia',PU:'Pesaro e Urbino',PV:'Pavia',PZ:'Potenza',RA:'Ravenna',RC:'Reggio Calabria',
+  RE:'Reggio Emilia',RG:'Ragusa',RI:'Rieti',RM:'Roma',RN:'Rimini',RO:'Rovigo',SA:'Salerno',
+  SI:'Siena',SO:'Sondrio',SP:'La Spezia',SR:'Siracusa',SS:'Sassari',SU:'Sud Sardegna',
+  SV:'Savona',TA:'Taranto',TE:'Teramo',TN:'Trento',TO:'Torino',TP:'Trapani',TR:'Terni',
+  TS:'Trieste',TV:'Treviso',UD:'Udine',VA:'Varese',VB:'Verbano-Cusio-Ossola',VC:'Vercelli',
+  VE:'Venezia',VI:'Vicenza',VR:'Verona',VT:'Viterbo',VV:'Vibo Valentia',
+};
+function normalizzaProvinciaSigla(input){
+  if(!input)return null;
+  const p=input.trim().toUpperCase().replace(/\./g,'');
+  if(PROVINCIA_SIGLA_NOME[p])return p; // gia' una sigla valida
+  for(const[sigla,nome] of Object.entries(PROVINCIA_SIGLA_NOME)){
+    const n=nome.toUpperCase();
+    if(n===p||n.includes(p)||p.includes(n))return sigla;
+  }
+  return null;
+}
+// Confronta la provincia di un'azienda (companies.province, formato misto)
+// con un termine di ricerca libero (sigla O nome esteso, come scrive
+// l'utente) — vero se coincidono sulla stessa provincia, indipendentemente
+// da quale dei due formati usa ciascun lato.
+function provinciaCorrisponde(provinciaAzienda,termineRicerca){
+  if(!termineRicerca)return true;
+  if(!provinciaAzienda)return false;
+  const target=termineRicerca.trim().toUpperCase();
+  if(provinciaAzienda.trim().toUpperCase().includes(target))return true;
+  const siglaTarget=normalizzaProvinciaSigla(termineRicerca);
+  const siglaAzienda=normalizzaProvinciaSigla(provinciaAzienda);
+  return !!siglaTarget&&siglaTarget===siglaAzienda;
+}
+// Confronta azienda (region+province) con un termine di localita' libero
+// (regione O provincia, sigla O nome) — usato dalla sezione "mercato
+// attuale" e dal benchmark organico per non perdere precisione quando
+// l'utente chiede una provincia specifica invece di un'intera regione.
+function aziendaCorrispondeLocalita(azienda,localita){
+  if(!localita)return true;
+  const target=localita.toLowerCase().trim();
+  if((azienda.region||'').toLowerCase().includes(target))return true;
+  return provinciaCorrisponde(azienda.province,localita);
+}
+
 async function runGeoAnalysis(){
   const roleEl=document.getElementById('geo-search-role');
   const areaEl=document.getElementById('geo-filter-area');
@@ -14048,6 +14341,7 @@ function renderDemandScatter(){
         <li>Controlla se un'azienda sta assumendo davvero in un'area, o se l'unico segnale disponibile sono prodotti/certificazioni senza alcun annuncio recente.</li>
         <li>Cerca per criteri (box sopra) per ottenere un elenco di aziende invece di una sola — es. tutte quelle di un gruppo, di un settore/regione, o con una certificazione specifica.</li>
         <li>Scrivi "confronta X e Y" per un confronto affiancato, o "concorrenti di X" per il report concorrenti con punteggio, tier e presenza Italia.</li>
+        <li>Scrivi "aziende con più [funzione]" per una classifica per organico (es. "chi ha più HR Director in Lombardia", "più Sales in provincia di Bergamo") — dato da archivio Apollo, copertura parziale.</li>
       </ul>
       <strong style="color:var(--text);">Direzioni su cui stiamo lavorando (dati già in parte disponibili):</strong>
       <ul style="margin:8px 0 0 18px;padding:0;">
