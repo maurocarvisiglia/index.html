@@ -3317,6 +3317,10 @@ const REPORT_SECTIONS_ENUM=['seniority_mix','therapeutic_area_mix','geo_mix','co
 const FUNCTIONAL_AREA_TO_FUNZIONE={
   medical_affairs:['medical_affairs_msl'],
   commercial:['sales_commercial'],
+  // Non include isf_informatore_scientifico: da quando la tassonomia li
+  // distingue (01/10/2026), un ISF non e' piu' genericamente "commerciale" ai
+  // fini del benchmark — vedi CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE sotto, che
+  // intercetta i ruoli ISF PRIMA di questa mappatura generica.
   marketing:['marketing_communications','trade_marketing_retail','ecommerce'],
   market_access:['market_access'],
   regulatory_affairs:['regulatory_affairs_prodotto','regulatory_mdr_ivdr','regulatory_samd','registrazione_conformita'],
@@ -3335,6 +3339,24 @@ const FUNCTIONAL_AREA_TO_FUNZIONE={
   legal:['legal_compliance'],
   customer_service:['customer_service','customer_success'],
 };
+
+// Override puntuale per canonical_role, controllato PRIMA della mappatura
+// generica per functional_area — serve per i ruoli della tassonomia annunci
+// che hanno gia' un codice organico dedicato e piu' preciso del bucket
+// generico della loro functional_area (es. ISF: functional_area='commercial'
+// ma organico in 'isf_informatore_scientifico', non in 'sales_commercial').
+// Generico e ampliabile: aggiungere qui nuove voci man mano che la tassonomia
+// organico si arricchisce di altri codici dedicati (01/10/2026).
+const CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE=[
+  [/informatore scientifico/i, ['isf_informatore_scientifico']],
+];
+function funzioniPerRicercaAnnunci(functional_area,canonical_role){
+  if(canonical_role){
+    const match=CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE.find(([re])=>re.test(canonical_role));
+    if(match)return match[1];
+  }
+  return FUNCTIONAL_AREA_TO_FUNZIONE[functional_area]||null;
+}
 
 // Espressioni che indicano un riferimento temporale nella richiesta dell'utente.
 // Usata come guardia: se non ne compare nessuna, i filtri data proposti dall'IA
@@ -4174,7 +4196,9 @@ function renderReportHTML(plan,entityResults,narration){
       ${e.workforce_context?`
       <div class="section-title" style="margin-top:24px;">Mercato attuale — ${e.workforce_context.funzioneLabel}</div>
       <div class="summary-box">${e.workforce_context.totale_persone?`<strong>${e.workforce_context.totale_persone}</strong> persone già impiegate in questa funzione ${e.workforce_context.nationwide?'in Italia':`in ${e.workforce_context.region}`} (${e.workforce_context.aziende_coperte} aziend${e.workforce_context.aziende_coperte===1?'a':'e'} con dato noto)`:`Nessun dato di organico noto per questa funzione${e.workforce_context.nationwide?'':` in ${e.workforce_context.region}`}`}. <span style="color:#aaa;">Dato da archivio organico (Apollo), copertura parziale.</span></div>
-      ${e.workforce_context.totale_persone?`<div class="chart-box">${barRows(e.workforce_context,GOLD)}</div>`:''}`:''}
+      ${e.workforce_context.breakdown_province&&e.workforce_context.breakdown_province.length>1?`
+      <table><thead><tr><th>Provincia</th><th>${e.workforce_context.funzioneLabel}</th><th>Aziende con dato</th></tr></thead><tbody>${e.workforce_context.breakdown_province.map(p=>`<tr><td>${p.provincia}</td><td style="font-weight:700;color:${GOLD};">${p.count}</td><td style="color:#888;">${p.aziende}</td></tr>`).join('')}</tbody></table>`:''}
+      ${e.workforce_context.totale_persone?`<div class="chart-box"><div class="chart-title" style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Top aziende</div>${barRows(e.workforce_context,GOLD)}</div>`:''}`:''}
     `;
   }else{
     const cols='repeat('+n+',1fr)';
@@ -4229,8 +4253,13 @@ function renderReportHTML(plan,entityResults,narration){
     // fianco alla domanda (annunci) gia' mostrata — stesso schema a griglia
     // di benefitsGrid, una cella "Dato non disponibile" per le entita' senza
     // una funzione precisa nei filtri.
+    // Per provincia: in confronto lo spazio e' stretto (box affiancati), quindi
+    // solo le prime 4 province come mini-elenco testuale invece della tabella
+    // completa usata in modalita' singola — mai omesso del tutto, solo compresso.
+    const provinceMini=(wc)=>(wc.breakdown_province&&wc.breakdown_province.length>1)
+      ?`<div style="font-size:10px;color:#888;margin-top:6px;line-height:1.6;">${wc.breakdown_province.slice(0,4).map(p=>`${p.provincia}: <strong style="color:${DARK};">${p.count}</strong>`).join(' · ')}${wc.breakdown_province.length>4?'…':''}</div>`:'';
     const workforceGrid=entityResults.some(e=>e.workforce_context)?`<div class="section-title" style="margin-top:24px;">Mercato attuale</div>
-      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} ${e.workforce_context?`<span style="color:#aaa;font-weight:400;">(${e.workforce_context.funzioneLabel}${e.workforce_context.nationwide?' · Italia':` · ${e.workforce_context.region}`})</span>`:''}</div>${e.workforce_context&&e.workforce_context.totale_persone?barRows(e.workforce_context,GOLD):'<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>'}</div>`).join('')}</div>`:'';
+      <div class="charts-grid" style="grid-template-columns:${cols};">${entityResults.map(e=>`<div class="chart-box"><div class="chart-title">${e.label} ${e.workforce_context?`<span style="color:#aaa;font-weight:400;">(${e.workforce_context.funzioneLabel}${e.workforce_context.nationwide?' · Italia':` · ${e.workforce_context.region}`})</span>`:''}</div>${e.workforce_context&&e.workforce_context.totale_persone?barRows(e.workforce_context,GOLD)+provinceMini(e.workforce_context):'<div style="font-size:11px;color:#aaa;">Dato non disponibile</div>'}</div>`).join('')}</div>`:'';
 
     // Key findings deterministici (NUOVO)
     const keyFindings=`<div class="section-title" style="margin-top:24px;">Key Findings</div>
@@ -7865,8 +7894,9 @@ function computeBenefitsSection(listings){
 
 // Sezione "mercato attuale": di fianco al dato sulla DOMANDA (annunci aperti)
 // che il report gia' mostra, quanta OFFERTA esiste gia' sul mercato per la
-// stessa funzione/zona — da company_workforce via la mappatura
-// FUNCTIONAL_AREA_TO_FUNZIONE. Sempre calcolata (come benefits_mix), mai
+// stessa funzione/zona — da company_workforce via funzioniPerRicercaAnnunci
+// (override per ruolo, poi FUNCTIONAL_AREA_TO_FUNZIONE). Sempre calcolata
+// (come benefits_mix), mai
 // opt-in: niente REPORT_SECTIONS_ENUM qui. Ritorna null se il report non e'
 // filtrato su una funzione precisa — un numero senza una funzione specifica
 // non vorrebbe dire nulla, quindi il cancello e' esplicito, non un fallback
@@ -7883,7 +7913,10 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     const voce=(_taxonomyCache||[]).find(t=>t.canonical_role===canonical_role);
     if(voce)functional_area=voce.functional_area;
   }
-  const funzioni=FUNCTIONAL_AREA_TO_FUNZIONE[functional_area];
+  // funzioniPerRicercaAnnunci controlla prima gli override per canonical_role
+  // (es. ISF -> isf_informatore_scientifico, piu' preciso del generico
+  // 'commercial'->sales_commercial), poi ricade sulla mappatura per area.
+  const funzioni=funzioniPerRicercaAnnunci(functional_area,canonical_role);
   if(!functional_area||!funzioni||!funzioni.length)return null;
 
   // Il termine "region" qui accetta sia una regione vera (es. "Lombardia")
@@ -7909,6 +7942,20 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     .sort((a,b)=>b.count-a.count)
     .slice(0,5);
 
+  // Riepilogo per provincia — calcolato su TUTTE le aziende con dato, non solo
+  // la top-5 dell'elenco aziende sopra: una regione non e' mai un unico numero
+  // quando la provincia e' nota (richiesto da Mauro 01/10/2026). Mostrato dal
+  // chiamante solo se contiene piu' di una provincia.
+  const perProvinciaMap=new Map();
+  perAzienda.forEach((count,id)=>{
+    const chiave=etichettaProvincia(aziendaById.get(id)?.province);
+    const prec=perProvinciaMap.get(chiave)||{provincia:chiave,count:0,aziende:0};
+    prec.count+=count;
+    prec.aziende+=1;
+    perProvinciaMap.set(chiave,prec);
+  });
+  const breakdown_province=[...perProvinciaMap.values()].sort((a,b)=>b.count-a.count);
+
   return{
     type:'workforce_context',
     functional_area,
@@ -7918,6 +7965,7 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     totale_persone,
     aziende_coperte:perAzienda.size,
     breakdown,
+    breakdown_province,
   };
 }
 
@@ -11106,12 +11154,29 @@ async function recuperaBenchmarkOrganico(funzione,sector_v2,localita){
   }
 
   const aziendaById=new Map(aziende.map(a=>[a.id,a]));
-  const rows=[...perAzienda.entries()]
+  const righeComplete=[...perAzienda.entries()]
     .map(([company_id,v])=>({...aziendaById.get(company_id), conteggio:v.conteggio, sedi:[...v.sedi], ultimo_aggiornamento:v.ultimo_aggiornamento}))
     .filter(r=>r.id)
-    .sort((a,b)=>b.conteggio-a.conteggio)
-    .slice(0,100);
-  return {funzione, rows};
+    .sort((a,b)=>b.conteggio-a.conteggio);
+
+  // Raggruppamento per provincia — calcolato su TUTTE le righe, prima del
+  // taglio a 100 per il dettaglio aziende, cosi' i subtotali restano esatti
+  // anche quando la zona cercata e' una regione con piu' di 100 aziende con
+  // organico noto (richiesto da Mauro 01/10/2026: mai un dato generalizzato
+  // quando la provincia e' ricavabile — "ISF in Lombardia" deve mostrare
+  // Bergamo/Milano/Brescia separati, non un unico numero regionale).
+  const perProvinciaMap=new Map();
+  righeComplete.forEach(r=>{
+    const chiave=etichettaProvincia(r.province);
+    const prec=perProvinciaMap.get(chiave)||{provincia:chiave,conteggio:0,aziende:0};
+    prec.conteggio+=r.conteggio;
+    prec.aziende+=1;
+    perProvinciaMap.set(chiave,prec);
+  });
+  const perProvincia=[...perProvinciaMap.values()].sort((a,b)=>b.conteggio-a.conteggio);
+
+  const rows=righeComplete.slice(0,100);
+  return {funzione, rows, perProvincia};
 }
 
 // Formattatore di un fatto CORE (valore + link fonte + citazione in
@@ -12316,7 +12381,7 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
 // persone in UNA funzione specifica (es. "chi ha piu' HR Director") — stessa
 // struttura CSS/header/footer di renderCompanyListReportHTML, tabella
 // diversa (organico della funzione al centro, non un elenco generico).
-function renderBenchmarkOrganicoReportHTML(plan,{funzione,rows}){
+function renderBenchmarkOrganicoReportHTML(plan,{funzione,rows,perProvincia}){
   const GOLD='#8b5cf6',DARK='#1c1c1c',CREAM='#faf9f6',BORDER='#e8e0d5',BORDER2='#f0ebe3';
   const date=new Date().toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'});
   const f=plan.filters||{};
@@ -12330,11 +12395,24 @@ function renderBenchmarkOrganicoReportHTML(plan,{funzione,rows}){
     <td style="color:#888;">${i+1}</td>
     <td>${a.name}</td>
     <td style="color:#888;">${a.sector_v2||''}</td>
-    <td style="color:#888;">${a.region||''}${a.province?` (${a.province})`:''}</td>
+    <td style="color:#888;">${a.region||''}${a.province?` (${etichettaProvincia(a.province)})`:''}</td>
     <td style="font-weight:700;color:${GOLD};">${a.conteggio}</td>
     <td style="color:#888;font-size:11px;">${(a.sedi||[]).slice(0,3).join(', ')}</td>
     <td style="color:#888;font-size:11px;">${a.ultimo_aggiornamento?new Date(a.ultimo_aggiornamento).toLocaleDateString('it-IT'):''}</td>
   </tr>`).join('');
+
+  // Riepilogo per provincia — mostrato solo quando la zona cercata copre piu'
+  // di una provincia (es. una regione): mai un unico numero generalizzato
+  // quando il dettaglio geografico e' disponibile (richiesto da Mauro
+  // 01/10/2026). Se la ricerca era gia' su una singola provincia, la tabella
+  // sarebbe una riga sola — ridondante con il dettaglio aziende sotto.
+  const tabellaProvincia=(perProvincia&&perProvincia.length>1)?`
+  <div class="section-title">Per provincia</div>
+  <table><thead><tr><th>Provincia</th><th>${funzioneLabel}</th><th>Aziende con dato</th></tr></thead><tbody>${perProvincia.map(p=>`<tr>
+    <td>${p.provincia}</td>
+    <td style="font-weight:700;color:${GOLD};">${p.conteggio}</td>
+    <td style="color:#888;">${p.aziende}</td>
+  </tr>`).join('')}</tbody></table>`:'';
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>${plan.title||`Benchmark organico — ${funzioneLabel}`}</title>
@@ -12364,6 +12442,8 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
     </div>
   </div>
   <div class="summary-box"><strong>${rows.length}</strong> aziend${rows.length===1?'a con':'e con'} organico noto in <strong>${funzioneLabel}</strong> — ${criteriTesto}${(plan._dropped_filters||[]).length?`<br><span style="color:#a15c00;">⚠️ filtri ignorati: ${plan._dropped_filters.join('; ')}</span>`:''}<br><span style="color:#888;font-size:11px;">Dato da Apollo (archivio organico), copertura parziale — aziende senza alcun dato organico noto non compaiono in questo elenco.</span></div>
+  ${tabellaProvincia}
+  <div class="section-title">Per azienda</div>
   <table><thead><tr><th style="width:30px;">#</th><th>Azienda</th><th>Settore</th><th>Regione</th><th>${funzioneLabel}</th><th>Sedi</th><th>Aggiornato</th></tr></thead><tbody>${righe}</tbody></table>
   <div class="footer">
     Report generato da LS Job Intelligence in base ai criteri di ricerca applicati.<br>
@@ -12531,7 +12611,7 @@ const WORKFORCE_FUNZIONE_LABEL={
   general_management:'General Management', hr:'HR', finance_admin:'Finance / Admin',
   legal_compliance:'Legal / Compliance', it_digital:'IT / Digital', procurement:'Procurement',
   logistics_supply_chain:'Logistics / Supply Chain', marketing_communications:'Marketing / Comunicazione',
-  sales_commercial:'Sales / Commerciale', business_development:'Business Development',
+  sales_commercial:'Sales / Commerciale', isf_informatore_scientifico:'Informatore Scientifico (ISF)', business_development:'Business Development',
   facilities_maintenance:'Facilities / Manutenzione',
   personale_medico:'Personale medico', infermieri_oss:'Infermieri / OSS', professioni_sanitarie:'Professioni sanitarie',
   engineering_tecnico:'Tecnici / Ingegneria', project_management:'Project Management', stage_formazione:'Stage / Formazione',
@@ -13740,12 +13820,24 @@ const PROVINCIA_SIGLA_NOME={
   TS:'Trieste',TV:'Treviso',UD:'Udine',VA:'Varese',VB:'Verbano-Cusio-Ossola',VC:'Vercelli',
   VE:'Venezia',VI:'Vicenza',VR:'Verona',VT:'Viterbo',VV:'Vibo Valentia',
 };
+// Varianti colloquiali/storiche che il confronto per sottostringa da solo non
+// cattura (una parola mancante o diversa rispetto al nome ufficiale, es. "e
+// della" -> "e", trovate nei dati reali di companies.province) — elenco
+// corto e dichiarato, non un fuzzy-matcher generico.
+const PROVINCIA_ALIAS={
+  'MONZA E BRIANZA':'MB', 'MONZA BRIANZA':'MB',
+  'REGGIO NELLEMILIA':'RE', 'REGGIO EMILIA EMILIA ROMAGNA':'RE',
+  'FORLI':'FC', 'CESENA':'FC',
+  'PESARO':'PU', 'URBINO':'PU',
+  'BARLETTA':'BT', 'ANDRIA':'BT', 'TRANI':'BT',
+};
 function normalizzaProvinciaSigla(input){
   if(!input)return null;
-  const p=input.trim().toUpperCase().replace(/\./g,'');
+  const p=input.trim().toUpperCase().replace(/\./g,'').replace(/['’]/g,'');
   if(PROVINCIA_SIGLA_NOME[p])return p; // gia' una sigla valida
+  if(PROVINCIA_ALIAS[p])return PROVINCIA_ALIAS[p];
   for(const[sigla,nome] of Object.entries(PROVINCIA_SIGLA_NOME)){
-    const n=nome.toUpperCase();
+    const n=nome.toUpperCase().replace(/['’]/g,'');
     if(n===p||n.includes(p)||p.includes(n))return sigla;
   }
   return null;
@@ -13762,6 +13854,24 @@ function provinciaCorrisponde(provinciaAzienda,termineRicerca){
   const siglaTarget=normalizzaProvinciaSigla(termineRicerca);
   const siglaAzienda=normalizzaProvinciaSigla(provinciaAzienda);
   return !!siglaTarget&&siglaTarget===siglaAzienda;
+}
+// Nome canonico di una provincia a partire dal valore grezzo in
+// companies.province (formato misto, a volte con varianti di scrittura della
+// stessa provincia — es. "Monza e della Brianza"/"Monza E Della Brianza"/
+// "Monza e Brianza" nei dati reali) — usato come CHIAVE di raggruppamento nei
+// benchmark per provincia, cosi' le varianti si uniscono invece di apparire
+// come province diverse. Se non riconosciuta (dato estero o troppo sporco),
+// ritorna il valore originale ripulito invece di scartarlo: mai un dato perso
+// in silenzio solo perche' non coincide con l'elenco ufficiale.
+function etichettaProvincia(provinciaGrezza){
+  const v=(provinciaGrezza||'').trim();
+  // "N/A"/"NA" letterale nei dati sorgente e' un placeholder di "dato
+  // assente" scritto come testo, non la provincia di Napoli (sigla "NA") —
+  // va distinto dal caso reale, altrimenti un'azienda senza provincia nota
+  // finirebbe sommata per errore sotto Napoli.
+  if(!v||/^n\/?a$/i.test(v))return 'Provincia non nota';
+  const sigla=normalizzaProvinciaSigla(v);
+  return sigla?PROVINCIA_SIGLA_NOME[sigla]:v;
 }
 // Confronta azienda (region+province) con un termine di localita' libero
 // (regione O provincia, sigla O nome) — usato dalla sezione "mercato

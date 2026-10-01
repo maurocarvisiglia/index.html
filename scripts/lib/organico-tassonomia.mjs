@@ -21,6 +21,13 @@
  * Titoli generici per natura (employee, worker, consultant isolati) vanno in
  * 'generico_non_classificabile': dichiarati, non forzati in una funzione.
  *
+ * REVISIONE 01/10/2026 — richiesto da Mauro dopo l'introduzione del benchmark
+ * organico nei report ("quanti ISF trovo in provincia di Bergamo"): il
+ * pattern INFORMATORI esisteva gia' ma finiva dentro 'sales_commercial' come
+ * tutto il resto delle vendite, mai isolabile (332 persone su tutto
+ * l'archivio). Nuovo codice dedicato 'isf_informatore_scientifico', stesso
+ * livello universale di prima (si applica a qualunque settore).
+ *
  * ORDINE: prima la lista specifica dell'archetipo, poi UNIVERSALE nell'ordine
  * scritto. Vince la prima regola che combacia, quindi l'ordine e' voluto: gli
  * informatori prima del personale medico ("informatore medico scientifico"),
@@ -52,7 +59,7 @@ export const UNIVERSALE = [
   ['procurement', /procurement|sourcing|\bbuyer\b|purchas|acquist|approvvigion|category manager (acquisti|procurement)|vendor management|supplier (quality|manager|development)/i],
   ['finance_admin', /financial|\bfinance\b|finanz|controll(er|ing)|accounting|accountant|contabil|bilancio|amministra|administrat|executive assistant|assistente (di )?direzion|segretar|secretary|receptionist|\breception\b|front ?office|back ?office|office (manager|assistant|clerk|administrator|staff|worker|employee)|\bclerk\b|impiegat[oa] (amministrativ|contabil|di ufficio|ufficio)|treasury|tesoreri|\bcredit\b|credit[oi] |\btax\b|fiscal|tribut|billing|fatturazion|invoic|internal audit|revisore|bookkeep|budget|cash (manager|management)|pagamenti|recupero crediti|\bcontroller\b|\bpersonal assistant\b|\bpa to\b|data entry|accettazion|management control|controllo di gestione/i],
   ['logistics_supply_chain', /logistic|order to cash|\btender(ing)?\b|\bcourier\b|\bgare\b|supply chain|\bplanning\b|\bplanner\b|pianificaz|programmazione (della )?produzione|warehouse|magazzin|distribution|distribuzion|contract analyst|export (operations|specialist|clerk|office|assistant|coordinator)|ufficio export|\bimport\b|shipping|spedizion|trasport|transport|\bdriver\b|autista|corriere|fleet|inventory|scort[ea]|materials? (handler|manager|coordinator)|carrellist|forklift|picking|picker|mulettist|customs|dogan|\bs&op\b|demand (planner|manager)|order (management|processing|entry)|gestione ordini|ufficio ordini/i],
-  ['sales_commercial', INFORMATORI],
+  ['isf_informatore_scientifico', INFORMATORI],
   ['sales_commercial', SERVIZIO_CLIENTI],
   ['regulatory_affairs_prodotto', /regulatory|regolatori|affari regolatori|\bcmc\b|\bprrc\b|registration (manager|specialist|officer)|dossier/i],
   ['pharmacovigilance', /pharmacovigilance|farmacovigilanz|drug safety|\bvigilance\b|\bqppv\b|safety (physician|scientist|officer|associate|specialist)(?!.*(hse|ehs|workplace))|materiovigilanz|medical device vigilance/i],
