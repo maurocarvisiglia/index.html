@@ -1,6 +1,18 @@
 {
   "crons": [
     {
+      "path": "/api/trial-signals",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/trial-signals",
+      "schedule": "5 0 * * *"
+    },
+    {
+      "path": "/api/trial-signals",
+      "schedule": "10 0 * * *"
+    },
+    {
       "path": "/api/apollo-unificato",
       "schedule": "0 7 * * *"
     },
