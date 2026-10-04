@@ -352,7 +352,7 @@ export async function runTrialSignalsDailyBatch({ n = 50, apply = false, company
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const arg = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3);
   const ids = arg('company') ? arg('company').split(',').map((s) => s.trim()).filter(Boolean) : null;
-  const r = await runTrialSignalsDailyBatch({ n: Number(arg('n') || 50), apply: process.argv.includes('--apply'), companyIds: ids, timeBudgetMs: 600000 });
+  const r = await runTrialSignalsDailyBatch({ n: Number(arg('n') || 50), apply: process.argv.includes('--apply'), companyIds: ids, timeBudgetMs: Number(arg('budget') || 10) * 60000 });
   const { dettagli, ...resto } = r;
   console.log(JSON.stringify(resto, null, 2));
   for (const d of dettagli || []) console.log(`- ${d.azienda}: ${d.esito}, ${d.studi} studi${d.nota ? ` (${d.nota})` : ''}${d.esempi.length ? ' | ' + d.esempi.join(' ; ') : ''}`);
