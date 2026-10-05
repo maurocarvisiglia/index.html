@@ -7,11 +7,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const RAL_COEFFS = {
   'internship':        { lo: 0.90, hi: 1.10 },
   'entry_level':       { lo: 0.90, hi: 1.10 },
-  'associate':         { lo: 0.88, hi: 1.12 },
   'specialist':        { lo: 0.88, hi: 1.12 },
   'senior_specialist': { lo: 0.88, hi: 1.12 },
   'manager':           { lo: 0.85, hi: 1.15 },
-  'senior_manager':    { lo: 0.85, hi: 1.15 },
   'lead':              { lo: 0.85, hi: 1.15 },
   'director':          { lo: 0.83, hi: 1.17 },
   'senior_director':   { lo: 0.83, hi: 1.17 },

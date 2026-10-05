@@ -13,19 +13,21 @@ export const SENIORITY_ROLE_OVERRIDE={
 export function classifySeniorityFromText(t,canonicalRole){
   if(!t)return null;
   if(canonicalRole&&SENIORITY_ROLE_OVERRIDE[canonicalRole])return SENIORITY_ROLE_OVERRIDE[canonicalRole](t);
-  if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'internship';
+  if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'entry_level';
   // Direttore/Direttrice di farmacia: PRIMA del check generico "direttore" sotto,
   // altrimenti verrebbe scambiato per un director generico.
   if(/farmacist\w*\s+direttric|farmacist\w*\s+direttor|direttor\w*\s*\/?\s*direttric\w*\s+di\s+farmacia|direttric\w*\s+di\s+farmacia|direttor\w*\s+di\s+farmacia/i.test(t))return 'manager';
+  // "Direttore/Direttrice" senza altro e' il formato degli annunci di farmacia: manager, non vertice.
+  if(/^\s*direttor\w*\s*\/\s*direttric\w*/i.test(t))return 'manager';
   // Vertici e capifunzione -> bucket unico 'lead'. Prima dei check generici su
   // "manager"/"director" sotto, che altrimenti vincerebbero sulla sottostringa
   // (es. "General Manager" contiene "manager").
   if(/\b(ceo|cfo|cto|coo|cmo|cso)\b|chief\s+\w+\s+officer|general manager|country manager|country head|senior director|managing director|direttore generale|direttore\s+paese|direttore\s+senior|amministratore delegato/i.test(t))return 'lead';
-  if(/\bvp\b|vice president/i.test(t))return 'vp';
-  if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'director';
+  if(/\bvp\b|vice president/i.test(t))return 'lead';
+  if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'lead';
   if(/head of|responsabile nazionale|capo\s+funzione/i.test(t))return 'lead';
   if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
-  if(/senior manager/i.test(t))return 'senior_manager';
+  if(/senior manager/i.test(t))return 'manager';
   // "Key Account Manager" e varianti sono ruoli individuali (specialist/senior_specialist
   // in base all'esperienza), non di people management, nonostante il titolo contenga
   // "Manager" — eccezione testuale di riserva quando il canonical_role non e' ancora
@@ -48,16 +50,16 @@ export function classifySeniorityFromText(t,canonicalRole){
   // "principal"/"distinguished" (IC senior track fuori dall'enum ufficiale, 12
   // annunci isolati) consolidato sul bucket esistente 'expert' invece di un
   // valore fuori-enum invisibile ai filtri.
-  if(/\bprincipal\b|distinguished/i.test(t))return 'expert';
-  if(/\bexpert\b/i.test(t))return 'expert';
+  if(/\bprincipal\b|distinguished/i.test(t))return 'senior_specialist';
+  if(/\bexpert\b/i.test(t))return 'senior_specialist';
   if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
-  if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'associate';
+  if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'entry_level';
   if(/\bspecialist\b|\bspecialista\b/i.test(t))return 'specialist';
   if(/\b0-1\s*ann|entry[\s-]?level/i.test(t))return 'entry_level';
-  if(/\b1-3\s*anni/i.test(t))return 'associate';
+  if(/\b1-3\s*anni/i.test(t))return 'entry_level';
   if(/\b3-6\s*anni/i.test(t))return 'specialist';
   if(/\b6-10\s*anni/i.test(t))return 'senior_specialist';
-  if(/\b10\+?\s*anni/i.test(t))return 'expert';
+  if(/\b10\+?\s*anni/i.test(t))return 'senior_specialist';
   return null;
 }
 // Titolo prima (segnale piu' affidabile), poi descrizione come fallback — MA solo se

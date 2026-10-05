@@ -334,17 +334,11 @@ a.job-link:hover{text-decoration:underline;}
             <div class="filter-label">Seniority</div>
             <select id="qb-seniority">
               <option value="">Tutte</option>
-              <option value="internship">Internship</option>
               <option value="entry_level">Entry Level</option>
-              <option value="associate">Associate</option>
               <option value="specialist">Specialist</option>
               <option value="senior_specialist">Senior Specialist</option>
               <option value="manager">Manager</option>
-              <option value="senior_manager">Senior Manager</option>
-              <option value="head_of">Head of</option>
-              <option value="director">Director</option>
-              <option value="vp">VP</option>
-              <option value="c_level">C-Level</option>
+              <option value="lead">Lead</option>
             </select>
           </div>
           <div class="filter-group">
@@ -614,17 +608,11 @@ a.job-link:hover{text-decoration:underline;}
         <div class="filter-label">Seniority</div>
         <select id="f-seniority" onchange="loadListings()">
           <option value="">Tutte</option>
-          <option value="internship">Internship / Stage</option>
           <option value="entry_level">Entry Level</option>
-          <option value="associate">Associate / Junior</option>
           <option value="specialist">Specialist</option>
           <option value="senior_specialist">Senior Specialist</option>
           <option value="manager">Manager</option>
-          <option value="senior_manager">Senior Manager</option>
-          <option value="head_of">Head of</option>
-          <option value="director">Director</option>
-          <option value="vp">VP</option>
-          <option value="c_level">C-Level</option>
+          <option value="lead">Lead</option>
         </select>
       </div>
       <div class="filter-group">
@@ -1533,7 +1521,7 @@ a.job-link:hover{text-decoration:underline;}
       <div class="form-group"><div class="form-label">Tipo entità *</div><select id="l-entity"><option value="life_sciences">Life Sciences</option><option value="headhunter">Head Hunter</option></select></div>
       <div class="form-group"><div class="form-label">Area funzionale</div><select id="l-area"><option value="">— seleziona —</option><option>Sales</option><option>Marketing</option><option>Regulatory Affairs</option><option>Medical Affairs</option><option>MSL</option><option>Quality Assurance</option><option>Quality Control</option><option>Produzione</option><option>Engineering</option><option>Clinical Operations</option><option>Market Access</option><option>Pharmacovigilance</option><option>R&D</option><option>HR</option><option>Finance</option><option>Supply Chain</option><option>Business Development</option><option>IT</option><option>Operations</option><option>altro</option></select></div>
       <div class="form-group"><div class="form-label">Settore</div><select id="l-sector"><option value="">— seleziona —</option><option>Farmaceutico</option><option>Dispositivi Medici</option><option>Biotech</option><option>Cosmetica</option><option>Nutraceutica</option><option>Retail Farmacia</option><option>CRO / Clinical Research</option><option>CDMO / CMO</option><option>altro</option></select></div>
-      <div class="form-group"><div class="form-label">Seniority</div><select id="l-seniority"><option value="">— seleziona —</option><option>Junior</option><option>Middle</option><option>Senior</option><option>Lead</option><option>Manager</option><option>Director</option><option>C-level</option><option>altro</option></select></div>
+      <div class="form-group"><div class="form-label">Seniority</div><select id="l-seniority"><option value="">— seleziona —</option><option value="entry_level">Entry Level</option><option value="specialist">Specialist</option><option value="senior_specialist">Senior Specialist</option><option value="manager">Manager</option><option value="lead">Lead</option></select></div>
       <div class="form-group"><div class="form-label">RAL minima (€)</div><input type="number" id="l-ral-min" placeholder="es. 35000"></div>
       <div class="form-group"><div class="form-label">RAL massima (€)</div><input type="number" id="l-ral-max" placeholder="es. 45000"></div>
       <div class="form-group"><div class="form-label">Fisso mensile (€)</div><input type="number" id="l-fixed-monthly" placeholder="es. 1500"></div>
@@ -2147,11 +2135,9 @@ async function importVocationsCSV(event){
         const ralCoeff={
           'internship':       {lo:0.90,hi:1.10},
           'entry_level':      {lo:0.90,hi:1.10},
-          'associate':        {lo:0.88,hi:1.12},
           'specialist':       {lo:0.88,hi:1.12},
           'senior_specialist':{lo:0.88,hi:1.12},
           'manager':          {lo:0.85,hi:1.15},
-          'senior_manager':   {lo:0.85,hi:1.15},
           'lead':             {lo:0.85,hi:1.15},
           'director':         {lo:0.83,hi:1.17},
           'senior_director':  {lo:0.83,hi:1.17},
@@ -2328,7 +2314,7 @@ async function importVocations(){
             const isRemote=remoteMap[pos.smartWorking]||false;
 
             // Mappa experience → seniority
-            const expMap={'0':'internship','0-1':'entry_level','1-3':'associate','3-5':'specialist','5-10':'senior_specialist','10+':'manager'};
+            const expMap={'0':'entry_level','0-1':'entry_level','1-3':'entry_level','3-5':'specialist','5-10':'senior_specialist','10+':'manager'};
             const seniority=expMap[pos.experience]||null;
 
             const record={
@@ -2874,19 +2860,21 @@ const SENIORITY_ROLE_OVERRIDE={
 function classifySeniorityFromText(t,canonicalRole){
   if(!t)return null;
   if(canonicalRole&&SENIORITY_ROLE_OVERRIDE[canonicalRole])return SENIORITY_ROLE_OVERRIDE[canonicalRole](t);
-  if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'internship';
+  if(/\bstage\b|tirocin|\bintern(ship)?\b/i.test(t))return 'entry_level';
   // Direttore/Direttrice di farmacia: PRIMA del check generico "direttore" sotto,
   // altrimenti verrebbe scambiato per un director generico.
   if(/farmacist\w*\s+direttric|farmacist\w*\s+direttor|direttor\w*\s*\/?\s*direttric\w*\s+di\s+farmacia|direttric\w*\s+di\s+farmacia|direttor\w*\s+di\s+farmacia/i.test(t))return 'manager';
+  // "Direttore/Direttrice" senza altro e' il formato degli annunci di farmacia: manager, non vertice.
+  if(/^\s*direttor\w*\s*\/\s*direttric\w*/i.test(t))return 'manager';
   // Vertici e capifunzione -> bucket unico 'lead'. Prima dei check generici su
   // "manager"/"director" sotto, che altrimenti vincerebbero sulla sottostringa
   // (es. "General Manager" contiene "manager").
   if(/\b(ceo|cfo|cto|coo|cmo|cso)\b|chief\s+\w+\s+officer|general manager|country manager|country head|senior director|managing director|direttore generale|direttore\s+paese|direttore\s+senior|amministratore delegato/i.test(t))return 'lead';
-  if(/\bvp\b|vice president/i.test(t))return 'vp';
-  if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'director';
+  if(/\bvp\b|vice president/i.test(t))return 'lead';
+  if(/\bdirector\b|\bdirettore\b|\bdirettrice\b/i.test(t))return 'lead';
   if(/head of|responsabile nazionale|capo\s+funzione/i.test(t))return 'lead';
   if(/\bjunior\b|neo[\s-]?laureat/i.test(t))return 'entry_level';
-  if(/senior manager/i.test(t))return 'senior_manager';
+  if(/senior manager/i.test(t))return 'manager';
   // "Key Account Manager" e varianti sono ruoli individuali (specialist/senior_specialist
   // in base all'esperienza), non di people management, nonostante il titolo contenga
   // "Manager" — eccezione testuale di riserva quando il canonical_role non e' ancora
@@ -2909,16 +2897,16 @@ function classifySeniorityFromText(t,canonicalRole){
   // "principal"/"distinguished" (IC senior track fuori dall'enum ufficiale, 12
   // annunci isolati) consolidato sul bucket esistente 'expert' invece di un
   // valore fuori-enum invisibile ai filtri.
-  if(/\bprincipal\b|distinguished/i.test(t))return 'expert';
-  if(/\bexpert\b/i.test(t))return 'expert';
+  if(/\bprincipal\b|distinguished/i.test(t))return 'senior_specialist';
+  if(/\bexpert\b/i.test(t))return 'senior_specialist';
   if(/\bsenior\b|\bsr\.?\s/i.test(t))return 'senior_specialist';
-  if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'associate';
+  if(/\bassociate\b|\bassistant\b|\bassistente\b/i.test(t))return 'entry_level';
   if(/\bspecialist\b|\bspecialista\b/i.test(t))return 'specialist';
   if(/\b0-1\s*ann|entry[\s-]?level/i.test(t))return 'entry_level';
-  if(/\b1-3\s*anni/i.test(t))return 'associate';
+  if(/\b1-3\s*anni/i.test(t))return 'entry_level';
   if(/\b3-6\s*anni/i.test(t))return 'specialist';
   if(/\b6-10\s*anni/i.test(t))return 'senior_specialist';
-  if(/\b10\+?\s*anni/i.test(t))return 'expert';
+  if(/\b10\+?\s*anni/i.test(t))return 'senior_specialist';
   return null;
 }
 // Titolo prima (segnale piu' affidabile), poi descrizione come fallback — MA solo se
@@ -5489,7 +5477,7 @@ async function analyzeRuolo(){
     }
 
     // Chart seniority — usa seniority_v2 se disponibile
-    const bySen={}; data.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySen[k]=(bySen[k]||0)+1;});
+    const bySen={}; data.forEach(l=>{const k=l.seniority_v2||'N/D';bySen[k]=(bySen[k]||0)+1;});
     renderRuoloBar('ruolo-chart-seniority',Object.entries(bySen).sort((a,b)=>b[1]-a[1]),'blue');
 
     // Chart top companies
@@ -5497,10 +5485,10 @@ async function analyzeRuolo(){
     renderRuoloBar('ruolo-chart-companies',Object.entries(byCo).sort((a,b)=>b[1]-a[1]).slice(0,8),'accent');
 
     // RAL per seniority — Box plot con P25/Mediana/P75
-    const SENORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','head','vp','c_level'];
+    const SENORDER=['entry_level','specialist','senior_specialist','manager','lead'];
     const bySenRal={};
     withRal.forEach(l=>{
-      const s=l.seniority_v2||l.seniority||'N/D';
+      const s=l.seniority_v2||'N/D';
       if(!bySenRal[s])bySenRal[s]=[];
       const v=l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max);
       if(v>=10000&&v<=500000)bySenRal[s].push(v);
@@ -5570,7 +5558,7 @@ async function analyzeRuolo(){
       <td style="font-size:12px">${l.ragione_sociale||l.company_name||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
       <td style="font-size:11px">${l.functional_area_v2||l.functional_area||'—'}</td>
-      <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
+      <td style="font-size:11px">${l.seniority_v2||'—'}</td>
       <td style="font-size:11px;color:var(--text2)">${l.therapeutic_area||'—'}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
       <td style="font-size:11px">${l.contract_type||'—'}</td>
@@ -5599,7 +5587,7 @@ function renderRuoloBar(id, data, cls){
 // Seniority ha un ordine naturale (junior -> senior): una barra unica impilata mostra
 // la composizione della progressione, invece di una classifica per grandezza come
 // renderRuoloBar — stessa lista SENORDER usata altrove per ordinare la seniority.
-const SENIORITY_ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','head','vp','c_level'];
+const SENIORITY_ORDER=['entry_level','specialist','senior_specialist','manager','lead'];
 function renderStackedOrdinalBar(id, data){
   const el=document.getElementById(id);
   if(!el)return;
@@ -6763,11 +6751,9 @@ async function calcAllRalRanges(){
     const RAL_COEFFS={
       'internship':       {lo:0.90,hi:1.10},
       'entry_level':      {lo:0.90,hi:1.10},
-      'associate':        {lo:0.88,hi:1.12},
       'specialist':       {lo:0.88,hi:1.12},
       'senior_specialist':{lo:0.88,hi:1.12},
       'manager':          {lo:0.85,hi:1.15},
-      'senior_manager':   {lo:0.85,hi:1.15},
       'lead':             {lo:0.85,hi:1.15},
       'director':         {lo:0.83,hi:1.17},
       'senior_director':  {lo:0.83,hi:1.17},
@@ -6970,7 +6956,7 @@ async function renderQueryResults(data, contextLabel){
   renderTreemap('chart-role-family',countBy(data.filter(l=>l.functional_area_v2),'functional_area_v2').slice(0,8));
   renderDonut('chart-canonical-role',countBy(data.filter(l=>l.canonical_role&&l.canonical_role!=='N/A'),'canonical_role').slice(0,8));
   renderBubbleChart('chart-therapeutic',countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8));
-  renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,10));
+  renderFunnel('chart-seniority',countBy(data.map(l=>({...l,_sen:l.seniority_v2})),'_sen').slice(0,10));
   renderRalGradient('chart-ral',data);
   // Rimosso: chart-companies e chart-sector non più presenti nella view
   // Rimosso: chart-companies e chart-sector non più presenti nella view
@@ -7054,7 +7040,7 @@ async function generateChartDescriptions(data){
     }else if(chartId==='chart-therapeutic'){
       chartData=countBy(data.filter(l=>l.therapeutic_area&&l.therapeutic_area!=='not_applicable'),'therapeutic_area').slice(0,8);
     }else if(chartId==='chart-seniority'){
-      chartData=countBy(data.map(l=>({...l,_sen:l.seniority_v2||l.seniority})),'_sen').slice(0,8);
+      chartData=countBy(data.map(l=>({...l,_sen:l.seniority_v2})),'_sen').slice(0,8);
     }else if(chartId==='chart-ral'){
       const byArea={};
       data.forEach(l=>{if(!l.functional_area_v2||(!l.ral_min&&!l.ral_max))return;if(!byArea[l.functional_area_v2])byArea[l.functional_area_v2]=[];byArea[l.functional_area_v2].push(l.ral_min&&l.ral_max?(l.ral_min+l.ral_max)/2:(l.ral_min||l.ral_max));});
@@ -7171,7 +7157,7 @@ function calcTalentScarcity(data){
   // Ratio alto = molti annunci per azienda = potenziale scarsità
   const baseScore=Math.min(70,Math.round(ratio*15));
   // Bonus per ruoli senior (indicatore scarsità)
-  const senior=data.filter(l=>['director','vp','c_level','head_of','senior_manager'].includes(l.seniority_v2)).length;
+  const senior=data.filter(l=>['lead'].includes(l.seniority_v2)).length;
   const seniorBonus=Math.min(30,Math.round(senior/total*100));
   return Math.min(100,baseScore+seniorBonus);
 }
@@ -7187,7 +7173,7 @@ function calcOpportunityScore(listings){
   const intensity=Math.min(30,Math.round(d30*3));
 
   // Strategic roles (max 25)
-  const strategicRoles=['country_manager','c_level','vp','director','head_of','general_manager'];
+  const strategicRoles=['lead'];
   const strategic=listings.filter(l=>strategicRoles.includes(l.seniority_v2)).length;
   const strategicScore=Math.min(25,strategic*8);
 
@@ -7269,7 +7255,7 @@ function detectMarketSignals(data, allData){
     }
 
     // Nuova BU (ruoli manageriali improvvisi)
-    const managerRoles=d30.filter(l=>['director','head_of','vp','c_level','manager'].includes(l.seniority_v2));
+    const managerRoles=d30.filter(l=>['lead','manager'].includes(l.seniority_v2));
     if(managerRoles.length>=2){
       signals.push({type:'alert',icon:'🏢',company,title:`Possibile nuova Business Unit — ${company}`,desc:`${managerRoles.length} ruoli manageriali pubblicati: ${managerRoles.slice(0,2).map(l=>l.job_title).join(', ')}`,badge:'alert'});
     }
@@ -7605,7 +7591,7 @@ function renderClickableBar(id, data, cls, field, allListings){
 // faceva sparire gli annunci recenti nel bucket "N/D" invece del bucket reale.
 function campoConFallback(l,field){
   if(field==='functional_area')return l.functional_area_v2||l.functional_area;
-  if(field==='seniority')return l.seniority_v2||l.seniority;
+  if(field==='seniority')return l.seniority_v2;
   return l[field];
 }
 function showDetail(field, value){
@@ -7627,7 +7613,7 @@ function showDetail(field, value){
 
   // Breakdown per seniority
   const bySeniority={};
-  filtered.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
+  filtered.forEach(l=>{const k=l.seniority_v2||'N/D';bySeniority[k]=(bySeniority[k]||0)+1;});
   const seniorityBreakdown=Object.entries(bySeniority).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;margin-right:6px;">${k}: <strong>${v}</strong></span>`).join('');
 
   body.innerHTML=`
@@ -7652,7 +7638,7 @@ function showDetail(field, value){
       <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>`:`<strong>${l.job_title}</strong>`}</td>
       <td style="font-size:12px">${l.company_name}</td>
       <td style="font-size:11px;color:var(--text2)">${l.sector_v2||'—'}</td>
-      <td>${l.seniority_v2||l.seniority||'—'}</td>
+      <td>${l.seniority_v2||'—'}</td>
       <td>${benefitCell}</td>
       <td>${l.ral_min||l.ral_max?`<span class="ral-range">€${l.ral_min?(l.ral_min/1000).toFixed(0)+'k':'?'} – €${l.ral_max?(l.ral_max/1000).toFixed(0)+'k':'?'}</span>`:'<span class="ral-none">n.d.</span>'}</td>
       <td>${l.contract_type||'—'}</td>
@@ -7674,9 +7660,9 @@ const LABEL_MAP={
   diagnostics:'Diagnostics',cro:'CRO',cdmo:'CDMO',consumer_health:'Consumer Health',
   cosmetics:'Cosmetics',nutraceutical:'Nutraceutical',engineering:'Engineering',
   digital_health:'Digital Health',veterinary:'Veterinary',
-  internship:'Internship / Stage',entry_level:'Entry Level',associate:'Associate',
+  entry_level:'Entry Level',
   specialist:'Specialist',senior_specialist:'Senior Specialist',manager:'Manager',
-  senior_manager:'Senior Manager',head_of:'Head of',director:'Director',vp:'VP',c_level:'C-Level',
+  lead:'Lead',
   oncology:'Oncology',rare_diseases:'Rare Diseases',immunology:'Immunology',
   hematology:'Hematology',cardiovascular:'Cardiovascular',neurology:'Neurology',
   respiratory:'Respiratory',diabetes:'Diabetes / Metabolic',dermatology:'Dermatology',
@@ -8077,7 +8063,7 @@ function renderBubbleChart(id,data){
 function renderFunnel(id,data){
   const el=document.getElementById(id);
   if(!el||!data.length){if(el)el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text2);">Nessun dato</div>';return;}
-  const ORDER=['internship','entry_level','associate','specialist','senior_specialist','manager','senior_manager','lead','director','senior_director','head','vp','c_level'];
+  const ORDER=['entry_level','specialist','senior_specialist','manager','lead'];
   const sorted=data.slice().sort((a,b)=>{const ia=ORDER.indexOf(a[0]),ib=ORDER.indexOf(b[0]);return(ia===-1?99:ia)-(ib===-1?99:ib);});
   const max=Math.max(...sorted.map(([,n])=>n));
   const colors=['#6366f1','#818cf8','#10b981','#34d399','#f59e0b','#fbbf24','#ef4444','#f87171','#8b5cf6','#a78bfa'];
@@ -8354,24 +8340,12 @@ production_manager, manufacturing_manager, plant_manager, msat,
 supply_chain_manager, logistics, planning, procurement,
 financial_controller, finance_manager, hr_bp, talent_acquisition
 
-SENIORITY_V2 — basati su titolo e livello richiesto:
-- internship: tirocinante, stage, intern
-- entry_level: junior, neo-laureato, 0-1 anno esperienza
-- associate: 1-3 anni, associate, assistant
+SENIORITY_V2 — basati su titolo e livello richiesto. Usa SOLO questi 5 valori:
+- entry_level: tirocinante, stage, intern, junior, neo-laureato, 0-3 anni esperienza, associate, assistant
 - specialist: 3-6 anni, specialist senza "senior", analista
-- senior_specialist: "senior" + specialist, 6-10 anni
-- expert: expert, principal scientist, 10+ anni senza management
-- principal: principal, distinguished
-- lead: lead, team lead, coordinatore tecnico
-- manager: manager, responsabile, capo
-- senior_manager: senior manager, 8+ anni management
-- head_of: head of, responsabile nazionale
-- director: director, direttore
-- senior_director: senior director
-- vp: VP, Vice President
-- general_manager: General Manager, GM
-- country_manager: Country Manager, Country Head, Direttore Paese
-- c_level: CEO, CFO, CMO, CSO, COO, CTO, C-suite
+- senior_specialist: "senior" + specialist, 6-10 anni, expert, principal, 10+ anni senza management
+- manager: manager, senior manager, responsabile, capo, direttore di farmacia
+- lead: lead, team lead, coordinatore tecnico, head of, director, direttore, VP, Vice President, General Manager, Country Manager, C-level (CEO, CFO, CMO, CSO, COO, CTO)
 
 FIELD_HQ:
 - Field Based: ISF, MSL, CRA, KAM, Area Manager, Product Specialist (ruoli che visitano clienti/medici/ospedali)
@@ -8459,15 +8433,6 @@ Rispondi SOLO con questo JSON (nessun testo prima o dopo):
       };
       if(result.functional_area_v2&&areaMap[result.functional_area_v2])patch.functional_area=areaMap[result.functional_area_v2];
 
-      const senMap={
-        internship:'Junior',entry_level:'Junior',associate:'Junior',
-        specialist:'Middle',senior_specialist:'Senior',expert:'Senior',
-        principal:'Senior',lead:'Lead',manager:'Manager',
-        senior_manager:'Manager',head_of:'Manager',director:'Director',
-        senior_director:'Director',vp:'Director',general_manager:'Director',
-        country_manager:'Director',c_level:'C-level'
-      };
-      if(patch.seniority_v2&&senMap[patch.seniority_v2])patch.seniority=senMap[patch.seniority_v2];
 
       // RAL — aggiunge SOLO se mancante, mai sovrascrive
       if(!listing.ral_min&&result.ral_min)patch.ral_min=parseInt(result.ral_min);
@@ -8683,7 +8648,7 @@ async function loadListings(){
   let q=`job_listings?select=*&order=${_sortField}.${_sortDir}`;
   if(entity)q+=`&entity_type=eq.${entity}`;
   if(area)q+=`&or=(functional_area_v2.eq.${encodeURIComponent(area)},functional_area.eq.${encodeURIComponent(area)})`;
-  if(seniority)q+=`&or=(seniority_v2.eq.${encodeURIComponent(seniority)},seniority.eq.${encodeURIComponent(seniority)})`;
+  if(seniority)q+=`&seniority_v2=eq.${encodeURIComponent(seniority)}`;
   if(source)q+=`&source=eq.${encodeURIComponent(source)}`;
   if(sector)q+=`&or=(sector_v2.eq.${encodeURIComponent(sector)},sector.eq.${encodeURIComponent(sector)})`;
   try{
@@ -8790,7 +8755,7 @@ function renderListingsTable(data){
     <td style="font-size:12px;">${aziendaDisplay}</td>
     <td><span style="font-size:11px;color:var(--text2)">${settoreDisplay}</span></td>
     <td style="font-size:11px;">${l.functional_area_v2||l.functional_area||'—'}</td>
-    <td style="font-size:11px;">${l.seniority_v2||l.seniority||'—'}</td>
+    <td style="font-size:11px;">${l.seniority_v2||'—'}</td>
     <td>${benefitCell}</td>
     <td id="ral-cell-${l.id}">${ralCell(l)}</td>
     <td style="font-size:11px;color:var(--accent);">${l.fixed_monthly?'€'+Math.round(l.fixed_monthly/1000)+'k/m':'—'}</td>
@@ -8826,7 +8791,7 @@ async function saveListing(){
   const body={job_title:title,company_name:company,entity_type:entity,
     sector:document.getElementById('l-sector').value||null,
     functional_area:document.getElementById('l-area').value||null,
-    seniority:document.getElementById('l-seniority').value||null,
+    seniority_v2:document.getElementById('l-seniority').value||null,
     ral_min:!isAgenzia&&document.getElementById('l-ral-min').value?parseInt(document.getElementById('l-ral-min').value):null,
     ral_max:!isAgenzia&&document.getElementById('l-ral-max').value?parseInt(document.getElementById('l-ral-max').value):null,
     fixed_monthly:isAgenzia&&document.getElementById('l-fixed-monthly').value?parseInt(document.getElementById('l-fixed-monthly').value):null,
@@ -10094,7 +10059,7 @@ async function loadCompanyDetail(company){
     renderRuoloBar('cd-chart-areas',areaData,'');
 
     // Seniority — barra unica impilata (ha un ordine naturale, non e' una classifica)
-    const bySen={}; listings.forEach(l=>{const k=l.seniority_v2||l.seniority||'N/D';bySen[k]=(bySen[k]||0)+1;});
+    const bySen={}; listings.forEach(l=>{const k=l.seniority_v2||'N/D';bySen[k]=(bySen[k]||0)+1;});
     renderStackedOrdinalBar('cd-chart-seniority',Object.entries(bySen));
 
     // Area terapeutica — lollipop (poche categorie sparse)
@@ -10157,7 +10122,7 @@ async function loadCompanyDetail(company){
         return `<tr>
           <td>${l.url?`<a href="${l.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;">${l.job_title}</a>${l.ai_analyzed?' 🤖':''}`:`<strong>${l.job_title}</strong>`}</td>
           <td style="font-size:11px;color:var(--accent2)">${l.functional_area_v2||l.functional_area||l.sub_area||'—'}</td>
-          <td style="font-size:11px">${l.seniority_v2||l.seniority||'—'}</td>
+          <td style="font-size:11px">${l.seniority_v2||'—'}</td>
           <td id="ral-cell-${l.id}">${ralCell(l)}</td>
           <td style="font-size:11px">${l.contract_type||'—'}</td>
           <td style="font-size:11px">${l.location||'—'}</td>
@@ -14328,7 +14293,7 @@ function renderDemandScatter(){
             <option value="specialist">Specialist</option>
             <option value="senior_specialist">Senior Specialist</option>
             <option value="manager">Manager</option>
-            <option value="director">Director</option>
+            <option value="lead">Lead</option>
           </select>
         </div>
         <div style="flex:1;min-width:150px;">
