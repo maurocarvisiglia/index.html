@@ -69,7 +69,22 @@ export function classifySeniorityFromText(t,canonicalRole){
 // classificato entry_level per la parola "junior" comparsa li'). null se nessun segnale
 // affidabile in nessuno dei due: chi chiama NON deve sovrascrivere il valore esistente.
 export const SENIORITY_INVERTING_CONTEXT_RE=/(supervision\w*|formare|coordinar\w*|gestir\w*|guidar\w*|affianca\w*|mentor\w*)[^.]{0,60}\b(junior|neolaureat\w*)\b/i;
+// Livello di partenza per i ruoli in cui il titolo non lo dichiara mai (decisione di Mauro,
+// 05/10/2026). Vale SOLO quando ne' il titolo ne' la descrizione danno un segnale:
+// "Junior ...", "Senior ...", "Manager" ecc. prevalgono sempre.
+export const ROLE_DEFAULT_SENIORITY={
+  'Ottico/Optometrista':'specialist',
+  'Tecnico di Laboratorio':'specialist',
+  'Quality Control Analyst':'specialist',
+  'Quality Control Operator':'specialist',
+  'Farmacista':'specialist',
+  'Addetto Vendita':'specialist',
+  'Process Engineer':'senior_specialist'
+};
 export function classifySeniorityDeterministic(title,description,canonicalRole){
+  return classifySeniorityDeterministicBase(title,description,canonicalRole)||ROLE_DEFAULT_SENIORITY[canonicalRole]||null;
+}
+function classifySeniorityDeterministicBase(title,description,canonicalRole){
   const fromTitle=classifySeniorityFromText(title,canonicalRole);
   if(fromTitle)return fromTitle;
   if(description&&SENIORITY_INVERTING_CONTEXT_RE.test(description)){

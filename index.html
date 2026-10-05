@@ -2052,7 +2052,7 @@ async function importVocationsCSV(event){
     // Il canonical_role e' gia' noto qui (roleInfo, risolto sopra prima di questo import
     // stesso) quindi le eccezioni per ruolo (es. Key Account Manager mai manager) si
     // applicano subito, non solo in un secondo passaggio.
-    const seniority_v2=classifySeniorityFromText(title,roleInfo.canonical_role)||'specialist';
+    const seniority_v2=classifySeniorityFromText(title,roleInfo.canonical_role)||ROLE_DEFAULT_SENIORITY[roleInfo.canonical_role]||'specialist';
     // ── CLASSIFICAZIONE AREA TERAPEUTICA (2 livelli) ──
     let therapeutic_area=null;
     let therapeutic_area_sub=null;
@@ -2916,7 +2916,22 @@ function classifySeniorityFromText(t,canonicalRole){
 // classificato entry_level per la parola "junior" comparsa li'). null se nessun segnale
 // affidabile in nessuno dei due: chi chiama NON deve sovrascrivere il valore esistente.
 const SENIORITY_INVERTING_CONTEXT_RE=/(supervision\w*|formare|coordinar\w*|gestir\w*|guidar\w*|affianca\w*|mentor\w*)[^.]{0,60}\b(junior|neolaureat\w*)\b/i;
+// Livello di partenza per i ruoli in cui il titolo non lo dichiara mai (decisione di Mauro,
+// 05/10/2026). Vale SOLO quando ne' il titolo ne' la descrizione danno un segnale:
+// "Junior ...", "Senior ...", "Manager" ecc. prevalgono sempre.
+const ROLE_DEFAULT_SENIORITY={
+  'Ottico/Optometrista':'specialist',
+  'Tecnico di Laboratorio':'specialist',
+  'Quality Control Analyst':'specialist',
+  'Quality Control Operator':'specialist',
+  'Farmacista':'specialist',
+  'Addetto Vendita':'specialist',
+  'Process Engineer':'senior_specialist'
+};
 function classifySeniorityDeterministic(title,description,canonicalRole){
+  return classifySeniorityDeterministicBase(title,description,canonicalRole)||ROLE_DEFAULT_SENIORITY[canonicalRole]||null;
+}
+function classifySeniorityDeterministicBase(title,description,canonicalRole){
   const fromTitle=classifySeniorityFromText(title,canonicalRole);
   if(fromTitle)return fromTitle;
   if(description&&SENIORITY_INVERTING_CONTEXT_RE.test(description)){
