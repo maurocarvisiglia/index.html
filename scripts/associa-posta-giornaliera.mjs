@@ -132,14 +132,19 @@ const companies = await apiPaginato('companies?select=id,name,website&is_active=
 // Serve per disambiguare i domini condivisi da piu' aziende (sotto): un'email
 // GIA' conosciuta per una di quelle aziende specifiche vale piu' del dominio.
 const contattiEsistenti = await apiPaginato('company_contacts?select=company_id,email');
+// email -> Set(company_id) delle schede ATTIVE dove quel contatto compare. Fino al
+// 08/10/2026 un'email presente su due schede veniva scartata come "non affidabile":
+// ma un contatto gia' in archivio e' un fatto verificato, e se la stessa persona e'
+// su piu' schede (aziende dello stesso gruppo, schede doppie dello stesso ente) l'invio
+// va registrato su TUTTE (caso reale 06/10: Recipharm/MITIM e Santagostino non
+// risultavano mai "fatte" nel Piano di contatto per questo motivo).
+const idAttive = new Set(companies.map((c) => c.id));
 const companyIdPerEmailNota = new Map();
 for (const c of contattiEsistenti) {
-  if (!c.email) continue;
+  if (!c.email || !idAttive.has(c.company_id)) continue;
   const e = c.email.toLowerCase();
-  // Se la stessa email compare su piu' aziende diverse non e' un segnale
-  // affidabile per disambiguare: si toglie invece di rischiare di sceglierne una a caso.
-  if (companyIdPerEmailNota.has(e) && companyIdPerEmailNota.get(e) !== c.company_id) companyIdPerEmailNota.set(e, null);
-  else companyIdPerEmailNota.set(e, c.company_id);
+  if (!companyIdPerEmailNota.has(e)) companyIdPerEmailNota.set(e, new Set());
+  companyIdPerEmailNota.get(e).add(c.company_id);
 }
 
 const perDominioSito = new Map(); // dominio -> Set(company_id): un dominio puo' appartenere a piu' aziende reali dello stesso gruppo
@@ -190,23 +195,24 @@ function trovaAzienda(dominio, emailCompleta) {
   // (caso reale 29/09/2026: IWT ha sito "iwtpharma.com" ma il personale scrive
   // da "iwtsrl.it" — un dominio mai visto da nessuna euristica sotto, ma gia'
   // presente come contatto conosciuto).
+  // Restituisce SEMPRE un array di company_id (vuoto se non abbinata).
   const notoDaContattoDiretto = companyIdPerEmailNota.get(emailCompleta.toLowerCase());
-  if (notoDaContattoDiretto) return notoDaContattoDiretto;
+  if (notoDaContattoDiretto?.size) return [...notoDaContattoDiretto];
 
   if (perDominioSito.has(dominio)) {
     const candidati = perDominioSito.get(dominio);
-    if (candidati.size === 1) return [...candidati][0];
-    return null; // dominio ambiguo tra piu' aziende, nessun contatto noto a disambiguare
+    if (candidati.size === 1) return [...candidati];
+    return []; // dominio ambiguo tra piu' aziende, nessun contatto noto a disambiguare
   }
   const brand = dominio.replace(/\.[a-z.]+$/, '');
   // Anche senza trattini: un dominio come "farmila-thea.it" va confrontato con
   // "Farmila-Thea" normalizzato a "farmilathea" (normalizeCompanyName toglie i
   // trattini), non solo con "farmila-thea" letterale.
   const brandSenzaTrattini = brand.replace(/-/g, '');
-  if (perNomeCompleto.has(brand)) return perNomeCompleto.get(brand);
-  if (perNomeCompleto.has(brandSenzaTrattini)) return perNomeCompleto.get(brandSenzaTrattini);
-  if (perToken.has(brand) && perToken.get(brand).size === 1) return [...perToken.get(brand)][0];
-  return null;
+  if (perNomeCompleto.has(brand)) return [perNomeCompleto.get(brand)];
+  if (perNomeCompleto.has(brandSenzaTrattini)) return [perNomeCompleto.get(brandSenzaTrattini)];
+  if (perToken.has(brand) && perToken.get(brand).size === 1) return [...perToken.get(brand)];
+  return [];
 }
 
 const righe = [];
@@ -223,23 +229,25 @@ for (const msg of email) {
     const dominio = dominioDi(contatto);
     if (!dominio) continue;
     if (DOMINI_PERSONALI.has(dominio)) { ignoratePersonali++; continue; }
-    const companyId = trovaAzienda(dominio, contatto);
-    if (!companyId) {
+    const companyIds = trovaAzienda(dominio, contatto);
+    if (!companyIds.length) {
       nonAbbinate++;
       domainNonAbbinati.set(dominio, (domainNonAbbinati.get(dominio) || 0) + 1);
       continue;
     }
-    righe.push({
-      company_id: companyId,
-      controparte_email: contatto.toLowerCase(),
-      oggetto: msg.oggetto || null,
-      data_invio: msg.dataInvio,
-      direzione: DIREZIONE,
-    });
-    if (DIREZIONE === 'ricevuta') {
-      const telefono = estraiTelefono(msg.testo);
-      if (telefono) {
-        numeriTrovati.push({ company_id: companyId, email: contatto.toLowerCase(), nome: msg.nomeMittente || null, telefono });
+    for (const companyId of companyIds) {
+      righe.push({
+        company_id: companyId,
+        controparte_email: contatto.toLowerCase(),
+        oggetto: msg.oggetto || null,
+        data_invio: msg.dataInvio,
+        direzione: DIREZIONE,
+      });
+      if (DIREZIONE === 'ricevuta') {
+        const telefono = estraiTelefono(msg.testo);
+        if (telefono) {
+          numeriTrovati.push({ company_id: companyId, email: contatto.toLowerCase(), nome: msg.nomeMittente || null, telefono });
+        }
       }
     }
   }
