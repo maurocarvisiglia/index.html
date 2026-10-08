@@ -59,6 +59,9 @@ const TIME_BUDGET_MS = 45000;
 const argN = (process.argv.find((a) => a.startsWith('--n=')) || '').slice(4);
 const N_OGGI = Number(process.env.APOLLO_UNIFICATO_DAILY_LIMIT || argN || 12);
 const APPLY = process.argv.includes('--apply');
+// --company=<id>,<id>: lavora SOLO queste aziende (es. dopo un import), saltando la coda per dimensione.
+const argCompany = (process.argv.find((a) => a.startsWith('--company=')) || '').slice(10);
+const SOLO_AZIENDE = argCompany ? new Set(argCompany.split(',').map((s) => s.trim()).filter(Boolean)) : null;
 
 function normalize(name) {
   if (!name) return '';
@@ -212,6 +215,7 @@ async function runUnificatoDailyBatch(apply = true) {
   const soglia = Date.now() - RISCARICA_DOPO_GIORNI * 86400000;
   const code = [[], [], []];
   for (const c of pool) {
+    if (SOLO_AZIENDE && !SOLO_AZIENDE.has(c.id)) continue;
     const dominio = extractDomain(c.website);
     if (!dominio) continue;
     const s = scarichi.get(c.id);
