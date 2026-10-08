@@ -10,7 +10,10 @@
 // (policy.max_cost='free': openrouter/free, GLM 5.2 free, Gemma 4 31B free),
 // diversi dai tre sopra e quindi non soggetti allo stesso esaurimento.
 
-export const config = { maxDuration: 30 };
+// I worker gratuiti di CORE impiegano 28-46 s per 1.400-2.100 token (misurato l'08/10/2026
+// sul registro core_cost_ledger): con il vecchio tetto di 25 s la risposta arrivava a buon
+// fine sul server ma il client l'aveva gia' scartata ("timeout dopo 25s").
+export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -29,7 +32,7 @@ export default async function handler(req, res) {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25000);
+  const timer = setTimeout(() => controller.abort(), 57000);
   try {
     const r = await fetch(CORE_URL, {
       method: 'POST',

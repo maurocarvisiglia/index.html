@@ -2500,13 +2500,16 @@ let _geminiRateLimitUntil=0;
 // chiamata -> il report si inchiodava per minuti invece di ripiegare subito.
 // 25 secondi bastano: Mistral risponde in 1-8s sugli stessi prompt.
 const AI_TIMEOUT_MS=25000;
-async function _aiFetch(url,init){
+// CORE (worker gratuiti) e' l'ultima spiaggia e risponde in 28-46 s sui testi lunghi:
+// riceve un tetto proprio, appena sotto quello della funzione server (57 s).
+const AI_TIMEOUT_CORE_MS=60000;
+async function _aiFetch(url,init,timeoutMs=AI_TIMEOUT_MS){
   const ctrl=new AbortController();
-  const t=setTimeout(()=>ctrl.abort(),AI_TIMEOUT_MS);
+  const t=setTimeout(()=>ctrl.abort(),timeoutMs);
   try{
     return await fetch(url,{...init,signal:ctrl.signal});
   }catch(e){
-    throw new Error(/abort/i.test(String(e.message))?'timeout dopo '+(AI_TIMEOUT_MS/1000)+'s':e.message);
+    throw new Error(/abort/i.test(String(e.message))?'timeout dopo '+(timeoutMs/1000)+'s':e.message);
   }finally{
     clearTimeout(t);
   }
@@ -2580,7 +2583,7 @@ async function callCoreProxy(prompt, maxTokens=800){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({prompt,maxTokens})
-  });
+  },AI_TIMEOUT_CORE_MS);
   if(!resp.ok){const body=await resp.json().catch(()=>({}));throw new Error('CORE '+resp.status+': '+(body.error||''));}
   const data=await resp.json();
   if(!data.text)throw new Error('CORE: risposta vuota');
