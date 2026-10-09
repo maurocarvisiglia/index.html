@@ -3180,6 +3180,18 @@ const CANONICAL_ROLE_TO_FUNZIONE_OVERRIDE=[
   [/key account manager|national account manager|strategic account manager/i, ['key_account_manager']],
   [/^area manager|regional manager|field sales manager/i, ['area_manager']],
   [/^sales director$/i, ['sales_leadership']],
+  // Aggiunti il 09/10/2026 dopo la verifica dei report QA/QC, Sales Rep, Customer Care, PM, Biologo:
+  // prima QA e QC erano sommati, il Project Manager finiva in "General Management", il Sales
+  // Representative contava tutta la funzione commerciale (direttori ed export compresi).
+  [/quality control|controllo qualit/i, ['quality_control']],
+  [/quality assurance|^qa\b|qa\/ra|validation|csv specialist|gmp specialist|qualified person|assicurazione qualit/i, ['quality_assurance']],
+  [/^project manager$/i, ['project_management']],
+  [/customer (service|care|success)/i, ['customer_service','customer_success']],
+  [/^sales (representative|specialist|manager)$|^medical representative$/i, ['sales_commercial']],
+  [/^farmacista direttore$/i, ['farmacista']],
+  // Il biologo e' una professione, non una funzione organico: in Apollo finisce in R&D, QC o sanitario.
+  // Meglio nessun numero che un numero sbagliato.
+  [/biolog/i, []],
 ];
 function funzioniPerRicercaAnnunci(functional_area,canonical_role){
   if(canonical_role){
@@ -4026,9 +4038,9 @@ function renderReportHTML(plan,entityResults,narration){
       ${narration.benefits_note?`<div class="summary-box">${narration.benefits_note}</div>`:''}`:''}
       ${e.workforce_context?`
       <div class="section-title" style="margin-top:24px;">Mercato attuale — ${e.workforce_context.funzioneLabel}</div>
-      <div class="summary-box">${e.workforce_context.totale_persone?`<strong>${e.workforce_context.totale_persone}</strong> persone già impiegate in questa funzione ${e.workforce_context.nationwide?'in Italia':`in ${e.workforce_context.region}`} (${e.workforce_context.aziende_coperte} aziend${e.workforce_context.aziende_coperte===1?'a':'e'} con dato noto)`:`Nessun dato di organico noto per questa funzione${e.workforce_context.nationwide?'':` in ${e.workforce_context.region}`}`}. <span style="color:#aaa;">Dato da archivio organico (Apollo), copertura parziale.</span></div>
+      <div class="summary-box">${e.workforce_context.totale_persone?`<strong>${e.workforce_context.totale_persone}</strong> profili in archivio Apollo per questa funzione, in aziende ${e.workforce_context.nationwide?'italiane':`con sede in ${e.workforce_context.region}`} (${e.workforce_context.aziende_coperte} aziend${e.workforce_context.aziende_coperte===1?'a':'e'})`:`Nessun dato di organico attendibile per questa funzione${e.workforce_context.nationwide?'':` in ${e.workforce_context.region}`}`}. <span style="color:#aaa;">Non è il numero degli occupati: Apollo copre solo una parte dei lavoratori${e.workforce_context.aziende_escluse?`; ${e.workforce_context.aziende_escluse} aziend${e.workforce_context.aziende_escluse===1?'a esclusa':'e escluse'} perché i profili superano i dipendenti noti (probabile dominio di gruppo)`:''}. Esclusi anche consulenza e agenzie per il lavoro.</span></div>
       ${e.workforce_context.breakdown_province&&e.workforce_context.breakdown_province.length>1?`
-      <table><thead><tr><th>Provincia</th><th>${e.workforce_context.funzioneLabel}</th><th>Aziende con dato</th></tr></thead><tbody>${e.workforce_context.breakdown_province.map(p=>`<tr><td>${p.provincia}</td><td style="font-weight:700;color:${GOLD};">${p.count}</td><td style="color:#888;">${p.aziende}</td></tr>`).join('')}</tbody></table>`:''}
+      <table><thead><tr><th>Provincia della sede dell'azienda</th><th>${e.workforce_context.funzioneLabel}</th><th>Aziende con dato</th></tr></thead><tbody>${e.workforce_context.breakdown_province.map(p=>`<tr><td>${p.provincia}</td><td style="font-weight:700;color:${GOLD};">${p.count}</td><td style="color:#888;">${p.aziende}</td></tr>`).join('')}</tbody></table>`:''}
       ${e.workforce_context.totale_persone?`<div class="chart-box"><div class="chart-title" style="font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Top aziende</div>${barRows(e.workforce_context,GOLD)}</div>`:''}`:''}
     `;
   }else{
@@ -7334,7 +7346,10 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
   // sia una provincia, sigla o nome esteso (es. "Bergamo"/"BG") — stessa
   // precisione del benchmark organico di Report Aziende, mai limitata al solo
   // livello regionale quando l'utente chiede una provincia specifica.
-  let aziende=await apiPaginato('companies?select=id,name,region,province&is_active=eq.true&merged_into=is.null',1000);
+  let aziende=await apiPaginato('companies?select=id,name,region,province,dipendenti,sector_v2&is_active=eq.true&merged_into=is.null',1000);
+  // Fuori perimetro: agenzie per il lavoro e consulenza (Adecco, Randstad, Manpower...) e il settore "Altro":
+  // i loro profili sono il personale dell'agenzia, non un bacino di quella funzione nel settore Life Sciences.
+  aziende=aziende.filter(a=>!['Consulenza','Altro'].includes(a.sector_v2));
   if(region)aziende=aziende.filter(a=>aziendaCorrispondeLocalita(a,region));
   if(!aziende.length)return {type:'workforce_context',functional_area,funzioneLabel:funzioni.map(f=>WORKFORCE_FUNZIONE_LABEL[f]||f).join(' / '),region:region||null,nationwide:!region,totale_persone:0,aziende_coperte:0,breakdown:[]};
 
@@ -7346,6 +7361,22 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     const righe=await api(`v_company_workforce_funzioni?select=company_id,conteggio&funzione=in.(${funzioni.join(',')})&company_id=in.(${lotto.join(',')})`);
     righe.forEach(r=>{ perAzienda.set(r.company_id,(perAzienda.get(r.company_id)||0)+r.conteggio); }); // somma su tutti gli ambito, mai un doppio conteggio
   }
+
+  // Affidabilita': se i profili Apollo di un'azienda superano i suoi dipendenti noti, il dominio e' quasi
+  // certamente condiviso col gruppo (es. Thermo Fisher Diagnostics: 104 dipendenti, 668 profili QA/QC).
+  // Quelle aziende si escludono dal totale e si dichiarano nel report.
+  let aziende_escluse=0,persone_escluse=0;
+  const idsConDato=[...perAzienda.keys()];
+  const totaliAz=new Map();
+  for(let i=0;i<idsConDato.length;i+=150){
+    const lotto=idsConDato.slice(i,i+150);
+    const righe=await api(`v_company_workforce_totale?select=company_id,totale&company_id=in.(${lotto.join(',')})`);
+    righe.forEach(r=>totaliAz.set(r.company_id,r.totale));
+  }
+  idsConDato.forEach(id=>{
+    const d=parseInt(aziendaById.get(id)?.dipendenti)||0;
+    if(d>0&&(totaliAz.get(id)||0)>d){aziende_escluse++;persone_escluse+=perAzienda.get(id);perAzienda.delete(id);}
+  });
 
   const totale_persone=[...perAzienda.values()].reduce((s,v)=>s+v,0);
   const breakdown=[...perAzienda.entries()]
@@ -7365,7 +7396,7 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     prec.aziende+=1;
     perProvinciaMap.set(chiave,prec);
   });
-  const breakdown_province=[...perProvinciaMap.values()].sort((a,b)=>b.count-a.count);
+  const breakdown_province=[...perProvinciaMap.values()].sort((a,b)=>(/non nota/i.test(a.provincia)-/non nota/i.test(b.provincia))||(b.count-a.count));
 
   return{
     type:'workforce_context',
@@ -7375,6 +7406,8 @@ async function computeWorkforceContextSection(functional_area,region,canonical_r
     nationwide:!region,
     totale_persone,
     aziende_coperte:perAzienda.size,
+    aziende_escluse,
+    persone_escluse,
     breakdown,
     breakdown_province,
   };
