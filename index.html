@@ -4258,7 +4258,7 @@ async function interpretaRichiestaReport(){
       if(e.filters.therapeutic_area)parts.push('therapeutic_area=eq.'+encodeURIComponent(e.filters.therapeutic_area));
       if(e.filters.contract_type)parts.push('contract_type=eq.'+encodeURIComponent(e.filters.contract_type));
       if(e.filters.region)parts.push('region=eq.'+encodeURIComponent(e.filters.region));
-      const righe=await api('job_listings?select=canonical_role,seniority_v2&'+parts.join('&')+'&limit=3000');
+      const righe=await apiPaginato('job_listings?select=canonical_role,seniority_v2&order=id.asc&'+parts.join('&'),2000);
       const conteggioRuoli={};
       righe.forEach(r=>{conteggioRuoli[r.canonical_role]=(conteggioRuoli[r.canonical_role]||0)+1;});
       e._ruoliCandidati=Object.entries(conteggioRuoli).sort((a,b)=>b[1]-a[1]).map(([ruolo,n])=>({ruolo,n,selezionato:true}));
@@ -5532,7 +5532,7 @@ async function runMassReclassify(){
   const validRoles=new Set(_taxonomyCache.map(t=>t.canonical_role));
 
   // Carica tutti gli annunci: sia quelli con canonical_role NULL sia quelli con valori fuori vocabolario
-  const all = await api('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc&limit=2000');
+  const all = await apiPaginato('job_listings?select=id,job_title,canonical_role,role_family&order=published_date.desc,id.asc',2000);
   const toProcess = all.filter(l => !l.canonical_role || !validRoles.has(l.canonical_role));
   showP('Trovati '+toProcess.length+' annunci da riclassificare. Avvio...', 5);
 
@@ -5578,7 +5578,7 @@ async function refreshBenchmarksAndSignals(){
     await updateSalaryBenchmarks();
 
     showEnrichmentProgress('Step 2/2 — Rilevazione segnali di mercato...', 65);
-    const allData = await api('job_listings?select=*&order=published_date.desc&limit=2000');
+    const allData = await apiPaginato('job_listings?select=*&order=published_date.desc,id.asc',2000);
     await saveMarketSignalsToSupabase(allData);
 
     showEnrichmentProgress('✅ Aggiornamento terminato', 100);
@@ -6176,7 +6176,7 @@ async function calcAllRalRanges(){
   toast('⏳ Calcolo range RAL in corso...');
   try{
     // Carica tutti gli annunci con salary_text (mediana da Vocations)
-    const listings=await api('job_listings?select=id,salary_text,seniority_v2&salary_text=not.is.null&limit=2000');
+    const listings=await apiPaginato('job_listings?select=id,salary_text,seniority_v2&salary_text=not.is.null&order=id.asc',2000);
     const RAL_COEFFS={
       'internship':       {lo:0.90,hi:1.10},
       'entry_level':      {lo:0.90,hi:1.10},
@@ -6290,7 +6290,7 @@ async function runMarketQuery(){
   const period=document.getElementById('qb-period').value;
 
   // Costruisce query
-  let q='job_listings?select=*&order=published_date.desc.nullslast&limit=5000';
+  let q='job_listings?select=*&order=published_date.desc.nullslast,id.asc';
   if(area)q+=`&functional_area_v2=eq.${encodeURIComponent(area)}`;
   if(sector)q+=`&sector_v2=eq.${encodeURIComponent(sector)}`;
   if(ta)q+=`&therapeutic_area=eq.${encodeURIComponent(ta)}`;
@@ -6304,7 +6304,7 @@ async function runMarketQuery(){
   }
 
   try{
-    const data=await api(q);
+    const data=await apiPaginato(q,2000);
 
     // Context label
     const filters=[];
@@ -6504,7 +6504,7 @@ async function generateChartDescriptions(data){
 async function loadDashboard(){
   // Alla prima apertura carica tutto il mercato
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=5000');
+    const data=await apiPaginato('job_listings?select=*&order=published_date.desc.nullslast,id.asc',2000);
     document.getElementById('qb-empty').style.display='none';
     document.getElementById('qb-results').style.display='block';
     document.getElementById('qb-context-label').textContent='📊 Tutto il mercato Life Sciences Italia';
@@ -6829,7 +6829,7 @@ async function generateMarketSignals(){
   if(btn){btn.textContent='⏳ Analisi...';btn.disabled=true;}
 
   try{
-    const data=await api('job_listings?select=*&order=published_date.desc.nullslast&limit=3000');
+    const data=await apiPaginato('job_listings?select=*&order=published_date.desc.nullslast,id.asc',2000);
     const now=Date.now();
     const ms30=30*864e5, ms60=60*864e5, ms90=90*864e5;
 
@@ -12956,16 +12956,16 @@ async function runCompetitorAnalysis(){
     const checkedRoles=[...document.querySelectorAll('.cm-sug-cb:checked')].map(cb=>cb.dataset.role).filter(Boolean);
     const roleOr=await buildRoleSearchOr([role,...checkedRoles].join(';'));
 
-    const data=await api('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
+    const data=await apiPaginato('job_listings?select=id,job_title,ragione_sociale,company_name,ral_min,ral_max,published_date,seniority_v2,location,url,canonical_role'
       +roleOr
       +'&published_date=gte.'+since
-      +'&order=published_date.desc&limit=5000');
+      +'&order=published_date.desc,id.asc',2000);
 
     // Carica periodo precedente per trend reale
-    const dataPrev=await api('job_listings?select=ragione_sociale,company_name,published_date'
+    const dataPrev=await apiPaginato('job_listings?select=ragione_sociale,company_name,published_date'
       +roleOr
       +'&published_date=gte.'+prevSince+'&published_date=lt.'+since
-      +'&limit=2000');
+      +'&order=id.asc',2000);
     const byCompanyPrev={};
     dataPrev.forEach(l=>{const c=l.ragione_sociale||l.company_name||'N/D';byCompanyPrev[c]=(byCompanyPrev[c]||0)+1;});
 
