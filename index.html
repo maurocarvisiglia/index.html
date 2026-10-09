@@ -1909,6 +1909,13 @@ async function importVocationsCSV(event){
     if(min)return{tipo:'min',valore:parseRAL(min[1])};
     const max=str.match(/^\s*fino\s+a\s+(.+)$/i);
     if(max)return{tipo:'max',valore:parseRAL(max[1])};
+    // "A € – B €": entrambi gli estremi sono dichiarati, nessuna stima. Un
+    // estremo basso irrealistico (es. "0 € – 30.000 €") non vale come minimo.
+    const rng=str.match(/([0-9][0-9.]*)\D+([0-9][0-9.]*)/);
+    if(rng&&/[–-]/.test(str)){
+      const a=parseInt(rng[1].replace(/\./g,'')),b=parseInt(rng[2].replace(/\./g,''));
+      if(b>=10000&&b<=500000)return{tipo:'range',valore:b,minimo:a>=10000?a:null,massimo:b};
+    }
     return{tipo:'punto',valore:parseRAL(str)};
   };
   // 'n/a' non ha piu' un valore fisso: significa "non specificato", quindi resta
@@ -2123,6 +2130,10 @@ async function importVocationsCSV(event){
         // da cui stimare un range — si registra solo quello che e' stato detto
         // davvero, mai un massimo inventato.
         ral_min=estremoRAL.valore;
+        ral_estimated=false;
+      }else if(estremoRAL.tipo==='range'){
+        ral_min=estremoRAL.minimo;
+        ral_max=estremoRAL.massimo;
         ral_estimated=false;
       }else if(estremoRAL.tipo==='max'){
         // "Fino a X €": stesso principio, X e' un massimo dichiarato.
@@ -6783,6 +6794,9 @@ async function calcAllRalRanges(){
     };
     let updated=0,skipped=0;
     for(const l of listings){
+      // Intervalli ed estremi singoli ("A – B", "Da X", "Fino a X") sono
+      // dichiarati dalla fonte: mai sovrascriverli con una stima.
+      if(/^\s*(da|fino)\s/i.test(l.salary_text)||/[0-9][^0-9–-]*[–-][^0-9]*[0-9]/.test(l.salary_text)){skipped++;continue;}
       const median=parseRALStr(l.salary_text);
       if(!median){skipped++;continue;}
       const coeff=RAL_COEFFS[l.seniority_v2]||{lo:0.85,hi:1.15};
