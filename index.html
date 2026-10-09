@@ -247,7 +247,8 @@ a.job-link:hover{text-decoration:underline;}
     <button class="nav-btn" id="nav-report" onclick="showView('report',this)" style="border-color:#b8965a;color:#b8965a;">📄 Report</button>
     <button class="nav-btn" id="nav-insight" onclick="showView('insight',this)" style="border-color:#ec4899;color:#ec4899;">🎙️ Insight Recruiter</button>
     <button class="nav-btn" id="nav-rumors" onclick="showView('rumors',this)" style="border-color:#14b8a6;color:#14b8a6;">🗞️ Rumors & Market Insight</button>
-    <button class="nav-btn" id="nav-apollo" onclick="showView('apollo',this)" style="border-color:#60a5fa;color:#60a5fa;">🗄️ Archivio Apollo</button>
+    <!-- Pagina tecnica: non e' piu' in menu, si apre da "Aziende" (card Avanzamento Apollo), solo admin -->
+    <button class="nav-btn" id="nav-apollo" onclick="showView('apollo',this)" style="display:none;">🗄️ Archivio Apollo</button>
     <button class="nav-btn" id="nav-users" onclick="showView('users',this)" style="border-color:#ef4444;color:#ef4444;display:none;">👥 Utenti</button>
     <button class="nav-btn" id="nav-piano" onclick="showView('piano',this)" style="border-color:#f59e0b;color:#f59e0b;display:none;">📅 Piano Contatto</button>
   </div>
@@ -679,7 +680,7 @@ a.job-link:hover{text-decoration:underline;}
     </div>
 
     <div class="chart-card" style="margin-bottom:16px;">
-      <div class="chart-card-title">🔄 Avanzamento arricchimento Apollo.io</div>
+      <div class="chart-card-title">🔄 Avanzamento arricchimento Apollo.io <a class="admin-only-el" href="#" onclick="showView('apollo',document.getElementById('nav-apollo'));return false;" style="display:none;font-size:12px;font-weight:400;margin-left:10px;color:#60a5fa;">🗄️ Archivio tecnico →</a></div>
       <div id="apollo-progress-body">
         <div class="loading">Caricamento...</div>
       </div>
@@ -5230,6 +5231,8 @@ td{padding:8px 10px;border-bottom:1px solid ${BORDER2};color:#333;vertical-align
 
 /* ── NAVIGATION ── */
 function showView(name,btn){
+  // L'Archivio Apollo e' una pagina tecnica: solo admin (i dati per i commerciali sono nella scheda azienda)
+  if(name==='apollo'&&_currentRole!=='admin')name='companies';
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+name).classList.add('active');
