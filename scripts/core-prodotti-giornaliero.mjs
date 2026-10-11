@@ -53,7 +53,7 @@ const APPLY = process.argv.includes('--apply');
 // (la scrittura avviene solo a fine ciclo). Stesso guardrail gia' collaudato in
 // apollo-enrichment-agent.js: si esce dal ciclo DA SOLO ben prima del limite
 // reale, cosi' quanto raccolto fino a quel momento viene comunque scritto.
-const TIME_BUDGET_MS = 45000;
+const TIME_BUDGET_MS = Number(process.env.PRODOTTI_TIME_BUDGET_MS) || 45000; // piu' lungo solo da riga di comando: su Vercel il tetto e' 60 s
 
 /**
  * L'UNICA via verso l'AI, identica a core-arricchimento-via-core.mjs: si

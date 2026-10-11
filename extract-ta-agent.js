@@ -21,7 +21,7 @@ const DAILY_LIMIT = Number(process.env.TA_DAILY_LIMIT || 8);
 // guardrail gia' collaudato in apollo-enrichment-agent.js: si ferma DA SOLO
 // ben prima del limite reale, qualunque esso sia, restituendo un successo
 // parziale invece di farsi ammazzare a meta' lavoro.
-const TIME_BUDGET_MS = 45000;
+const TIME_BUDGET_MS = Number(process.env.TA_TIME_BUDGET_MS) || 45000; // piu' lungo solo da riga di comando: su Vercel il tetto e' 60 s
 
 function isDailyQuotaExhausted(e) {
   // La sottostringa "PerDay" sta dentro error.details[].violations[].quotaId,
@@ -56,12 +56,19 @@ DESCRIZIONE:
 
 Rispondi SOLO con un array JSON di stringhe, es. ["oncology","immunology"] oppure [].`;
 
-  const res = await retryWithBackoff(() => axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_KEY}`,
-    { contents: [{ parts: [{ text: prompt }] }] },
-    { timeout: 12000 }
-  ));
-  const raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+  // Da riga di comando si puo' passare dall'endpoint /api/gemini-proxy (GEMINI_PROXY_URL): usa la chiave di Vercel, senza tenerne una valida in locale.
+  let raw;
+  if (process.env.GEMINI_PROXY_URL) {
+    const r = await retryWithBackoff(() => axios.post(process.env.GEMINI_PROXY_URL, { prompt }, { timeout: 30000 }));
+    raw = r.data?.text || '[]';
+  } else {
+    const res = await retryWithBackoff(() => axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_KEY}`,
+      { contents: [{ parts: [{ text: prompt }] }] },
+      { timeout: 12000 }
+    ));
+    raw = res.data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+  }
   const clean = raw.replace(/```json|```/g, '').trim();
   let parsed;
   try {
@@ -77,7 +84,7 @@ async function runTaExtractionDailyBatch() {
   const log = [];
   const push = (msg) => { console.log(msg); log.push(msg); };
 
-  if (!GEMINI_KEY) {
+  if (!GEMINI_KEY && !process.env.GEMINI_PROXY_URL) {
     throw new Error('GEMINI_API_KEY non configurata');
   }
 
