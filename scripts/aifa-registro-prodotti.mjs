@@ -83,6 +83,9 @@ const norm = (s) => (s || '')
 const ALIAS = new Map([
   ['glaxosmithkline', 'gsk'],
   ['merck sharp dohme', 'msd'],
+  // FORME_SPAZIATE toglie "a g" dalla sigla puntata A.G.I.P.S.: senza questo
+  // alias il titolare AIC ricreava un doppione di AGIPS (fuso il 23/09/2026).
+  ['i p s farmaceutici', 'agips farmaceutici'],
 ]);
 
 // Token minimo 4 caratteri: esclude sigle corte ("ma", "eeig" resta ammesso
@@ -247,6 +250,10 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
   // aziende per lo stesso titolare e la seconda scrittura viola l'unicita'
   // del nome in companies (bug reale del 05/09/2026, corretto qui).
   const orfani = new Map();
+  const scartatiEsteri = new Set();
+  // forma legale ITALIANA (S.p.A., S.r.l., S.a.s., S.n.c., S.c.a r.l.) e nessun marcatore di societa' estera
+  const FORMA_LEGALE_ITALIANA = /\b(s\.?\s?p\.?\s?a\.?|s\.?\s?r\.?\s?l\.?|s\.?\s?a\.?\s?s\.?|s\.?\s?n\.?\s?c\.?|s\.?\s?c\.?\s?a\.?\s?r\.?\s?l\.?)(?![a-z])/i;
+  const FORMA_ESTERA = /\b(gmbh|b\.?\s?v\.?|n\.?\s?v\.?|ltd|limited|inc|llc|a\/s|aps|ab|ag|s\.?\s?l\.?\s?u?|s\.?\s?a\.?\s?u|sp\.?\s?z\.?\s?o\.?\s?o|kg|oy|plc|pty|international)\b/i;
   let righeLette = 0;
 
   for (const fonte of FONTI) {
@@ -272,6 +279,8 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
       if (!lsi) {
         const chiaveNorm = norm(titolare);
         if (!chiaveNorm) continue;
+        // Solo aziende con sede in Italia (richiesta di Mauro, 11/10/2026): forma legale italiana e nessun marcatore estero.
+        if (!FORMA_LEGALE_ITALIANA.test(titolare) || FORMA_ESTERA.test(titolare)) { scartatiEsteri.add(titolare); continue; }
         if (!orfani.has(chiaveNorm)) orfani.set(chiaveNorm, { titolareRappresentativo: titolare, righe: [] });
         orfani.get(chiaveNorm).righe.push({ titolare, nome, principio, fonteLabel: fonte.label, denomOriginale: r[fonte.colDenom], paginaFonte: fonte.paginaFonte });
         continue;
@@ -297,7 +306,8 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
   push(`\n${'─'.repeat(80)}`);
   push(`  righe lette (3 liste) ................ ${righeLette}`);
   push(`  ${G}aziende collegate ..................... ${aziendeMatchate.size}${Z} ${D}(di cui ${matchPerContenimento.length ? new Set(matchPerContenimento.map(m=>m.azienda)).size : 0} per nome simile, non esatto)${Z}`);
-  push(`  ${Y}titolari senza azienda corrispondente . ${orfani.size}${Z} ${D}(diventeranno nuove aziende)${Z}`);
+  push(`  ${Y}titolari senza azienda corrispondente . ${orfani.size}${Z} ${D}(italiani: diventeranno nuove aziende)${Z}`);
+  push(`  ${D}titolari esteri o senza forma legale italiana scartati: ${scartatiEsteri.size}${Z}`);
   push(`  ${G}prodotti distinti (aziende esistenti) . ${trovati.size}${Z}`);
 
   if (matchPerContenimento.length) {
@@ -338,12 +348,24 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
   // del 05/09/2026). Soluzione: niente ON CONFLICT, si scarta a monte cio' che
   // esiste gia' e si fa un INSERT semplice — che non puo' piu' violare
   // l'indice perche' i duplicati sono gia' stati tolti prima di scrivere.
+  // PAGINAZIONE OBBLIGATORIA (bug reale trovato l'8/09/2026 su
+  // dispositivi-medici-registro.mjs, stesso pattern qui): senza `limit`/
+  // `offset` PostgREST tronca in silenzio al suo limite di default (1000
+  // righe), facendo sembrare "nuovi" prodotti gia' scritti oltre quella
+  // soglia per un lotto di 50 aziende — l'indice unico evita il duplicato ma
+  // con un'attesa inutile di migliaia di INSERT respinti con 409.
+  const PAGINA = 1000;
   async function prodottiEsistentiPerAziende(ids) {
     const set = new Set();
     for (let i = 0; i < ids.length; i += 50) {
       const lotto = ids.slice(i, i + 50);
-      const righe = await sb(`company_products?select=company_id,brand_name&company_id=in.(${lotto.join(',')})`);
-      for (const r of righe) set.add(chiaveProdotto(r));
+      let offset = 0;
+      for (;;) {
+        const righe = await sb(`company_products?select=company_id,brand_name&company_id=in.(${lotto.join(',')})&order=id&limit=${PAGINA}&offset=${offset}`);
+        for (const r of righe) set.add(chiaveProdotto(r));
+        if (righe.length < PAGINA) break;
+        offset += PAGINA;
+      }
     }
     return set;
   }
@@ -363,16 +385,21 @@ async function runAifaRegistroDailyBatch(apply = CLI_APPLY) {
   const vistiNome = new Map(); // nome ripulito (lower) -> chiaveNorm sopravvissuta
   const aliasChiaveNorm = new Map(); // chiaveNorm scartata -> chiaveNorm sopravvissuta
   const nuoveRighe = [];
+  // Un nome gia' presente in anagrafica (anche di una scheda unita: vale la superstite) non e' una azienda nuova: i prodotti vanno a quella scheda
+  // (creare un duplicato fa fallire la creazione per il vincolo sul nome).
+  const uniteConNome = new Map((await sb('companies?select=id,name,merged_into&limit=6000')).map((c) => [String(c.name).trim().toLowerCase(), c.merged_into || c.id]));
+  const idGiaEsistente = new Map();
   for (const [chiaveNorm, { titolareRappresentativo }] of orfani) {
     const name = ripulisciNomeAzienda(titolareRappresentativo);
     const nomeKey = name.trim().toLowerCase();
+    if (uniteConNome.has(nomeKey)) { idGiaEsistente.set(chiaveNorm, uniteConNome.get(nomeKey)); continue; }
     if (vistiNome.has(nomeKey)) { aliasChiaveNorm.set(chiaveNorm, vistiNome.get(nomeKey)); continue; }
     vistiNome.set(nomeKey, chiaveNorm);
     nuoveRighe.push({ chiaveNorm, name, ragione_sociale: titolareRappresentativo, entity_type: 'life_sciences', is_active: true });
   }
   push(`\n${D}Creo ${nuoveRighe.length} aziende nuove...${Z}`);
   let aziendeCreate = 0;
-  const idPerChiaveNorm = new Map();
+  const idPerChiaveNorm = new Map(idGiaEsistente);
   const chiaveNormPerRagioneSociale = new Map(nuoveRighe.map((r) => [r.ragione_sociale, r.chiaveNorm]));
   for (let i = 0; i < nuoveRighe.length; i += 100) {
     const lotto = nuoveRighe.slice(i, i + 100).map(({ chiaveNorm, ...corpo }) => corpo);
