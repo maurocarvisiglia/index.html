@@ -54,11 +54,13 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const APOLLO_KEY = process.env.APOLLO_API_KEY;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const DM_REGISTRO_TIPO = 'decision_maker_apollo';
-const TIME_BUDGET_MS = 45000;
+const TIME_BUDGET_MS = Number(process.env.APOLLO_TIME_BUDGET_MS) || 45000;
 
 const argN = (process.argv.find((a) => a.startsWith('--n=')) || '').slice(4);
 const N_OGGI = Number(process.env.APOLLO_UNIFICATO_DAILY_LIMIT || argN || 12);
 const APPLY = process.argv.includes('--apply');
+// --solo-gratis: SOLO la ricerca persone (gratuita) e l'organico; niente organizations/enrich ne' rivelazione email (a crediti).
+const SOLO_GRATIS = process.argv.includes('--solo-gratis') || process.env.APOLLO_SOLO_GRATIS === '1';
 // --company=<id>,<id>: lavora SOLO queste aziende (es. dopo un import), saltando la coda per dimensione.
 const argCompany = (process.argv.find((a) => a.startsWith('--company=')) || '').slice(10);
 const SOLO_AZIENDE = argCompany ? new Set(argCompany.split(',').map((s) => s.trim()).filter(Boolean)) : null;
@@ -238,7 +240,7 @@ async function runUnificatoDailyBatch(apply = true) {
 
     // ── 1. organizations/enrich (a crediti) — risposta sempre archiviata intera ──
     const orgIncompleta = !c.fatturato_range || !c.descrizione_aziendale || !c.linkedin_url;
-    if (apply && (orgIncompleta || (ORG_ARCHIVIA_TUTTE && !orgArchiviate.has(c.id)))) {
+    if (apply && !SOLO_GRATIS && (orgIncompleta || (ORG_ARCHIVIA_TUTTE && !orgArchiviate.has(c.id)))) {
       try {
         const { org, abbinamento } = await arc.arricchisciOrganizzazione(c.id, c.dominio, (nome) => isPlausibleMatch(c.name, nome));
         if (org && abbinamento) {
@@ -305,7 +307,7 @@ async function runUnificatoDailyBatch(apply = true) {
     }
 
     // 2b. decision maker — dentro la STESSA lista, mai una ricerca a parte
-    if (!dmTentate.has(c.id)) {
+    if (!SOLO_GRATIS && !dmTentate.has(c.id)) {
       const trovato = trovaDecisionMaker(persone);
       if (!trovato) {
         push(`  decision maker: nessuno trovato in questa lista`);

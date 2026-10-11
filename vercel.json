@@ -13,24 +13,12 @@
       "schedule": "10 0 * * *"
     },
     {
-      "path": "/api/apollo-unificato",
-      "schedule": "0 7 * * *"
-    },
-    {
       "path": "/api/extract-ta",
       "schedule": "0 9 * * *"
     },
     {
       "path": "/api/recupero-prodotti",
       "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/sync-market-radar",
-      "schedule": "0 11 * * *"
-    },
-    {
-      "path": "/api/market-rumors",
-      "schedule": "0 12 * * *"
     }
   ]
 }
