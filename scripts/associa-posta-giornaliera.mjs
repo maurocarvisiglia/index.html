@@ -89,6 +89,10 @@ const DOMINI_PERSONALI = new Set([
   'live.com', 'live.it', 'icloud.com', 'me.com', 'alice.it', 'libero.it', 'virgilio.it', 'tiscali.it',
   'aol.com', 'msn.com', 'ymail.com', 'gmx.com', 'gmx.net', 'protonmail.com', 'fastwebnet.it', 'tin.it',
   'email.it', 'mail.com', 'pec.it', 'legalmail.it', 'mcpharmaconsulting.it',
+  // Diagnosi del 14/10/2026: domini personali/amministrativi/di servizio di Mauro, mai un'azienda cliente —
+  // comparivano ogni giorno tra i 'non abbinati' come rumore.
+  'ethovix.com', 'carvisiglia.com', 'studiocommercialistafois.it', 'bper.it', 'vocations.io',
+  'linkedin.com', 'mailpool.io',
 ]);
 
 function dominioDi(email) {
