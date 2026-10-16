@@ -908,6 +908,12 @@ a.job-link:hover{text-decoration:underline;}
       </div>
     </div>
 
+    <!-- VISITE COMMERCIALI — report delle visite/contatti, a futura memoria (company_visite) -->
+    <div class="chart-card" id="cd-visite-card" style="margin-bottom:24px; border: 2px solid #f59e0b;">
+      <div class="chart-card-title">🤝 Visite commerciali</div>
+      <div id="cd-visite-body" style="margin-top:12px;"><div class="loading">Caricamento...</div></div>
+    </div>
+
     <!-- DATI ARRICCHITI AUTOMATICAMENTE -->
     <div class="chart-card" style="margin-bottom:24px; border: 2px solid var(--accent2);">
       <div class="chart-card-title">✨ Dati Arricchiti Automaticamente</div>
@@ -1312,6 +1318,45 @@ a.job-link:hover{text-decoration:underline;}
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-contact')">Annulla</button>
       <button class="btn btn-primary" onclick="saveContact()">Salva decision maker</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL VISITA COMMERCIALE -->
+<div class="modal-overlay" id="modal-visita">
+  <div class="modal">
+    <div class="modal-title" id="visita-modal-title">Nuova visita commerciale</div>
+    <input type="hidden" id="vis-id">
+    <div class="form-grid">
+      <div class="form-group"><div class="form-label">Data visita *</div><input type="date" id="vis-data"></div>
+      <div class="form-group"><div class="form-label">Canale</div>
+        <select id="vis-canale">
+          <option value="visita">Visita in sede</option>
+          <option value="call">Call</option>
+          <option value="videocall">Videocall</option>
+          <option value="fiera">Fiera / Evento</option>
+          <option value="email">Email / Scambio scritto</option>
+          <option value="altro">Altro</option>
+        </select>
+      </div>
+      <div class="form-group"><div class="form-label">Referente incontrato</div><input type="text" id="vis-referente" placeholder="es. Sara Sacchi — HR"></div>
+      <div class="form-group"><div class="form-label">Esito</div>
+        <select id="vis-esito">
+          <option value="">— non indicato —</option>
+          <option value="positivo">Positivo</option>
+          <option value="interlocutorio">Interlocutorio</option>
+          <option value="negativo">Negativo</option>
+          <option value="da_ricontattare">Da ricontattare</option>
+        </select>
+      </div>
+      <div class="form-group full"><div class="form-label">Report della visita *</div><textarea id="vis-note" style="width:100%;height:120px;resize:vertical;" placeholder="Cosa è emerso: bisogni, dolori, persone, numeri, impegni presi..."></textarea></div>
+      <div class="form-group"><div class="form-label">Prossimo passo</div><input type="text" id="vis-prossimo" placeholder="es. inviare proposta flat fee"></div>
+      <div class="form-group"><div class="form-label">Data prossimo contatto</div><input type="date" id="vis-prossima-data"></div>
+      <div class="form-group full"><div class="form-label">Autore (chi ha svolto la visita)</div><input type="text" id="vis-autore" placeholder="es. Mauro"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-visita')">Annulla</button>
+      <button class="btn btn-primary" onclick="saveVisita()">Salva visita</button>
     </div>
   </div>
 </div>
@@ -9663,6 +9708,7 @@ async function loadCompanyDetail(company){
 
   // Carica dati arricchiti
   if(company.id){
+    loadVisiteCommerciali(company.id);
     loadEnrichedData(company.id);
     loadCoreCard(company.id,listings);
     loadRumorsCard(company.id);
@@ -12535,6 +12581,100 @@ async function deleteContact(id){
     await api('company_contacts?id=eq.'+id,'DELETE');
     toast('Contatto eliminato');
     if(currentCompany)await loadCompanyContacts(currentCompany.id);
+  }catch(e){
+    toast('Errore eliminazione: '+e.message,'error');
+  }
+}
+
+/* ── VISITE COMMERCIALI — report delle visite, a futura memoria (company_visite) ── */
+const VISITA_CANALE_LABEL={visita:'Visita in sede',call:'Call',videocall:'Videocall',fiera:'Fiera/Evento',email:'Email',altro:'Altro'};
+const VISITA_ESITO={positivo:{l:'Positivo',c:'var(--success)'},interlocutorio:{l:'Interlocutorio',c:'var(--accent)'},negativo:{l:'Negativo',c:'var(--danger)'},da_ricontattare:{l:'Da ricontattare',c:'#f59e0b'}};
+
+async function loadVisiteCommerciali(companyId){
+  const body=document.getElementById('cd-visite-body');
+  if(!body)return;
+  const addBtn=`<button class="btn btn-secondary" style="font-size:11px;padding:5px 10px;margin-bottom:12px;" onclick="openVisitaModal()">+ Nuova visita</button>`;
+  try{
+    const visite=await api(`company_visite?company_id=eq.${companyId}&select=*&order=data_visita.desc,created_at.desc`);
+    if(!visite.length){
+      body.innerHTML=addBtn+'<div style="color:var(--text2);font-size:13px;">Nessuna visita registrata. Il primo report resta qui, a futura memoria.</div>';
+      return;
+    }
+    body.innerHTML=addBtn+visite.map(v=>{
+      const es=VISITA_ESITO[v.esito];
+      const d=v.data_visita?new Date(v.data_visita).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'}):'—';
+      const pross=(v.prossimo_passo||v.prossima_data)?`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;"><span style="color:var(--text2);">Prossimo passo:</span> ${v.prossimo_passo?escHtml(v.prossimo_passo):'—'}${v.prossima_data?` <span style="color:#f59e0b;">(${new Date(v.prossima_data).toLocaleDateString('it-IT')})</span>`:''}</div>`:'';
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface2);">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-weight:700;">${d}</span>
+          <span class="badge" style="background:var(--surface);border:1px solid var(--border);">${VISITA_CANALE_LABEL[v.canale]||v.canale}</span>
+          ${es?`<span class="badge" style="background:${es.c}22;color:${es.c};border:1px solid ${es.c};">${es.l}</span>`:''}
+          ${v.referente?`<span style="font-size:12px;color:var(--text2);">· ${escHtml(v.referente)}</span>`:''}
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+            ${v.autore?`<span style="font-size:11px;color:var(--text2);">${escHtml(v.autore)}</span>`:''}
+            <button onclick='openVisitaModal(${JSON.stringify(v).replace(/'/g,"&#39;")})' style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:12px;">✎</button>
+            <button onclick="deleteVisita('${v.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;">✕</button>
+          </span>
+        </div>
+        <div style="font-size:13px;line-height:1.5;margin-top:8px;white-space:pre-wrap;">${escHtml(v.note||'')}</div>
+        ${pross}
+      </div>`;
+    }).join('');
+  }catch(e){
+    body.innerHTML=addBtn+`<div style="color:var(--danger);font-size:12px;">Errore: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function openVisitaModal(v){
+  document.getElementById('visita-modal-title').textContent=v?'Modifica visita':'Nuova visita commerciale';
+  document.getElementById('vis-id').value=v?.id||'';
+  document.getElementById('vis-data').value=v?.data_visita||new Date().toISOString().slice(0,10);
+  document.getElementById('vis-canale').value=v?.canale||'visita';
+  document.getElementById('vis-referente').value=v?.referente||'';
+  document.getElementById('vis-esito').value=v?.esito||'';
+  const autoreDefault=PIANO_CONTATTO_ACCOUNT_PER_EMAIL[_currentUser?.email]||_currentUser?.email||'';
+  document.getElementById('vis-autore').value=v?(v.autore||''):autoreDefault;
+  document.getElementById('vis-note').value=v?.note||'';
+  document.getElementById('vis-prossimo').value=v?.prossimo_passo||'';
+  document.getElementById('vis-prossima-data').value=v?.prossima_data||'';
+  openModal('modal-visita');
+}
+
+async function saveVisita(){
+  if(!currentCompany){toast('Nessuna azienda selezionata','error');return;}
+  const id=document.getElementById('vis-id').value;
+  const note=document.getElementById('vis-note').value.trim();
+  if(!note){toast('Scrivi il report della visita','error');return;}
+  const body={
+    data_visita:document.getElementById('vis-data').value||new Date().toISOString().slice(0,10),
+    canale:document.getElementById('vis-canale').value||'visita',
+    referente:document.getElementById('vis-referente').value.trim()||null,
+    esito:document.getElementById('vis-esito').value||null,
+    note,
+    prossimo_passo:document.getElementById('vis-prossimo').value.trim()||null,
+    prossima_data:document.getElementById('vis-prossima-data').value||null,
+    autore:document.getElementById('vis-autore').value.trim()||null
+  };
+  try{
+    if(id){
+      await api('company_visite?id=eq.'+id,'PATCH',body);
+    }else{
+      await api('company_visite','POST',{...body,company_id:currentCompany.id,created_by:(_currentUser&&_currentUser.email)||null});
+    }
+    closeModal('modal-visita');
+    toast('✅ Visita registrata','success');
+    await loadVisiteCommerciali(currentCompany.id);
+  }catch(e){
+    toast('Errore salvataggio: '+e.message,'error');
+  }
+}
+
+async function deleteVisita(id){
+  if(!confirm('Eliminare questo report di visita?'))return;
+  try{
+    await api('company_visite?id=eq.'+id,'DELETE');
+    toast('Visita eliminata');
+    if(currentCompany)await loadVisiteCommerciali(currentCompany.id);
   }catch(e){
     toast('Errore eliminazione: '+e.message,'error');
   }
